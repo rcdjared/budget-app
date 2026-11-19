@@ -16,6 +16,8 @@ import {
   Plus,
   ReceiptText,
   Settings,
+  Moon,
+  Sun,
   Trash2,
   TrendingUp,
   WalletCards,
@@ -43,6 +45,7 @@ import {
 import type { Account, AccountType, Category, Transaction, TransactionType } from "@/domain/types";
 
 type Tab = "home" | "wallet" | "plan" | "history";
+type ThemePreference = "system" | "light" | "dark";
 
 const tabItems: { id: Tab; label: string; icon: typeof WalletCards }[] = [
   { id: "home", label: "Home", icon: WalletCards },
@@ -58,10 +61,35 @@ function App() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
+    const saved = localStorage.getItem("kupit-theme");
+    return saved === "light" || saved === "dark" ? saved : "system";
+  });
   const [online, setOnline] = useState(navigator.onLine);
   const [storagePersisted, setStoragePersisted] = useState<boolean | null>(null);
   const [installHintOpen, setInstallHintOpen] = useState(false);
   useRegisterSW({ immediate: true });
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const dark = themePreference === "dark" ||
+        (themePreference === "system" && media.matches);
+      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      document.querySelector('meta[name="theme-color"]')?.setAttribute(
+        "content",
+        dark ? "#0D1916" : "#1F7A5A"
+      );
+    };
+    applyTheme();
+    media.addEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", applyTheme);
+  }, [themePreference]);
+
+  useEffect(() => {
+    localStorage.setItem("kupit-theme", themePreference);
+  }, [themePreference]);
 
   useEffect(() => {
     initializeAppData()
@@ -134,7 +162,12 @@ function App() {
         profileId={profileId}
       />
       <ChatLogSheet open={chatOpen} onClose={() => setChatOpen(false)} profileId={profileId} />
-      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        themePreference={themePreference}
+        onThemeChange={setThemePreference}
+      />
       {installHintOpen && (
         <InstallHint
           persisted={storagePersisted}
@@ -1010,7 +1043,17 @@ function QuickNotesSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function SettingsSheet({
+  open,
+  onClose,
+  themePreference,
+  onThemeChange,
+}: {
+  open: boolean;
+  onClose: () => void;
+  themePreference: ThemePreference;
+  onThemeChange: (theme: ThemePreference) => void;
+}) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [email, setEmail] = useState("");
   const [session, setSession] = useState<Session | null>(null);
@@ -1113,6 +1156,18 @@ function SettingsSheet({ open, onClose }: { open: boolean; onClose: () => void }
           {cloudError && <p className="cloud-error" role="alert">{cloudError}</p>}
         </section>
         <div className="settings-list">
+          <label className="theme-setting">
+            <span><span className="theme-setting-icon"><Moon size={16} /><Sun size={16} /></span>Appearance</span>
+            <select
+              aria-label="Color theme"
+              value={themePreference}
+              onChange={(event) => onThemeChange(event.target.value as ThemePreference)}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
           <button onClick={exportTransactionsCsv}><span>Export transactions</span><small>CSV</small></button>
           <button onClick={exportJsonBackup}><span>Export backup</span><small>JSON</small></button>
           <label><span>Import backup</span><input type="file" accept=".json,application/json" onChange={async (event) => {

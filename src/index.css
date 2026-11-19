@@ -480,6 +480,28 @@ body {
   font-size: 11px;
 }
 
+.theme-setting > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.theme-setting-icon {
+  display: inline-flex;
+  color: var(--muted-foreground);
+}
+
+.theme-setting select {
+  min-width: 108px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0 8px;
+  font: inherit;
+}
+
 .danger-setting {
   color: var(--destructive);
 }
@@ -965,6 +987,41 @@ body {
 
 .account-delete:active {
   background: #ffe2dc;
+}
+
+.dark .avatar {
+  border-color: var(--card);
+  background: oklch(0.28 0.06 170);
+  color: oklch(0.82 0.1 165);
+}
+
+.dark .transaction-icon.expense,
+.dark .account-delete,
+.dark .cloud-error,
+.dark .not-affordable {
+  background: oklch(0.26 0.06 25);
+  color: oklch(0.78 0.13 25);
+}
+
+.dark .transaction-icon.income,
+.dark .cloud-status.connected,
+.dark .cloud-message,
+.dark .affordable {
+  background: oklch(0.25 0.06 165);
+  color: oklch(0.78 0.12 165);
+}
+
+.dark .transaction-icon.transfer {
+  background: oklch(0.25 0.05 255);
+  color: oklch(0.78 0.1 255);
+}
+
+.dark .positive {
+  color: oklch(0.78 0.12 165);
+}
+
+.dark .negative {
+  color: oklch(0.78 0.13 25);
 }
 
 .account-row p {
