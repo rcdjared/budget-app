@@ -42,7 +42,8 @@ import { formatMoney, parseMoney } from "@/domain/money";
 import { formatRelativeDate, getCurrentMonthRange, toDateString } from "@/lib/format";
 import { ensureDailySnapshot, exportJsonBackup, exportTransactionsCsv, importJsonBackup } from "@/lib/backup";
 import { canAffordAmount, generateForecast, sumLiquidAccountBalance } from "@/domain/forecast";
-import { parseMultipleTransactions } from "@/domain/parser";
+import { normalizeLearningKey, parseMultipleTransactions } from "@/domain/parser";
+import { answerLocalMoneyQuestion, explainLocalCapabilities } from "@/domain/localAssistant";
 import { cloudSyncAvailable, supabase } from "@/lib/supabase";
 import { syncLocalData } from "@/sync/sync";
 import type { Session } from "@supabase/supabase-js";
@@ -1510,10 +1511,31 @@ function ChatLogSheet({
     [profileId],
     []
   );
+  const transactions = useLiveQuery(
+    () => db.transactions.where({ profileId }).filter((transaction) => !transaction.deletedAt).toArray(),
+    [profileId],
+    []
+  );
   const [message, setMessage] = useState("");
   const [conversation, setConversation] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
   const [drafts, setDrafts] = useState<ReturnType<typeof parseMultipleTransactions>>([]);
+  const [rememberCategories, setRememberCategories] = useState(false);
+  const [learnedCategories, setLearnedCategories] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`kupit-assistant-learning-${profileId}`) || "{}");
+    } catch {
+      return {};
+    }
+  });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    try {
+      setLearnedCategories(JSON.parse(localStorage.getItem(`kupit-assistant-learning-${profileId}`) || "{}"));
+    } catch {
+      setLearnedCategories({});
+    }
+  }, [profileId]);
 
   useEffect(() => {
     if (!open) return;
@@ -1524,7 +1546,19 @@ function ChatLogSheet({
   const parseMessage = () => {
     const text = message.trim();
     if (!text) return;
-    const parsed = parseMultipleTransactions(text, accounts.map((account) => account.name));
+    const localAnswer = answerLocalMoneyQuestion(text, { accounts, transactions, categories });
+    if (localAnswer) {
+      setDrafts([]);
+      setConversation((current) => [...current, { role: "user", text }, { role: "assistant", text: localAnswer }]);
+      setMessage("");
+      return;
+    }
+    const parsed = parseMultipleTransactions(text, accounts.map((account) => account.name), new Date(), learnedCategories);
+    if (!parsed.length && /\?|^(what|how|can|could|did|do|does|am|is|are|show|tell|where|which)\b/i.test(text)) {
+      setConversation((current) => [...current, { role: "user", text }, { role: "assistant", text: explainLocalCapabilities() }]);
+      setMessage("");
+      return;
+    }
     const draftsToReview = accounts.length ? parsed : [];
     setConversation((current) => [
       ...current,
@@ -1539,19 +1573,32 @@ function ChatLogSheet({
       },
     ]);
     setDrafts(draftsToReview);
+    setRememberCategories(false);
     setMessage("");
   };
 
+  const updateDraft = (index: number, changes: Partial<(typeof drafts)[number]>) => {
+    setDrafts((current) => current.map((draft, draftIndex) => draftIndex === index ? { ...draft, ...changes } : draft));
+  };
+
   const saveDrafts = async () => {
+    const learned = { ...learnedCategories };
     for (const draft of drafts) {
       if (!draft.amount) continue;
       const account =
         accounts.find((item) => item.name.toLowerCase() === draft.accountHint?.toLowerCase()) ||
         accounts[0];
       if (!account) continue;
+      const toAccount = draft.toAccountHint
+        ? accounts.find((item) => item.name.toLowerCase() === draft.toAccountHint?.toLowerCase())
+        : accounts.find((item) => item.id !== account.id);
+      if (draft.type === "transfer" && (!toAccount || toAccount.id === account.id)) continue;
       const category =
         categories.find((item) => item.name === draft.categoryHint && item.type === draft.type) ||
         categories.find((item) => item.type === draft.type && !item.parentId);
+      if (rememberCategories && draft.note.trim() && draft.categoryHint && draft.type !== "transfer") {
+        learned[normalizeLearningKey(draft.note)] = draft.categoryHint;
+      }
       await createTransaction({
         profileId,
         type: draft.type,
@@ -1559,15 +1606,20 @@ function ChatLogSheet({
         accountId: account.id,
         toAccountId:
           draft.type === "transfer"
-            ? accounts.find((item) => item.id !== account.id)?.id || null
+            ? toAccount?.id || null
             : null,
         categoryId: draft.type === "transfer" ? null : category?.id || null,
         date: draft.date,
         note: draft.note || null,
       });
     }
+    if (rememberCategories) {
+      localStorage.setItem(`kupit-assistant-learning-${profileId}`, JSON.stringify(learned));
+      setLearnedCategories(learned);
+    }
     setDrafts([]);
     setMessage("");
+    setRememberCategories(false);
     setConversation([]);
     onClose();
   };
@@ -1587,7 +1639,7 @@ function ChatLogSheet({
           </button>
           <div className="chat-heading">
             <b>Money assistant</b>
-            <small>Private, on-device logging</small>
+            <small>Offline money assistant · data stays on this device</small>
           </div>
           <button className="chat-form-shortcut" onClick={onOpenForm} aria-label="Open transaction form" title="Use transaction form">
             <Plus size={19} />
@@ -1604,6 +1656,13 @@ function ChatLogSheet({
                   <button onClick={() => { setMessage("Coffee 180 today"); textareaRef.current?.focus(); }}>“Coffee 180 today”</button>
                   <button onClick={() => { setMessage("Salary 30k"); textareaRef.current?.focus(); }}>“Salary 30k”</button>
                 </div>
+                <p className="chat-local-note">Or ask about your saved money:</p>
+                <div className="chat-examples">
+                  <button onClick={() => { setMessage("How much did I spend this month?"); textareaRef.current?.focus(); }}>Spending this month</button>
+                  <button onClick={() => { setMessage("What was my top expense category this month?"); textareaRef.current?.focus(); }}>Top category</button>
+                  <button onClick={() => { setMessage("What is my net worth?"); textareaRef.current?.focus(); }}>Net worth</button>
+                </div>
+                <p className="chat-local-note">Correct a category and opt in to remember it for that merchant.</p>
               </div>
             </div>
           )}
@@ -1612,6 +1671,12 @@ function ChatLogSheet({
               {entry.text}
             </div>
           ))}
+          {Object.keys(learnedCategories).length > 0 && (
+            <button className="chat-clear-learning" onClick={() => {
+              localStorage.removeItem(`kupit-assistant-learning-${profileId}`);
+              setLearnedCategories({});
+            }}>Forget {Object.keys(learnedCategories).length} learned merchant categories</button>
+          )}
           {drafts.length > 0 && (
             <div className="chat-drafts">
             {drafts.map((draft, index) => (
@@ -1625,8 +1690,44 @@ function ChatLogSheet({
                   {draft.date} · {draft.accountHint || accounts[0]?.name || "Account"} ·{" "}
                   {draft.categoryHint || "Category"}
                 </small>
+                <div className="chat-draft-fields">
+                  <label className="chat-draft-note">Description
+                    <input value={draft.note} onChange={(event) => updateDraft(index, { note: event.target.value })} placeholder="Merchant or note" />
+                  </label>
+                  <label>Type
+                    <select value={draft.type} onChange={(event) => updateDraft(index, { type: event.target.value as TransactionType, categoryHint: null })}>
+                      <option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option>
+                    </select>
+                  </label>
+                  <label>Account
+                    <select value={draft.accountHint || accounts[0]?.name || ""} onChange={(event) => updateDraft(index, { accountHint: event.target.value || null, toAccountHint: event.target.value === draft.toAccountHint ? null : draft.toAccountHint })}>
+                      {accounts.map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}
+                    </select>
+                  </label>
+                  {draft.type === "transfer" ? (
+                    <label>To account
+                      <select value={draft.toAccountHint || accounts.find((account) => account.name !== draft.accountHint)?.name || ""} onChange={(event) => updateDraft(index, { toAccountHint: event.target.value || null })}>
+                        {accounts.filter((account) => account.name !== (draft.accountHint || accounts[0]?.name)).map((account) => <option key={account.id} value={account.name}>{account.name}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label>Category
+                      <select value={draft.categoryHint || ""} onChange={(event) => updateDraft(index, { categoryHint: event.target.value || null })}>
+                        <option value="">Choose category</option>
+                        {categories.filter((category) => category.type === draft.type).map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  <label className="chat-draft-date">Date
+                    <input type="date" value={draft.date} onChange={(event) => updateDraft(index, { date: event.target.value })} />
+                  </label>
+                </div>
               </article>
             ))}
+            <label className="chat-learn-choice">
+              <input type="checkbox" checked={rememberCategories} onChange={(event) => setRememberCategories(event.target.checked)} />
+              <span>Remember these merchant categories on this device</span>
+            </label>
             <button className="save-button" onClick={saveDrafts}>
               Confirm and save
             </button>
@@ -1644,7 +1745,7 @@ function ChatLogSheet({
                 parseMessage();
               }
             }}
-            placeholder="Describe an income or expense"
+            placeholder="Log a transaction or ask about your money"
             rows={1}
             aria-label="Message your money assistant"
           />
@@ -1848,6 +1949,9 @@ function SettingsSheet({
     if (!confirmReset) {
       setConfirmReset(true);
       return;
+    }
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("kupit-assistant-learning-")) localStorage.removeItem(key);
     }
     await db.delete();
     window.location.reload();
