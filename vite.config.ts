@@ -24,7 +24,7 @@ export default defineConfig({
         name: "Kupit",
         short_name: "Kupit",
         description: "Offline-first personal budgeting app for Filipinos",
-        theme_color: "#0F766E",
+        theme_color: "#019B51",
         background_color: "#F8FAF9",
         display: "standalone",
         start_url: "/",

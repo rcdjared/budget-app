@@ -16,7 +16,6 @@ import {
   Plus,
   ReceiptText,
   Search,
-  Settings,
   Moon,
   Sun,
   Trash2,
@@ -50,12 +49,13 @@ import { CategoryIcon } from "@/components/CategoryIcon";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
 import { FinsightsPage } from "@/components/FinsightsPage";
 
-type Tab = "home" | "wallet" | "finsights" | "history" | "plan";
+type Tab = "home" | "wallet" | "plan" | "finsights" | "history";
 type ThemePreference = "system" | "light" | "dark";
 
 const tabItems: { id: Tab; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "wallet", label: "Wallet", icon: WalletCards },
+  { id: "plan", label: "Plan", icon: PiggyBank },
   { id: "finsights", label: "Finsights", icon: TrendingUp },
   { id: "history", label: "History", icon: ReceiptText },
 ];
@@ -75,8 +75,6 @@ function App() {
     return saved === "light" || saved === "dark" ? saved : "system";
   });
   const [online, setOnline] = useState(navigator.onLine);
-  const [storagePersisted, setStoragePersisted] = useState<boolean | null>(null);
-  const [installHintOpen, setInstallHintOpen] = useState(false);
   useRegisterSW({ immediate: true });
 
   useEffect(() => {
@@ -88,7 +86,7 @@ function App() {
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", dark ? "#0D1916" : "#1F7A5A");
+        ?.setAttribute("content", dark ? "#0D1916" : "#019B51");
     };
     applyTheme();
     media.addEventListener("change", applyTheme);
@@ -113,28 +111,21 @@ function App() {
     const handleOffline = () => setOnline(false);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
-    navigator.storage
-      ?.persist?.()
-      .then(setStoragePersisted)
-      .catch(() => setStoragePersisted(false));
+    navigator.storage?.persist?.().catch(() => {});
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
 
-  useEffect(() => {
-    const dismissed = localStorage.getItem("pesopulse-install-hint-dismissed");
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (!dismissed && !standalone) setInstallHintOpen(true);
-  }, []);
-
   if (!profileId) {
     return (
       <main className="grid h-dvh place-items-center bg-background">
-        <div className="pulse-loader" aria-label="Loading Kupit" />
+        <div className="kupit-splash">
+          <img src="/icons/kupit-logo.svg" alt="Kupit logo" className="splash-logo" />
+          <h1 className="splash-title">Kupit</h1>
+          <div className="pulse-loader" aria-label="Loading Kupit" />
+        </div>
       </main>
     );
   }
@@ -149,7 +140,6 @@ function App() {
         {tab === "home" && (
           <HomePage
             profileId={profileId}
-            onAdd={() => setAddOpen(true)}
             onAddAccount={() => setAccountOpen(true)}
             onChat={() => setChatOpen(true)}
             onSettings={() => setSettingsOpen(true)}
@@ -162,40 +152,34 @@ function App() {
         {tab === "wallet" && (
           <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />
         )}
-        {tab === "finsights" && (
-          <FinsightsPage
-            profileId={profileId}
-            onOpenHelp={() => setHelpOpen(true)}
-          />
-        )}
         {tab === "plan" && (
           <BudgetsPage
             profileId={profileId}
             onOpenCategories={() => setCategoryManagerOpen(true)}
           />
         )}
+        {tab === "finsights" && (
+          <FinsightsPage
+            profileId={profileId}
+            onOpenHelp={() => setHelpOpen(true)}
+          />
+        )}
         {tab === "history" && <TransactionsPage profileId={profileId} />}
       </div>
 
+      {/* Floating Action Button for Logging Transactions */}
+      <button
+        className="floating-fab"
+        onClick={() => setAddOpen(true)}
+        aria-label="Add transaction"
+        title="Add transaction"
+      >
+        <Plus size={26} strokeWidth={2.5} />
+      </button>
+
+      {/* Primary 5-Tab Navigation Bar */}
       <nav className="bottom-nav" aria-label="Primary navigation">
-        {tabItems.slice(0, 2).map((item) => (
-          <TabButton
-            key={item.id}
-            item={item}
-            active={tab === item.id}
-            onClick={() => setTab(item.id)}
-          />
-        ))}
-
-        <button
-          className="fab"
-          onClick={() => setAddOpen(true)}
-          aria-label="Add transaction"
-        >
-          <Plus size={26} strokeWidth={2.5} />
-        </button>
-
-        {tabItems.slice(2).map((item) => (
+        {tabItems.map((item) => (
           <TabButton
             key={item.id}
             item={item}
@@ -246,16 +230,6 @@ function App() {
       {helpOpen && (
         <FinsightsHelpModal onClose={() => setHelpOpen(false)} />
       )}
-
-      {installHintOpen && (
-        <InstallHint
-          persisted={storagePersisted}
-          onClose={() => {
-            localStorage.setItem("pesopulse-install-hint-dismissed", "true");
-            setInstallHintOpen(false);
-          }}
-        />
-      )}
     </main>
   );
 }
@@ -295,37 +269,6 @@ function FinsightsHelpModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function InstallHint({
-  persisted,
-  onClose,
-}: {
-  persisted: boolean | null;
-  onClose: () => void;
-}) {
-  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  return (
-    <aside className="install-hint" role="status">
-      <div className="install-hint-icon">
-        <WalletCards size={22} />
-      </div>
-      <div className="install-hint-copy">
-        <b>Keep Kupit close</b>
-        <span>
-          {ios
-            ? "Tap Share, then Add to Home Screen."
-            : "Install from your browser menu for the full app experience."}
-        </span>
-        {persisted === false && (
-          <small>Use Export in Settings to keep a backup of your data.</small>
-        )}
-      </div>
-      <button onClick={onClose} aria-label="Dismiss install hint">
-        <X size={18} />
-      </button>
-    </aside>
-  );
-}
-
 function TabButton({
   item,
   active,
@@ -338,7 +281,7 @@ function TabButton({
   const Icon = item.icon;
   return (
     <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>
-      <Icon size={21} />
+      <Icon size={20} />
       <span>{item.label}</span>
     </button>
   );
@@ -346,7 +289,6 @@ function TabButton({
 
 function HomePage({
   profileId,
-  onAdd,
   onAddAccount,
   onChat,
   onSettings,
@@ -356,7 +298,6 @@ function HomePage({
   onFinsights,
 }: {
   profileId: string;
-  onAdd: () => void;
   onAddAccount: () => void;
   onChat: () => void;
   onSettings: () => void;
@@ -405,23 +346,36 @@ function HomePage({
 
   return (
     <div className="content">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">
-            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-          </p>
-          <h1>Good day</h1>
+      {/* Brand Header with Official Kupit Logo */}
+      <header className="page-header home-header">
+        <div className="brand-header-left">
+          <img
+            src="/icons/kupit-logo.svg"
+            alt="Kupit Logo"
+            className="brand-header-logo"
+          />
+          <div>
+            <span className="brand-header-title">Kupit</span>
+            <p className="eyebrow">
+              {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+            </p>
+          </div>
         </div>
         <div className="header-buttons">
           <button className="header-chat" onClick={onChat} aria-label="Quick log">
             <MessageCircle size={20} />
           </button>
-          <button className="avatar" aria-label="Profile and settings" onClick={onSettings}>
-            P
+          <button
+            className="avatar kupit-avatar"
+            aria-label="Profile and settings"
+            onClick={onSettings}
+          >
+            <img src="/icons/k-logo.png" alt="Settings" className="avatar-img" />
           </button>
         </div>
       </header>
 
+      {/* Net Worth Card */}
       <section className="net-card">
         <div className="net-card-top">
           <span>Net worth</span>
@@ -455,6 +409,7 @@ function HomePage({
         </div>
       </section>
 
+      {/* Weekly Spending / Finsights Entry */}
       <section className="week-summary" onClick={onFinsights} style={{ cursor: "pointer" }}>
         <div className="week-summary-head">
           <div>
@@ -500,6 +455,7 @@ function HomePage({
         </div>
       </section>
 
+      {/* Plan / Budget Entry */}
       {!budgets.length && (
         <button className="budget-prompt" onClick={onPlan}>
           <span>
@@ -513,6 +469,7 @@ function HomePage({
         </button>
       )}
 
+      {/* Accounts Section */}
       <section className="section">
         <div className="section-heading">
           <h2>My accounts</h2>
@@ -556,6 +513,7 @@ function HomePage({
         )}
       </section>
 
+      {/* Recent Transactions */}
       <section className="section">
         <div className="section-heading">
           <h2>Recent transactions</h2>
@@ -607,12 +565,10 @@ function TransactionList({
         const positive = tx.type === "income";
         const transfer = tx.type === "transfer";
 
-        // Consistent primary label: Category name or Transfer
         const primaryTitle = transfer
           ? `Transfer`
           : category?.name || (positive ? "Income" : "Expense");
 
-        // Subtitle: Note (if present), account label, relative date
         const accountLabel =
           transfer && toAccount
             ? `${account?.name || "Account"} → ${toAccount.name}`
@@ -759,7 +715,7 @@ function TransactionsPage({ profileId }: { profileId: string }) {
         )}
       </div>
 
-      {/* Dynamic Filters with NO blank gaps */}
+      {/* Filter Chips */}
       <div className="history-filter-chips">
         <select
           className="history-filter-select"
@@ -1061,7 +1017,7 @@ function BudgetsPage({
 
       <section className="section budget-section">
         <div className="section-heading">
-          <h2>This month</h2>
+          <h2>This month's budgets</h2>
           <span>
             {budgets.length} {budgets.length === 1 ? "budget" : "budgets"}
           </span>
@@ -1110,7 +1066,7 @@ function BudgetsPage({
           <div className="empty-card">
             <PiggyBank size={28} />
             <p>No budgets yet</p>
-            <small>Set a monthly limit for a category.</small>
+            <small>Set a monthly spending limit for a category.</small>
           </div>
         )}
       </section>
@@ -1838,6 +1794,16 @@ function SettingsSheet({
           <span />
         </header>
 
+        {/* Brand Showcase */}
+        <div className="settings-brand-banner">
+          <img
+            src="/icons/k-logoname.png"
+            alt="Kupit Logo"
+            className="settings-brand-img"
+          />
+          <p className="settings-brand-tagline">Your money, in hand</p>
+        </div>
+
         <section className="cloud-panel">
           <div className="cloud-panel-title">
             <div>
@@ -1907,18 +1873,16 @@ function SettingsSheet({
         </section>
 
         <div className="settings-list">
-          {/* Categories Management Button */}
           <button
             onClick={() => {
               onClose();
               onOpenCategories();
             }}
           >
-            <span>Manage categories</span>
+            <span>Manage categories & icons</span>
             <small>{categories.length} categories</small>
           </button>
 
-          {/* Budget & Plan Page */}
           <button onClick={onOpenPlan}>
             <span>Budgets & Goals</span>
             <small>Set spending limits</small>
@@ -2394,7 +2358,7 @@ function AccountSheet({
       type,
       openingBalance: parseMoney(opening),
       currency: "PHP",
-      color: match?.color || "#10B981",
+      color: match?.color || "#019B51",
       icon: match?.icon || "banknote",
       isArchived: false,
     });
