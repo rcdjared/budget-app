@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import {
   ArrowDownLeft,
-  ArrowLeftRight,
   ArrowUpRight,
+  ArrowLeftRight,
+  ScanLine,
+  UserRound,
   BarChart3,
   Banknote,
   ChevronRight,
@@ -12,14 +14,15 @@ import {
   HandCoins,
   Home,
   MessageCircle,
+  Send,
   PiggyBank,
   Plus,
   ReceiptText,
   Search,
+  Settings2,
   Moon,
   Sun,
   Trash2,
-  TrendingUp,
   WalletCards,
   X,
   Edit2,
@@ -30,10 +33,11 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { db } from "@/db/schema";
-import { initializeAppData, getAccountTemplates } from "@/db/seed";
+import { initializeAppData, getAccountTemplates, seedDefaultCategories } from "@/db/seed";
+import { createProfile } from "@/db/repositories/profiles";
 import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
 import { createTransaction, softDeleteTransaction } from "@/db/repositories/transactions";
-import { computeAccountBalance, computeMonthlyTotals, computeNetWorth } from "@/domain/balances";
+import { computeAccountBalance, computeNetWorth } from "@/domain/balances";
 import { formatMoney, parseMoney } from "@/domain/money";
 import { formatRelativeDate, getCurrentMonthRange, toDateString } from "@/lib/format";
 import { ensureDailySnapshot, exportJsonBackup, exportTransactionsCsv, importJsonBackup } from "@/lib/backup";
@@ -53,30 +57,56 @@ import { CategoryIcon } from "@/components/CategoryIcon";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
 import { FinsightsPage } from "@/components/FinsightsPage";
 
-type Tab = "home" | "wallet" | "plan" | "finsights" | "history";
-type ThemePreference = "system" | "light" | "dark";
+type Tab = "home" | "wallet" | "plan" | "history";
+type ThemePreference = "system" | "light" | "dark" | "amoled";
 
-const tabItems: { id: Tab; label: string; icon: typeof Home }[] = [
+const tabItems: { id: Tab | "add"; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "wallet", label: "Wallet", icon: WalletCards },
   { id: "plan", label: "Plan", icon: PiggyBank },
-  { id: "finsights", label: "Finsights", icon: TrendingUp },
   { id: "history", label: "History", icon: ReceiptText },
+  { id: "add", label: "Add", icon: Plus },
 ];
+
+const TAB_ORDER: Tab[] = ["home", "wallet", "plan", "history"];
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("home");
+  const [slideDirection, setSlideDirection] = useState<"forward" | "backward">("forward");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [formInitialType, setFormInitialType] = useState<TransactionType>("expense");
   const [accountOpen, setAccountOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [profilesOpen, setProfilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
+  const navigateToTab = (nextTab: Tab) => {
+    if (nextTab === tab) return;
+    const currentIndex = TAB_ORDER.indexOf(tab);
+    const nextIndex = TAB_ORDER.indexOf(nextTab);
+    setSlideDirection(nextIndex >= currentIndex ? "forward" : "backward");
+    setTab(nextTab);
+    scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  };
+
+  const switchProfile = async (nextProfileId: string) => {
+    await db.transaction("rw", db.profiles, async () => {
+      await db.profiles.toCollection().modify((profile) => {
+        if (!profile.deletedAt) profile.isDefault = profile.id === nextProfileId;
+      });
+    });
+    setProfileId(nextProfileId);
+    setProfilesOpen(false);
+  };
+
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => {
     const saved = localStorage.getItem("kupit-theme");
-    return saved === "light" || saved === "dark" ? saved : "system";
+    return saved === "light" || saved === "dark" || saved === "amoled" ? saved : "system";
   });
   const [online, setOnline] = useState(navigator.onLine);
   useRegisterSW({ immediate: true });
@@ -85,12 +115,17 @@ function App() {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const applyTheme = () => {
       const dark =
-        themePreference === "dark" || (themePreference === "system" && media.matches);
+        themePreference === "dark" ||
+        themePreference === "amoled" ||
+        (themePreference === "system" && media.matches);
+      const light = themePreference === "light" || (themePreference === "system" && !media.matches);
       document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.classList.toggle("light", light);
+      document.documentElement.classList.toggle("amoled", themePreference === "amoled");
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", dark ? "#0D1916" : "#019B51");
+        ?.setAttribute("content", themePreference === "amoled" ? "#000000" : dark ? "#0A0E0D" : "#019B51");
     };
     applyTheme();
     media.addEventListener("change", applyTheme);
@@ -140,46 +175,29 @@ function App() {
         <div className="offline-banner">Offline — changes remain saved on this device</div>
       )}
 
-      <div className="page-scroll">
-        {tab === "home" && (
-          <HomePage
-            profileId={profileId}
-            onAddAccount={() => setAccountOpen(true)}
-            onChat={() => setChatOpen(true)}
-            onSettings={() => setSettingsOpen(true)}
-            onPlan={() => setTab("plan")}
-            onWallet={() => setTab("wallet")}
-            onHistory={() => setTab("history")}
-            onFinsights={() => setTab("finsights")}
-          />
-        )}
-        {tab === "wallet" && (
-          <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />
-        )}
-        {tab === "plan" && (
-          <BudgetsPage
-            profileId={profileId}
-            onOpenCategories={() => setCategoryManagerOpen(true)}
-          />
-        )}
-        {tab === "finsights" && (
-          <FinsightsPage
-            profileId={profileId}
-            onOpenHelp={() => setHelpOpen(true)}
-          />
-        )}
-        {tab === "history" && <TransactionsPage profileId={profileId} />}
+      <div className="page-scroll" ref={scrollRef}>
+        <div key={tab} className={`tab-page-slide slide-${slideDirection}`}>
+          {tab === "home" && (
+            <HomePage
+              profileId={profileId}
+              onProfiles={() => setProfilesOpen(true)}
+              onSettings={() => setSettingsOpen(true)}
+              onHistory={() => navigateToTab("history")}
+              onOpenHelp={() => setHelpOpen(true)}
+            />
+          )}
+          {tab === "wallet" && (
+            <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />
+          )}
+          {tab === "plan" && (
+            <BudgetsPage
+              profileId={profileId}
+              onOpenCategories={() => setCategoryManagerOpen(true)}
+            />
+          )}
+          {tab === "history" && <TransactionsPage profileId={profileId} />}
+        </div>
       </div>
-
-      {/* Floating Action Button for Logging Transactions */}
-      <button
-        className="floating-fab"
-        onClick={() => setAddOpen(true)}
-        aria-label="Add transaction"
-        title="Add transaction"
-      >
-        <Plus size={26} strokeWidth={2.5} />
-      </button>
 
       {/* Primary 5-Tab Navigation Bar */}
       <nav className="bottom-nav" aria-label="Primary navigation">
@@ -187,17 +205,34 @@ function App() {
           <TabButton
             key={item.id}
             item={item}
-            active={tab === item.id}
-            onClick={() => setTab(item.id)}
+            active={tab === item.id || (item.id === "add" && addMenuOpen)}
+            addMenuOpen={addMenuOpen}
+            onClick={() => item.id === "add" ? setAddMenuOpen((open) => !open) : navigateToTab(item.id)}
           />
         ))}
       </nav>
+
+      {addMenuOpen && (
+        <AddActionsMenu
+          onClose={() => setAddMenuOpen(false)}
+          onAction={(action) => {
+            setAddMenuOpen(false);
+            if (action === "chat") {
+              setChatOpen(true);
+              return;
+            }
+            setFormInitialType(action === "transfer" ? "transfer" : action === "income" ? "income" : "expense");
+            setAddOpen(true);
+          }}
+        />
+      )}
 
       {/* Sheets and Overlays */}
       <AddTransactionSheet
         open={addOpen}
         onClose={() => setAddOpen(false)}
         profileId={profileId}
+        initialType={formInitialType}
         onOpenCategoryManager={() => setCategoryManagerOpen(true)}
       />
 
@@ -210,7 +245,15 @@ function App() {
       <ChatLogSheet
         open={chatOpen}
         onClose={() => setChatOpen(false)}
+        onOpenForm={() => { setFormInitialType("expense"); setChatOpen(false); setAddOpen(true); }}
         profileId={profileId}
+      />
+
+      <ProfilesSheet
+        open={profilesOpen}
+        onClose={() => setProfilesOpen(false)}
+        profileId={profileId}
+        onSwitchProfile={switchProfile}
       />
 
       <SettingsSheet
@@ -221,7 +264,7 @@ function App() {
         onOpenCategories={() => setCategoryManagerOpen(true)}
         onOpenPlan={() => {
           setSettingsOpen(false);
-          setTab("plan");
+          navigateToTab("plan");
         }}
       />
 
@@ -273,18 +316,130 @@ function FinsightsHelpModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+type AddAction = "chat" | "transfer" | "scan" | "income" | "expense";
+
+function AddActionsMenu({
+  onClose,
+  onAction,
+}: {
+  onClose: () => void;
+  onAction: (action: AddAction) => void;
+}) {
+  const actions: { id: AddAction; label: string; hint: string; icon: typeof Home }[] = [
+    { id: "chat", label: "Chat", hint: "Log naturally with your assistant", icon: MessageCircle },
+    { id: "transfer", label: "Transfer", hint: "Move money between accounts", icon: ArrowLeftRight },
+    { id: "scan", label: "Scan receipt", hint: "Add a receipt photo", icon: ScanLine },
+    { id: "income", label: "Income", hint: "Record money received", icon: ArrowDownLeft },
+    { id: "expense", label: "Expense", hint: "Record money spent", icon: ArrowUpRight },
+  ];
+
+  return (
+    <div className="add-menu-overlay" onClick={onClose}>
+      <section
+        className="add-menu"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add to your budget"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="add-menu-heading">
+          <b>Quick actions</b>
+          <small>Choose how you want to add something</small>
+        </div>
+        {actions.map(({ id, label, hint, icon: Icon }) => (
+          <button key={id} className="add-menu-item" onClick={() => onAction(id)}>
+            <span className={`add-menu-icon ${id}`}><Icon size={19} /></span>
+            <span className="add-menu-copy"><b>{label}</b><small>{hint}</small></span>
+            <ChevronRight size={17} className="add-menu-chevron" />
+          </button>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function ProfilesSheet({
+  open,
+  onClose,
+  profileId,
+  onSwitchProfile,
+}: {
+  open: boolean;
+  onClose: () => void;
+  profileId: string;
+  onSwitchProfile: (id: string) => Promise<void>;
+}) {
+  const profiles = useLiveQuery(
+    () => db.profiles.filter((profile) => !profile.deletedAt).toArray(),
+    [],
+    []
+  );
+  const [newName, setNewName] = useState("");
+
+  const addProfile = async () => {
+    const name = newName.trim();
+    if (!name || profiles.length >= 4) return;
+    const id = await createProfile({ name, currency: "PHP", isDefault: false });
+    await seedDefaultCategories(id);
+    setNewName("");
+    await onSwitchProfile(id);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Profiles" onClick={onClose}>
+      <section className="account-sheet profiles-sheet" onClick={(event) => event.stopPropagation()}>
+        <div className="sheet-grabber" />
+        <header className="sheet-header">
+          <button className="sheet-close-btn" onClick={onClose} aria-label="Close profiles"><X size={18} /></button>
+          <b>Profiles</b>
+          <span />
+        </header>
+        <div className="profiles-content">
+          <p className="eyebrow">Your spaces <span>{profiles.length}/4</span></p>
+          <div className="profile-options">
+            {profiles.map((profile) => (
+              <button
+                key={profile.id}
+                className={`profile-option ${profile.id === profileId ? "selected" : ""}`}
+                onClick={() => void onSwitchProfile(profile.id)}
+              >
+                <span className="profile-option-icon"><UserRound size={18} /></span>
+                <span><b>{profile.name}</b><small>{profile.currency} · {profile.id === profileId ? "Current profile" : "Local profile"}</small></span>
+                {profile.id === profileId && <span className="profile-current-mark">Current</span>}
+              </button>
+            ))}
+          </div>
+          {profiles.length < 4 && (
+            <form className="profile-create" onSubmit={(event) => { event.preventDefault(); void addProfile(); }}>
+              <label htmlFor="new-profile-name">Create a profile</label>
+              <div>
+                <input id="new-profile-name" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="e.g. Family" maxLength={32} />
+                <button type="submit" disabled={!newName.trim()}>Add</button>
+              </div>
+            </form>
+          )}
+          <p className="profile-privacy-note">Each profile keeps its accounts and transactions separate on this device.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TabButton({
   item,
   active,
+  addMenuOpen = false,
   onClick,
 }: {
   item: (typeof tabItems)[number];
   active: boolean;
+  addMenuOpen?: boolean;
   onClick: () => void;
 }) {
-  const Icon = item.icon;
+  const Icon = item.id === "add" && addMenuOpen ? X : item.icon;
   return (
-    <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}>
+    <button className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""}`} onClick={onClick} aria-label={item.label}>
       <Icon size={20} />
       <span>{item.label}</span>
     </button>
@@ -293,22 +448,16 @@ function TabButton({
 
 function HomePage({
   profileId,
-  onAddAccount,
-  onChat,
+  onProfiles,
   onSettings,
-  onPlan,
-  onWallet,
   onHistory,
-  onFinsights,
+  onOpenHelp,
 }: {
   profileId: string;
-  onAddAccount: () => void;
-  onChat: () => void;
+  onProfiles: () => void;
   onSettings: () => void;
-  onPlan: () => void;
-  onWallet: () => void;
   onHistory: () => void;
-  onFinsights: () => void;
+  onOpenHelp: () => void;
 }) {
   const accounts = useLiveQuery(
     () =>
@@ -329,24 +478,6 @@ function HomePage({
     [profileId],
     []
   );
-  const budgets = useLiveQuery(
-    () => db.budgets.where({ profileId }).filter((b) => !b.deletedAt).toArray(),
-    [profileId],
-    []
-  );
-  const balances = useMemo(
-    () =>
-      new Map(
-        accounts.map((a) => [
-          a.id,
-          computeAccountBalance(a.id, a.openingBalance, transactions),
-        ])
-      ),
-    [accounts, transactions]
-  );
-  const net = computeNetWorth(accounts, balances);
-  const { start, end } = getCurrentMonthRange();
-  const monthly = computeMonthlyTotals(transactions, start, end);
 
   return (
     <div className="content">
@@ -366,156 +497,16 @@ function HomePage({
           </div>
         </div>
         <div className="header-buttons">
-          <button className="header-chat" onClick={onChat} aria-label="Quick log">
-            <MessageCircle size={20} />
+          <button className="header-chat profile-icon-button" onClick={onProfiles} aria-label="Profiles" title="Profiles">
+            <UserRound size={19} />
           </button>
-          <button
-            className="avatar kupit-avatar"
-            aria-label="Profile and settings"
-            onClick={onSettings}
-          >
-            <img src="/icons/k-logo.png" alt="Settings" className="avatar-img" />
+          <button className="header-chat settings-icon-button" aria-label="Settings" onClick={onSettings}>
+            <Settings2 size={20} />
           </button>
         </div>
       </header>
 
-      {/* Net Worth Card */}
-      <section className="net-card">
-        <div className="net-card-top">
-          <span>Net worth</span>
-          <button aria-label="View net worth details" onClick={onWallet}>
-            <ChevronRight size={18} />
-          </button>
-        </div>
-        <strong className="net-value">{formatMoney(net.netWorth)}</strong>
-        <div className="net-change">
-          <ArrowUpRight size={14} /> Total financial position
-        </div>
-        <div className="month-totals">
-          <div>
-            <span className="total-icon income">
-              <ArrowDownLeft size={16} />
-            </span>
-            <p>
-              <small>Income</small>
-              <b>{formatMoney(monthly.income)}</b>
-            </p>
-          </div>
-          <div>
-            <span className="total-icon expense">
-              <ArrowUpRight size={16} />
-            </span>
-            <p>
-              <small>Expenses</small>
-              <b>{formatMoney(monthly.expenses)}</b>
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Weekly Spending / Finsights Entry */}
-      <section className="week-summary" onClick={onFinsights} style={{ cursor: "pointer" }}>
-        <div className="week-summary-head">
-          <div>
-            <b>Last 7 days</b>
-            <small>Daily spending · Tap for Finsights</small>
-          </div>
-          <strong>
-            {formatMoney(
-              transactions
-                .filter((tx) => tx.type === "expense")
-                .filter((tx) => tx.date >= toDateString(new Date(Date.now() - 6 * 86400000)))
-                .reduce((sum, tx) => sum + tx.amount, 0)
-            )}
-          </strong>
-        </div>
-        <div className="week-bars">
-          {Array.from({ length: 7 }, (_, index) => {
-            const date = new Date(Date.now() - (6 - index) * 86400000);
-            const dateKey = toDateString(date);
-            const amount = transactions
-              .filter((tx) => tx.type === "expense" && tx.date === dateKey)
-              .reduce((sum, tx) => sum + tx.amount, 0);
-            const max = Math.max(
-              1,
-              ...Array.from({ length: 7 }, (_, i) => {
-                const key = toDateString(new Date(Date.now() - (6 - i) * 86400000));
-                return transactions
-                  .filter((tx) => tx.type === "expense" && tx.date === key)
-                  .reduce((sum, tx) => sum + tx.amount, 0);
-              })
-            );
-            return (
-              <span key={dateKey}>
-                <i
-                  style={{
-                    height: `${amount ? Math.max(18, (amount / max) * 100) : 6}%`,
-                  }}
-                />
-                <small>{date.toLocaleDateString("en-PH", { weekday: "narrow" })}</small>
-              </span>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Plan / Budget Entry */}
-      {!budgets.length && (
-        <button className="budget-prompt" onClick={onPlan}>
-          <span>
-            <PiggyBank size={19} />
-          </span>
-          <div>
-            <b>Set up a budget</b>
-            <small>Give every category a monthly limit.</small>
-          </div>
-          <ChevronRight size={18} />
-        </button>
-      )}
-
-      {/* Accounts Section */}
-      <section className="section">
-        <div className="section-heading">
-          <h2>My accounts</h2>
-          <button onClick={onWallet}>See all</button>
-        </div>
-        {accounts.length ? (
-          <div className="account-grid">
-            {accounts.map((account) => (
-              <article className="account-card" key={account.id}>
-                <span
-                  className="account-icon"
-                  style={{
-                    background: `${account.color}18`,
-                    color: account.color,
-                  }}
-                >
-                  {account.type === "bank" ? (
-                    <Banknote size={19} />
-                  ) : (
-                    <WalletCards size={19} />
-                  )}
-                </span>
-                <div>
-                  <p>{account.name}</p>
-                  <strong>
-                    {formatMoney(balances.get(account.id) ?? account.openingBalance)}
-                  </strong>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-card">
-            <WalletCards size={28} />
-            <p>No accounts yet</p>
-            <small>Add a cash, bank, or e-wallet account to get started.</small>
-            <button className="empty-action" onClick={onAddAccount}>
-              Add your first account
-            </button>
-          </div>
-        )}
-      </section>
+      <FinsightsPage profileId={profileId} onOpenHelp={onOpenHelp} />
 
       {/* Recent Transactions */}
       <section className="section">
@@ -863,6 +854,10 @@ function AccountsPage({
     { label: "Investments", types: ["investment"] },
     { label: "Credit cards & loans", types: ["credit_card", "loan"] },
   ];
+  const recentIncome = transactions
+    .filter((transaction) => transaction.type === "income")
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 5);
 
   return (
     <div className="content">
@@ -956,6 +951,20 @@ function AccountsPage({
           </section>
         );
       })}
+
+      <section className="section wallet-income-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Money in</p>
+            <h2>Recent income</h2>
+          </div>
+        </div>
+        <TransactionList
+          transactions={recentIncome}
+          accounts={accounts}
+          profileId={profileId}
+        />
+      </section>
     </div>
   );
 }
@@ -1479,10 +1488,12 @@ function RecurringSheet({ onClose }: { onClose: () => void }) {
 function ChatLogSheet({
   open,
   onClose,
+  onOpenForm,
   profileId,
 }: {
   open: boolean;
   onClose: () => void;
+  onOpenForm: () => void;
   profileId: string;
 }) {
   const accounts = useLiveQuery(
@@ -1500,10 +1511,35 @@ function ChatLogSheet({
     []
   );
   const [message, setMessage] = useState("");
+  const [conversation, setConversation] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
   const [drafts, setDrafts] = useState<ReturnType<typeof parseMultipleTransactions>>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const focusTimer = window.setTimeout(() => textareaRef.current?.focus(), 120);
+    return () => window.clearTimeout(focusTimer);
+  }, [open]);
 
   const parseMessage = () => {
-    setDrafts(parseMultipleTransactions(message, accounts.map((account) => account.name)));
+    const text = message.trim();
+    if (!text) return;
+    const parsed = parseMultipleTransactions(text, accounts.map((account) => account.name));
+    const draftsToReview = accounts.length ? parsed : [];
+    setConversation((current) => [
+      ...current,
+      { role: "user", text },
+      {
+        role: "assistant",
+        text: draftsToReview.length
+          ? "Here’s what I understood. Review the details before saving."
+          : !accounts.length && parsed.length
+          ? "I understood the transaction. Add an account with the plus button above, then I can save it."
+          : "I couldn’t find an amount yet. Try something like “Coffee 180” or “Salary 30k”.",
+      },
+    ]);
+    setDrafts(draftsToReview);
+    setMessage("");
   };
 
   const saveDrafts = async () => {
@@ -1532,6 +1568,7 @@ function ChatLogSheet({
     }
     setDrafts([]);
     setMessage("");
+    setConversation([]);
     onClose();
   };
 
@@ -1543,26 +1580,40 @@ function ChatLogSheet({
       aria-modal="true"
       aria-label="Quick log"
     >
-      <section className="account-sheet chat-sheet">
+      <section className="account-sheet chat-sheet chat-screen">
         <header className="sheet-header">
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <b>Quick log</b>
-          <span />
-        </header>
-        <div className="chat-input">
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Starbucks 250 gcash yesterday"
-          />
-          <button onClick={parseMessage} disabled={!message.trim()}>
-            <MessageCircle size={18} />
+          <div className="chat-heading">
+            <b>Money assistant</b>
+            <small>Private, on-device logging</small>
+          </div>
+          <button className="chat-form-shortcut" onClick={onOpenForm} aria-label="Open transaction form" title="Use transaction form">
+            <Plus size={19} />
           </button>
-        </div>
-        {drafts.length > 0 && (
-          <div className="chat-drafts">
+        </header>
+        <div className="chat-messages">
+          {!conversation.length && (
+            <div className="assistant-message">
+              <span className="assistant-mark"><MessageCircle size={17} /></span>
+              <div>
+                <b>Hi! What would you like to log?</b>
+                <p>Tell me naturally. I’ll prepare the details for you to check.</p>
+                <div className="chat-examples">
+                  <button onClick={() => { setMessage("Coffee 180 today"); textareaRef.current?.focus(); }}>“Coffee 180 today”</button>
+                  <button onClick={() => { setMessage("Salary 30k"); textareaRef.current?.focus(); }}>“Salary 30k”</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {conversation.map((entry, index) => (
+            <div key={`${entry.role}-${index}`} className={`chat-message ${entry.role}`}>
+              {entry.text}
+            </div>
+          ))}
+          {drafts.length > 0 && (
+            <div className="chat-drafts">
             {drafts.map((draft, index) => (
               <article key={`${draft.note}-${index}`}>
                 <span>
@@ -1580,7 +1631,28 @@ function ChatLogSheet({
               Confirm and save
             </button>
           </div>
-        )}
+          )}
+        </div>
+        <form className="chat-composer" onSubmit={(event) => { event.preventDefault(); parseMessage(); }}>
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                parseMessage();
+              }
+            }}
+            placeholder="Describe an income or expense"
+            rows={1}
+            aria-label="Message your money assistant"
+          />
+          <button type="submit" aria-label="Send message" disabled={!message.trim()}>
+            <Send size={18} />
+          </button>
+          <small>Enter to send · Shift + Enter for a new line</small>
+        </form>
       </section>
     </div>
   );
@@ -1857,14 +1929,14 @@ function SettingsSheet({
               <div className="ios-row-btn ios-row-non-clickable">
                 <div className="ios-row-left">
                   <span className="ios-squircle squircle-blue">
-                    {themePreference === "dark" ? <Moon size={18} /> : <Sun size={18} />}
+                    {themePreference === "dark" || themePreference === "amoled" ? <Moon size={18} /> : <Sun size={18} />}
                   </span>
                   <div className="ios-row-text">
                     <span className="ios-row-label">Appearance</span>
                   </div>
                 </div>
                 <div className="ios-segmented-control" role="radiogroup" aria-label="Appearance">
-                  {(["system", "light", "dark"] as ThemePreference[]).map((mode) => (
+                  {(["system", "light", "dark", "amoled"] as ThemePreference[]).map((mode) => (
                     <button
                       key={mode}
                       type="button"
@@ -2035,11 +2107,13 @@ function AddTransactionSheet({
   open,
   onClose,
   profileId,
+  initialType,
   onOpenCategoryManager,
 }: {
   open: boolean;
   onClose: () => void;
   profileId: string;
+  initialType: TransactionType;
   onOpenCategoryManager: () => void;
 }) {
   const accounts = useLiveQuery(
@@ -2071,6 +2145,10 @@ function AddTransactionSheet({
   const [awaitingOperand, setAwaitingOperand] = useState(false);
   const [expression, setExpression] = useState("");
   const [calculatorError, setCalculatorError] = useState("");
+
+  useEffect(() => {
+    if (open) setType(initialType);
+  }, [open, initialType]);
 
   useEffect(() => {
     if (!accountId && accounts.length) setAccountId(accounts[0].id);

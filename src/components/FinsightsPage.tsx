@@ -350,7 +350,7 @@ export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
       {/* Top Title Bar */}
       <header className="page-header finsights-header">
         <div>
-          <h1 className="finsights-title">Finsights</h1>
+          <h1 className="finsights-title">Money insights</h1>
         </div>
         <button
           className="help-circle-btn"
