@@ -24,6 +24,10 @@ import {
   X,
   Edit2,
   HelpCircle,
+  Tags,
+  Download,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
 import { db } from "@/db/schema";
 import { initializeAppData, getAccountTemplates } from "@/db/seed";
@@ -1786,12 +1790,13 @@ function SettingsSheet({
       aria-label="Settings"
     >
       <section className="account-sheet settings-sheet">
+        <div className="sheet-grabber" />
         <header className="sheet-header">
-          <button onClick={onClose} aria-label="Close">
-            <X size={20} />
+          <button className="sheet-close-btn" onClick={onClose} aria-label="Close">
+            <X size={18} />
           </button>
           <b>Settings</b>
-          <span />
+          <div className="sheet-header-spacer" />
         </header>
 
         {/* Brand Showcase */}
@@ -1804,138 +1809,222 @@ function SettingsSheet({
           <p className="settings-brand-tagline">Your money, in hand</p>
         </div>
 
-        <section className="cloud-panel">
-          <div className="cloud-panel-title">
-            <div>
-              <b>Private cloud sync</b>
-              <small>Optional · Dexie still works offline</small>
+        <div className="ios-settings-container">
+          {/* Group 1: Preferences */}
+          <div className="ios-grouped-section">
+            <div className="ios-group-title">Preferences</div>
+            <div className="ios-group-card">
+              <button
+                className="ios-row-btn"
+                onClick={() => {
+                  onClose();
+                  onOpenCategories();
+                }}
+              >
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-purple">
+                    <Tags size={18} />
+                  </span>
+                  <div className="ios-row-text">
+                    <span className="ios-row-label">Categories & Icons</span>
+                    <small className="ios-row-sub">{categories.length} categories configured</small>
+                  </div>
+                </div>
+                <div className="ios-row-right">
+                  <ChevronRight size={18} className="ios-chevron" />
+                </div>
+              </button>
+
+              <div className="ios-divider" />
+
+              <button className="ios-row-btn" onClick={onOpenPlan}>
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-amber">
+                    <PiggyBank size={18} />
+                  </span>
+                  <div className="ios-row-text">
+                    <span className="ios-row-label">Budgets & Goals</span>
+                    <small className="ios-row-sub">Monthly spending limits</small>
+                  </div>
+                </div>
+                <div className="ios-row-right">
+                  <ChevronRight size={18} className="ios-chevron" />
+                </div>
+              </button>
+
+              <div className="ios-divider" />
+
+              <div className="ios-row-btn ios-row-non-clickable">
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-blue">
+                    {themePreference === "dark" ? <Moon size={18} /> : <Sun size={18} />}
+                  </span>
+                  <div className="ios-row-text">
+                    <span className="ios-row-label">Appearance</span>
+                  </div>
+                </div>
+                <div className="ios-segmented-control" role="radiogroup" aria-label="Appearance">
+                  {(["system", "light", "dark"] as ThemePreference[]).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`ios-segmented-btn ${themePreference === mode ? "active" : ""}`}
+                      onClick={() => onThemeChange(mode)}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <span
-              className={session ? "cloud-status connected" : "cloud-status"}
-            >
-              {session ? "Connected" : "Local only"}
-            </span>
           </div>
-          {!cloudSyncAvailable ? (
-            <p className="cloud-help">
-              Add your Supabase URL and publishable key to the local <code>.env</code> file to enable sign-in.
-            </p>
-          ) : session ? (
-            <>
-              <p className="cloud-help">
-                Signed in as {session.user.email}. Cloud data is protected by account-level row security.
-              </p>
-              <button
-                className="save-button"
-                onClick={syncCloud}
-                disabled={cloudBusy}
-              >
-                {cloudBusy ? "Syncing…" : "Sync this device"}
+
+          {/* Group 2: Cloud Sync */}
+          <div className="ios-grouped-section">
+            <div className="ios-group-title">Cloud & Sync</div>
+            <div className="ios-group-card cloud-ios-card">
+              <div className="cloud-panel-title">
+                <div>
+                  <b>Private Cloud Sync</b>
+                  <small>Offline-first · Row-level security</small>
+                </div>
+                <span
+                  className={session ? "cloud-status connected" : "cloud-status"}
+                >
+                  {session ? "Connected" : "Local only"}
+                </span>
+              </div>
+              {!cloudSyncAvailable ? (
+                <p className="cloud-help">
+                  Add your Supabase URL and key to <code>.env</code> to activate multi-device cloud sync.
+                </p>
+              ) : session ? (
+                <div className="cloud-actions">
+                  <p className="cloud-help">
+                    Signed in as {session.user.email}.
+                  </p>
+                  <button
+                    className="save-button"
+                    onClick={syncCloud}
+                    disabled={cloudBusy}
+                  >
+                    {cloudBusy ? "Syncing…" : "Sync this device now"}
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={signOut}
+                    disabled={cloudBusy}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : (
+                <div className="cloud-actions">
+                  <p className="cloud-help">
+                    Sign in with an email link to sync your budget data across all your devices.
+                  </p>
+                  <label className="cloud-email">
+                    Email address
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="you@example.com"
+                    />
+                  </label>
+                  <button
+                    className="save-button"
+                    onClick={sendMagicLink}
+                    disabled={cloudBusy || !email.includes("@")}
+                  >
+                    {cloudBusy ? "Sending…" : "Email me a sign-in link"}
+                  </button>
+                </div>
+              )}
+              {cloudMessage && <p className="cloud-message">{cloudMessage}</p>}
+              {cloudError && (
+                <p className="cloud-error" role="alert">
+                  {cloudError}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Group 3: Data & Backup */}
+          <div className="ios-grouped-section">
+            <div className="ios-group-title">Data & Backup</div>
+            <div className="ios-group-card">
+              <button className="ios-row-btn" onClick={exportTransactionsCsv}>
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-green">
+                    <FileSpreadsheet size={18} />
+                  </span>
+                  <span className="ios-row-label">Export Transactions</span>
+                </div>
+                <div className="ios-row-right">
+                  <span className="ios-badge">CSV</span>
+                  <ChevronRight size={18} className="ios-chevron" />
+                </div>
               </button>
-              <button
-                className="text-button"
-                onClick={signOut}
-                disabled={cloudBusy}
-              >
-                Sign out
+
+              <div className="ios-divider" />
+
+              <button className="ios-row-btn" onClick={exportJsonBackup}>
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-teal">
+                    <Download size={18} />
+                  </span>
+                  <span className="ios-row-label">Export Full Backup</span>
+                </div>
+                <div className="ios-row-right">
+                  <span className="ios-badge">JSON</span>
+                  <ChevronRight size={18} className="ios-chevron" />
+                </div>
               </button>
-            </>
-          ) : (
-            <>
-              <p className="cloud-help">
-                Sign in with an email link to sync your data between devices. Your local-only data is not uploaded until you choose Sync.
-              </p>
-              <label className="cloud-email">
-                Email address
+
+              <div className="ios-divider" />
+
+              <label className="ios-row-btn" style={{ cursor: "pointer" }}>
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-sky">
+                    <Upload size={18} />
+                  </span>
+                  <span className="ios-row-label">Import Backup</span>
+                </div>
+                <div className="ios-row-right">
+                  <span className="ios-badge">Select file</span>
+                  <ChevronRight size={18} className="ios-chevron" />
+                </div>
                 <input
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
+                  type="file"
+                  accept=".json,application/json"
+                  style={{ display: "none" }}
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (file) await importJsonBackup(file);
+                  }}
                 />
               </label>
-              <button
-                className="save-button"
-                onClick={sendMagicLink}
-                disabled={cloudBusy || !email.includes("@")}
-              >
-                {cloudBusy ? "Sending…" : "Email me a sign-in link"}
+            </div>
+          </div>
+
+          {/* Group 4: Danger Zone */}
+          <div className="ios-grouped-section">
+            <div className="ios-group-card">
+              <button className="ios-row-btn danger-row" onClick={resetData}>
+                <div className="ios-row-left">
+                  <span className="ios-squircle squircle-rose">
+                    <Trash2 size={18} />
+                  </span>
+                  <span className="ios-row-label">
+                    {confirmReset ? "Tap again to confirm reset" : "Reset All Data"}
+                  </span>
+                </div>
+                {confirmReset && <span className="ios-badge danger-badge">Confirm</span>}
               </button>
-            </>
-          )}
-          {cloudMessage && <p className="cloud-message">{cloudMessage}</p>}
-          {cloudError && (
-            <p className="cloud-error" role="alert">
-              {cloudError}
-            </p>
-          )}
-        </section>
-
-        <div className="settings-list">
-          <button
-            onClick={() => {
-              onClose();
-              onOpenCategories();
-            }}
-          >
-            <span>Manage categories & icons</span>
-            <small>{categories.length} categories</small>
-          </button>
-
-          <button onClick={onOpenPlan}>
-            <span>Budgets & Goals</span>
-            <small>Set spending limits</small>
-          </button>
-
-          <label className="theme-setting">
-            <span>
-              <span className="theme-setting-icon">
-                <Moon size={16} />
-                <Sun size={16} />
-              </span>
-              Appearance
-            </span>
-            <select
-              aria-label="Color theme"
-              value={themePreference}
-              onChange={(event) =>
-                onThemeChange(event.target.value as ThemePreference)
-              }
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-
-          <button onClick={exportTransactionsCsv}>
-            <span>Export transactions</span>
-            <small>CSV</small>
-          </button>
-          <button onClick={exportJsonBackup}>
-            <span>Export backup</span>
-            <small>JSON</small>
-          </button>
-
-          <label>
-            <span>Import backup</span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (file) await importJsonBackup(file);
-              }}
-            />
-          </label>
-
-          <button className="danger-setting" onClick={resetData}>
-            <span>
-              {confirmReset ? "Tap again to reset everything" : "Reset all data"}
-            </span>
-            <small>{confirmReset ? "Confirm" : ""}</small>
-          </button>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -2128,24 +2217,26 @@ function AddTransactionSheet({
       aria-label="Add transaction"
     >
       <section className="add-sheet">
+        <div className="sheet-grabber" />
         <header className="sheet-header">
-          <button onClick={onClose} aria-label="Close">
-            <X size={20} />
+          <button className="sheet-close-btn" onClick={onClose} aria-label="Close">
+            <X size={18} />
           </button>
-          <div className="type-tabs">
+          <div className="type-tabs" role="tablist">
             {(["expense", "income", "transfer"] as TransactionType[]).map((value) => (
               <button
                 key={value}
                 type="button"
-                className={type === value ? "active" : ""}
-                aria-pressed={type === value}
+                role="tab"
+                className={`type-tab-btn ${type === value ? "active" : ""}`}
+                aria-selected={type === value}
                 onClick={() => setType(value)}
               >
                 {value}
               </button>
             ))}
           </div>
-          <span />
+          <div className="sheet-header-spacer" />
         </header>
 
         <div className="calculator-display">

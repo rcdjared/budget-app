@@ -274,7 +274,7 @@ button {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  padding-bottom: calc(108px + env(safe-area-inset-bottom));
 }
 
 .content {
@@ -1600,22 +1600,42 @@ button {
 }
 
 /* ==========================================================================
-   PRIMARY 5-TAB NAVIGATION & FLOATING FAB
+   APPLE iOS 26 STYLE FLOATING ISLAND NAVIGATION DOCK & FAB
    ========================================================================== */
 .bottom-nav {
   position: fixed;
   z-index: 30;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: min(calc(100% - 28px), 430px);
+  height: 64px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
-  border-top: 1px solid var(--border);
-  background: color-mix(in oklch, var(--background) 96%, transparent);
-  backdrop-filter: blur(16px);
-  padding: 2px 4px env(safe-area-inset-bottom);
+  border-radius: 9999px; /* Seamless Apple capsule */
+  padding: 4px 6px;
+  gap: 2px;
+  
+  /* Apple Ultra-thin Liquid Glass Material */
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 
+    0 16px 36px -4px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.9);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .bottom-nav {
+  background: rgba(24, 30, 27, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 
+    0 18px 40px -4px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12);
 }
 
 .nav-item {
@@ -1624,42 +1644,68 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  border-radius: 12px;
+  gap: 2.5px;
+  border-radius: 9999px; /* Pill selection */
   color: var(--muted-foreground);
-  font-size: 10.5px;
-  font-weight: 700;
-  transition: color 0.15s ease;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 2px 0;
+}
+
+.nav-item:active {
+  transform: scale(0.92);
 }
 
 .nav-item.active {
   color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 13%, transparent);
+  font-weight: 750;
 }
 
-/* Floating Action Button (FAB) */
+.nav-item svg {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-item.active svg {
+  transform: translateY(-1px);
+}
+
+/* iOS 26 Floating Action Button (FAB) */
 .floating-fab {
   position: fixed;
-  z-index: 40;
-  right: 18px;
-  bottom: calc(78px + env(safe-area-inset-bottom));
-  width: 54px;
-  height: 54px;
+  z-index: 35;
+  right: clamp(16px, 4vw, 22px);
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: var(--primary);
+  background: linear-gradient(135deg, #02b660 0%, #019B51 60%, #008744 100%);
   color: white;
   display: grid;
   place-items: center;
-  box-shadow: 0 8px 24px rgba(1, 155, 81, 0.45);
-  border: 3px solid var(--background);
-  transition: transform 0.15s ease;
+  box-shadow: 
+    0 10px 24px rgba(1, 155, 81, 0.45),
+    0 2px 6px rgba(1, 155, 81, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
 }
 
 .floating-fab:active {
-  transform: scale(0.92);
+  transform: scale(0.9);
+  box-shadow: 0 4px 12px rgba(1, 155, 81, 0.35);
 }
 
 /* ==========================================================================
-   SHEETS & MODALS
+   SHEETS & MODALS (iOS 26 FLOATING GLASS SHEET)
    ========================================================================== */
 .sheet-backdrop {
   position: fixed;
@@ -1667,8 +1713,9 @@ button {
   inset: 0;
   display: flex;
   align-items: flex-end;
-  background: rgb(16 24 21 / 32%);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .add-sheet,
@@ -1677,57 +1724,106 @@ button {
   max-height: 94dvh;
   margin: 0 auto;
   overflow-y: auto;
-  border-radius: 24px 24px 0 0;
+  border-radius: 28px 28px 0 0;
   background: var(--card);
-  padding-bottom: calc(12px + env(safe-area-inset-bottom));
-  box-shadow: 0 -12px 40px rgb(10 30 24 / 16%);
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.18);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sheet-grabber {
+  width: 36px;
+  height: 4.5px;
+  border-radius: 9999px;
+  background: rgba(120, 120, 128, 0.35);
+  margin: 8px auto 4px;
+  flex-shrink: 0;
 }
 
 .sheet-header {
-  min-height: 60px;
+  min-height: 54px;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
   align-items: center;
   column-gap: 8px;
   border-bottom: 1px solid var(--border);
-  padding: 0 10px;
+  padding: 0 14px;
   text-align: center;
 }
 
-.sheet-header button {
+.sheet-header > button,
+.sheet-close-btn {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border-radius: 50%;
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--foreground);
+  flex-shrink: 0;
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
+.sheet-header > button:active,
+.sheet-close-btn:active {
+  transform: scale(0.92);
+}
+
+.sheet-header-spacer {
+  width: 36px;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   SEGMENTED CONTROL (EXPENSE / INCOME / TRANSFER - iOS PILL)
+   ========================================================================== */
 .type-tabs {
-  min-width: 0;
   width: 100%;
+  max-width: 290px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  height: 44px;
-  border-radius: 13px;
-  background: var(--muted);
-  padding: 4px;
+  height: 38px;
+  border-radius: 9999px;
+  background: rgba(120, 120, 128, 0.12);
+  padding: 3px;
+  gap: 2px;
+  box-sizing: border-box;
+  margin: 0 auto;
 }
 
+.type-tab-btn,
 .type-tabs button {
-  display: flex;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 9999px !important;
   color: var(--muted-foreground);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: capitalize;
+  border: 0;
+  background: transparent;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
+.type-tab-btn:active,
+.type-tabs button:active {
+  transform: scale(0.96);
+}
+
+.type-tab-btn.active,
 .type-tabs button.active {
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow: 0 1px 4px rgb(20 40 34 / 10%);
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .amount-display {
@@ -2111,31 +2207,178 @@ button {
   min-height: 380px;
 }
 
-.settings-list {
-  display: grid;
-  padding: 8px 14px 20px;
+/* ==========================================================================
+   iOS 26 INSET GROUPED SETTINGS STYLES
+   ========================================================================== */
+.ios-settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 8px 16px 28px;
 }
 
-.settings-list button,
-.settings-list label {
-  min-height: 54px;
+.ios-grouped-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ios-group-title {
+  padding-left: 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+}
+
+.ios-group-card {
+  background: var(--card);
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+}
+
+.ios-row-btn {
+  width: 100%;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  padding: 0 2px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 10px 14px;
+  background: transparent;
+  border: 0;
+  text-align: left;
   cursor: pointer;
+  transition: background 0.15s ease;
+  touch-action: manipulation;
 }
 
-.settings-list small {
-  color: var(--muted-foreground);
+.ios-row-btn:active:not(.ios-row-non-clickable) {
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+}
+
+.ios-row-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ios-row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ios-squircle {
+  width: 32px;
+  height: 32px;
+  border-radius: 8.5px;
+  display: grid;
+  place-items: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.squircle-purple { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
+.squircle-amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.squircle-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.squircle-green { background: linear-gradient(135deg, #10b981, #019B51); }
+.squircle-teal { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+.squircle-sky { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
+.squircle-rose { background: linear-gradient(135deg, #ef4444, #dc2626); }
+
+.ios-row-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.ios-row-label {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--foreground);
+  line-height: 1.25;
+}
+
+.ios-row-sub {
   font-size: 11.5px;
+  color: var(--muted-foreground);
+  line-height: 1.25;
+  margin-top: 1px;
 }
 
-.danger-setting {
+.ios-chevron {
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+.ios-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.danger-badge {
   color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 10%, transparent);
+}
+
+.danger-row .ios-row-label {
+  color: var(--destructive);
+}
+
+.ios-divider {
+  height: 1px;
+  background: var(--border);
+  margin-left: 58px; /* Classic Apple indented divider */
+}
+
+/* iOS Segmented Pill Toggle for Theme */
+.ios-segmented-control {
+  display: flex;
+  background: rgba(120, 120, 128, 0.12);
+  border-radius: 9999px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.ios-segmented-btn {
+  border: 0;
+  background: transparent;
+  padding: 5px 11px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ios-segmented-btn.active {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.cloud-ios-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cloud-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .empty-card {
@@ -2206,11 +2449,12 @@ button {
   }
 
   .bottom-nav {
-    right: calc(50% - 260px);
-    left: calc(50% - 260px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 430px;
   }
 
   .floating-fab {
-    right: calc(50% - 240px);
+    right: calc(50% - 215px);
   }
 }
