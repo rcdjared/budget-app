@@ -2,8 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport-fit=cover lets the app draw under the iPhone notch; we add padding back in CSS -->
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- viewport-fit=cover lets the app draw under the iPhone notch; maximum-scale=1 and user-scalable=no prevent mobile random zoom -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="theme-color" content="#1F7A5A" />
     <meta name="description" content="Kupit — offline-first personal budgeting for Filipino users" />
     <!-- iOS-specific PWA tags (Safari ignores parts of the manifest) -->

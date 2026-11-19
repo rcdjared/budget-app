@@ -14,7 +14,7 @@ function now(): string {
   return new Date().toISOString();
 }
 
-interface CategorySeed {
+export interface CategorySeed {
   name: string;
   icon: string;
   color: string;
@@ -22,7 +22,7 @@ interface CategorySeed {
   children?: Omit<CategorySeed, "type" | "children">[];
 }
 
-const EXPENSE_CATEGORIES: CategorySeed[] = [
+export const EXPENSE_CATEGORIES: CategorySeed[] = [
   {
     name: "Food & Dining",
     icon: "utensils",
@@ -30,8 +30,9 @@ const EXPENSE_CATEGORIES: CategorySeed[] = [
     type: "expense",
     children: [
       { name: "Groceries", icon: "shopping-cart", color: "#FB923C" },
-      { name: "Restaurants", icon: "chef-hat", color: "#FDBA74" },
-      { name: "Coffee", icon: "coffee", color: "#C2410C" },
+      { name: "Restaurants & Fastfood", icon: "utensils", color: "#FDBA74" },
+      { name: "Coffee & Milk Tea", icon: "coffee", color: "#C2410C" },
+      { name: "Food Delivery", icon: "shopping-bag", color: "#EA580C" },
     ],
   },
   {
@@ -40,17 +41,11 @@ const EXPENSE_CATEGORIES: CategorySeed[] = [
     color: "#3B82F6",
     type: "expense",
     children: [
-      { name: "Gas", icon: "fuel", color: "#60A5FA" },
-      { name: "Parking", icon: "parking-meter", color: "#93C5FD" },
-      { name: "Grab / Taxi", icon: "map-pin", color: "#2563EB" },
-      { name: "Public Transit", icon: "bus", color: "#1D4ED8" },
+      { name: "Gas & Fuel", icon: "fuel", color: "#60A5FA" },
+      { name: "Commute & Jeep/MRT", icon: "bus", color: "#2563EB" },
+      { name: "Grab & Taxi", icon: "car", color: "#1D4ED8" },
+      { name: "Parking & Tolls", icon: "receipt", color: "#93C5FD" },
     ],
-  },
-  {
-    name: "Shopping",
-    icon: "shopping-bag",
-    color: "#EC4899",
-    type: "expense",
   },
   {
     name: "Bills & Utilities",
@@ -58,42 +53,174 @@ const EXPENSE_CATEGORIES: CategorySeed[] = [
     color: "#EAB308",
     type: "expense",
     children: [
-      { name: "Electricity", icon: "lightbulb", color: "#FACC15" },
-      { name: "Water", icon: "droplets", color: "#06B6D4" },
-      { name: "Internet", icon: "wifi", color: "#8B5CF6" },
-      { name: "Phone / Mobile", icon: "smartphone", color: "#A855F7" },
+      { name: "Electricity (Meralco)", icon: "zap", color: "#FACC15" },
+      { name: "Water (Maynilad/Manila Water)", icon: "droplets", color: "#06B6D4" },
+      { name: "Internet & WiFi", icon: "wifi", color: "#8B5CF6" },
+      { name: "Mobile Load & Postpaid", icon: "smartphone", color: "#A855F7" },
     ],
   },
-  { name: "Health", icon: "heart-pulse", color: "#EF4444", type: "expense" },
-  { name: "Entertainment", icon: "gamepad-2", color: "#8B5CF6", type: "expense" },
-  { name: "Education", icon: "graduation-cap", color: "#0EA5E9", type: "expense" },
-  { name: "Personal Care", icon: "sparkles", color: "#F472B6", type: "expense" },
-  { name: "Home", icon: "home", color: "#78716C", type: "expense" },
   {
-    name: "Gifts & Donations",
+    name: "Housing & Rent",
+    icon: "home",
+    color: "#78716C",
+    type: "expense",
+    children: [
+      { name: "House Rent", icon: "building", color: "#A8A29E" },
+      { name: "Condo/HOA Dues", icon: "receipt", color: "#78716C" },
+      { name: "Home Repairs", icon: "wrench", color: "#57534E" },
+    ],
+  },
+  {
+    name: "Shopping",
+    icon: "shopping-bag",
+    color: "#EC4899",
+    type: "expense",
+    children: [
+      { name: "Clothing & Shoes", icon: "shirt", color: "#F472B6" },
+      { name: "Gadgets & Tech", icon: "laptop", color: "#DB2777" },
+      { name: "Online Shopping (Shopee/Lazada)", icon: "shopping-bag", color: "#BE185D" },
+    ],
+  },
+  {
+    name: "Health & Wellness",
+    icon: "heart-pulse",
+    color: "#EF4444",
+    type: "expense",
+    children: [
+      { name: "Medicine & Pharmacy", icon: "pill", color: "#F87171" },
+      { name: "Doctor & Hospital", icon: "heart-pulse", color: "#DC2626" },
+      { name: "Fitness & Gym", icon: "dumbbell", color: "#B91C1C" },
+    ],
+  },
+  {
+    name: "Entertainment & Leisure",
+    icon: "gamepad-2",
+    color: "#8B5CF6",
+    type: "expense",
+    children: [
+      { name: "Streaming (Netflix/Spotify)", icon: "tv", color: "#A78BFA" },
+      { name: "Games & Hobbies", icon: "gamepad-2", color: "#7C3AED" },
+      { name: "Movies & Outings", icon: "film", color: "#6D28D9" },
+    ],
+  },
+  {
+    name: "Family & Padala",
+    icon: "gift",
+    color: "#14B8A6",
+    type: "expense",
+    children: [
+      { name: "Padala / Support", icon: "banknote", color: "#2DD4BF" },
+      { name: "Kids / School Allowance", icon: "baby", color: "#0D9488" },
+      { name: "Pets & Vet", icon: "dog", color: "#0F766E" },
+    ],
+  },
+  {
+    name: "Education & Learning",
+    icon: "graduation-cap",
+    color: "#0EA5E9",
+    type: "expense",
+    children: [
+      { name: "Tuition & Courses", icon: "graduation-cap", color: "#38BDF8" },
+      { name: "Books & Materials", icon: "receipt", color: "#0284C7" },
+    ],
+  },
+  {
+    name: "Personal Care & Beauty",
+    icon: "sparkles",
+    color: "#F43F5E",
+    type: "expense",
+    children: [
+      { name: "Haircut & Salon", icon: "scissors", color: "#FB7185" },
+      { name: "Skincare & Toiletries", icon: "sparkles", color: "#E11D48" },
+    ],
+  },
+  {
+    name: "Travel & Vacation",
+    icon: "plane",
+    color: "#06B6D4",
+    type: "expense",
+  },
+  {
+    name: "Insurance & Financial",
+    icon: "shield",
+    color: "#475569",
+    type: "expense",
+    children: [
+      { name: "Life/Health Insurance", icon: "shield", color: "#64748B" },
+      { name: "Bank & ATM Fees", icon: "credit-card", color: "#334155" },
+    ],
+  },
+  {
+    name: "Gifts & Celebrations",
     icon: "gift",
     color: "#D946EF",
     type: "expense",
   },
-  { name: "Others", icon: "more-horizontal", color: "#6B7280", type: "expense" },
+  {
+    name: "Others",
+    icon: "more-horizontal",
+    color: "#6B7280",
+    type: "expense",
+  },
 ];
 
-const INCOME_CATEGORIES: CategorySeed[] = [
-  { name: "Salary", icon: "banknote", color: "#10B981", type: "income" },
-  { name: "Freelance", icon: "laptop", color: "#14B8A6", type: "income" },
-  { name: "Business", icon: "briefcase", color: "#059669", type: "income" },
+export const INCOME_CATEGORIES: CategorySeed[] = [
   {
-    name: "Investment Returns",
+    name: "Salary",
+    icon: "banknote",
+    color: "#10B981",
+    type: "income",
+    children: [
+      { name: "Monthly Cutoff", icon: "banknote", color: "#34D399" },
+      { name: "13th Month & Bonus", icon: "sparkles", color: "#059669" },
+    ],
+  },
+  {
+    name: "Freelance & Side Gig",
+    icon: "laptop",
+    color: "#14B8A6",
+    type: "income",
+  },
+  {
+    name: "Business & Sales",
+    icon: "briefcase",
+    color: "#059669",
+    type: "income",
+  },
+  {
+    name: "Investments & Dividends",
     icon: "trending-up",
     color: "#0D9488",
     type: "income",
   },
-  { name: "Gifts Received", icon: "gift", color: "#6366F1", type: "income" },
-  { name: "Others", icon: "more-horizontal", color: "#6B7280", type: "income" },
+  {
+    name: "Rental Income",
+    icon: "building",
+    color: "#0284C7",
+    type: "income",
+  },
+  {
+    name: "Remittance & Padala Received",
+    icon: "gift",
+    color: "#6366F1",
+    type: "income",
+  },
+  {
+    name: "Gifts & Cashbacks",
+    icon: "gift",
+    color: "#8B5CF6",
+    type: "income",
+  },
+  {
+    name: "Other Income",
+    icon: "more-horizontal",
+    color: "#6B7280",
+    type: "income",
+  },
 ];
 
 /**
- * Seed default categories for a new profile.
+ * Seed default categories for a profile.
  * Idempotent — checks if categories already exist.
  */
 export async function seedDefaultCategories(profileId: string): Promise<void> {
@@ -154,30 +281,18 @@ export const ACCOUNT_TEMPLATES: AccountTemplate[] = [
   // Major banks
   { name: "BDO", type: "bank", color: "#003B73", icon: "landmark" },
   { name: "BPI", type: "bank", color: "#C41E3A", icon: "landmark" },
-  { name: "China Bank", type: "bank", color: "#00529B", icon: "landmark" },
-  { name: "China Bank Savings", type: "bank", color: "#E31E24", icon: "landmark" },
-  { name: "EastWest Bank", type: "bank", color: "#F36F21", icon: "landmark" },
   { name: "Metrobank", type: "bank", color: "#003366", icon: "landmark" },
   { name: "UnionBank", type: "bank", color: "#F7941D", icon: "landmark" },
   { name: "Landbank", type: "bank", color: "#006633", icon: "landmark" },
   { name: "PNB", type: "bank", color: "#001489", icon: "landmark" },
   { name: "RCBC", type: "bank", color: "#00529B", icon: "landmark" },
   { name: "Security Bank", type: "bank", color: "#00A651", icon: "landmark" },
-  { name: "PSBank", type: "bank", color: "#0072CE", icon: "landmark" },
-  { name: "Asia United Bank", type: "bank", color: "#E31B54", icon: "landmark" },
-  { name: "Bank of Commerce", type: "bank", color: "#004B8D", icon: "landmark" },
-  { name: "Maybank", type: "bank", color: "#F5C400", icon: "landmark" },
   // Digital banks
   { name: "GoTyme", type: "bank", color: "#FF5733", icon: "smartphone" },
   { name: "SeaBank", type: "bank", color: "#00BFA5", icon: "smartphone" },
-  { name: "MariBank", type: "bank", color: "#E7352B", icon: "smartphone" },
   { name: "Tonik", type: "bank", color: "#6C63FF", icon: "smartphone" },
   { name: "CIMB", type: "bank", color: "#ED1C24", icon: "smartphone" },
   { name: "Maya Bank", type: "bank", color: "#00C853", icon: "smartphone" },
-  { name: "UNO Digital Bank", type: "bank", color: "#4D2B8C", icon: "smartphone" },
-  { name: "OwnBank", type: "bank", color: "#167A5B", icon: "smartphone" },
-  { name: "Netbank", type: "bank", color: "#164B8C", icon: "smartphone" },
-  { name: "UnionDigital Bank", type: "bank", color: "#F7941D", icon: "smartphone" },
   // E-wallets
   { name: "GCash", type: "ewallet", color: "#007DFE", icon: "wallet" },
   { name: "Maya", type: "ewallet", color: "#00C853", icon: "wallet" },
@@ -191,7 +306,6 @@ export function getAccountTemplates(): AccountTemplate[] {
   return ACCOUNT_TEMPLATES;
 }
 
-/** Initialize first-run data. Safe to call repeatedly. */
 export async function initializeAppData(): Promise<string> {
   const profile = await ensureDefaultProfile();
   await seedDefaultCategories(profile.id);
