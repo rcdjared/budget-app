@@ -288,19 +288,19 @@ function FinsightsHelpModal({ onClose }: { onClose: () => void }) {
       className="sheet-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="About Finsights"
+      aria-label="About Money Insights"
     >
       <section className="account-sheet" style={{ padding: "16px 20px 24px" }}>
         <header className="sheet-header" style={{ marginBottom: "12px" }}>
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <b>About Finsights</b>
+          <b>About Money Insights</b>
           <span />
         </header>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px", lineHeight: "1.5" }}>
           <p>
-            <b>Finsights</b> gives you clear visibility into your spending trends and income patterns across all your accounts or per specific bank/e-wallet.
+            <b>Money Insights</b> gives you clear visibility into your spending trends and income patterns across all your accounts or per specific bank/e-wallet.
           </p>
           <ul style={{ paddingLeft: "18px", listStyleType: "disc", color: "var(--muted-foreground)" }}>
             <li><b>Account filter:</b> View your overall spending or track individual accounts like GCash, Maya, or BDO.</li>
@@ -1519,6 +1519,16 @@ function ChatLogSheet({
   const [message, setMessage] = useState("");
   const [conversation, setConversation] = useState<{ role: "user" | "assistant"; text: string }[]>([]);
   const [drafts, setDrafts] = useState<ReturnType<typeof parseMultipleTransactions>>([]);
+  const [setupDraft, setSetupDraft] = useState<
+    | { kind: "account"; name: string; type: AccountType; amount: number }
+    | { kind: "budget"; category: Category; amount: number }
+    | null
+  >(null);
+  const [clarification, setClarification] = useState<
+    | { kind: "account"; original: string; missingName: boolean; missingAmount: boolean }
+    | { kind: "budget"; original: string }
+    | null
+  >(null);
   const [rememberCategories, setRememberCategories] = useState(false);
   const [learnedCategories, setLearnedCategories] = useState<Record<string, string>>(() => {
     try {
@@ -1544,8 +1554,104 @@ function ChatLogSheet({
   }, [open]);
 
   const parseMessage = () => {
-    const text = message.trim();
+    const userText = message.trim();
+    let text = userText;
     if (!text) return;
+    if (clarification?.kind === "budget") {
+      text = `${clarification.original} ${text}`;
+      setClarification(null);
+    } else if (clarification?.kind === "account") {
+      const followUp = text;
+      const answerAmount = followUp.match(/(?:₱|php|\$)?\s*(\d[\d,]*(?:\.\d{1,2})?\s*[km]?)/i)?.[1];
+      if (clarification.missingName && clarification.missingAmount) {
+        const name = answerAmount ? followUp.replace(answerAmount, "").replace(/\b(?:php|pesos?|balance|opening|is|and|with)\b/gi, "").replace(/[₱$,]/g, "").trim() : followUp.trim();
+        text = `${clarification.original} account named ${name} with opening balance ${answerAmount || ""}`;
+      } else if (clarification.missingName) {
+        text = `${clarification.original} account named ${followUp}`;
+      } else {
+        text = `${clarification.original} with opening balance ${followUp}`;
+      }
+      setClarification(null);
+    }
+    if (setupDraft && /^(yes|y|yes save|confirm|save it|looks good|correct)[.! ]*$/i.test(text)) {
+      setConversation((current) => [...current, { role: "user", text }]);
+      setMessage("");
+      void saveSetupDraft();
+      return;
+    }
+    if (setupDraft && /^(no|n|change|edit|not quite)[.! ]*$/i.test(text)) {
+      setConversation((current) => [...current, { role: "user", text }, { role: "assistant", text: "No problem. Tell me the corrected category, account name, or amount, and I’ll prepare it again." }]);
+      setSetupDraft(null);
+      setMessage("");
+      return;
+    }
+    const amountText = text.match(/(?:₱|php|\$)?\s*(\d[\d,]*(?:\.\d{1,2})?\s*[km]?)/i)?.[1];
+    const parsedAmount = amountText ? parseMoney(amountText) : null;
+    const accountIntent = /\b(create|add|set up|make)\b.*\b(account|wallet|bank)\b/i.test(text);
+    const budgetIntent = /\b(create|add|set|make|keep|cap)\b.*\b(budget|spending limit|spending|spend)\b/i.test(text) || /\b(monthly|weekly|daily)\s+budget\b/i.test(text);
+    if (accountIntent) {
+      const name = text.match(/\b(?:account|wallet|bank)\s+(?:named|called)\s+["']?(.+?)["']?(?=\s+(?:with|and)\s+(?:an?\s+)?(?:opening\s+)?balance|[,;.]|$)/i)?.[1]?.trim();
+      if (name && parsedAmount !== null) {
+        const type: AccountType = /\bcash\b/i.test(text) ? "cash"
+          : /\b(wallet|e-?wallet|gcash|maya|paymaya)\b/i.test(text) ? "ewallet"
+          : /\bcredit\s*card\b/i.test(text) ? "credit_card"
+          : /\binvestment\b/i.test(text) ? "investment"
+          : /\bloan\b/i.test(text) ? "loan" : "bank";
+        setDrafts([]);
+        setSetupDraft({ kind: "account", name, type, amount: parsedAmount });
+        setConversation((current) => [...current, { role: "user", text: userText }, { role: "assistant", text: `I have ${name} as a ${type === "bank" ? "bank" : type.replace("_", " ")} account with ${formatMoney(parsedAmount)} to start. Is that right?` }]);
+      } else {
+        const missingName = !/\b(?:account|wallet|bank)\s+(?:named|called)\b/i.test(text);
+        const missingAmount = parsedAmount === null;
+        const followUp = missingName && missingAmount
+          ? "Sure. What should I call the account, and what’s its opening balance? For example: Payroll, 42.33."
+          : missingName
+          ? "What should I call the account? For example: Payroll."
+          : "What’s the opening balance? You can enter a plain number, like 42.33.";
+        setClarification({ kind: "account", original: text, missingName, missingAmount });
+        setConversation((current) => [...current, { role: "user", text: userText }, { role: "assistant", text: followUp }]);
+      }
+      setMessage("");
+      return;
+    }
+    if (budgetIntent) {
+      const normalizedText = text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const expenseCategories = categories.filter((item) => item.type === "expense");
+      const aliases: Record<string, string[]> = {
+        "Food & Dining": ["food", "dining", "meal", "meals", "restaurant"],
+        "Transportation": ["transport", "transportation", "commute", "commuting", "travel"],
+        "Bills & Utilities": ["bills", "utilities", "utility"],
+        "Housing & Rent": ["housing", "rent"],
+        "Health & Wellness": ["health", "wellness", "medical"],
+        "Entertainment & Leisure": ["entertainment", "leisure"],
+        "Personal Care & Beauty": ["personal care", "beauty"],
+      };
+      const category = expenseCategories
+        .sort((a, b) => b.name.length - a.name.length)
+        .find((item) => {
+          const categoryName = item.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          return normalizedText.includes(categoryName) || (aliases[item.name] || []).some((alias) => new RegExp(`\\b${alias}\\b`, "i").test(normalizedText));
+        });
+      if (category && parsedAmount !== null) {
+        setDrafts([]);
+        setSetupDraft({ kind: "budget", category, amount: parsedAmount });
+        const matchedAlias = (aliases[category.name] || []).find((alias) => new RegExp(`\\b${alias}\\b`, "i").test(normalizedText));
+        const categoryPhrase = matchedAlias ? `I matched “${matchedAlias}” to ${category.name}.` : `I matched ${category.name}.`;
+        setConversation((current) => [...current, { role: "user", text: userText }, { role: "assistant", text: `${categoryPhrase} Is ${formatMoney(parsedAmount)} your monthly limit?` }]);
+      } else {
+        const hasAmount = parsedAmount !== null;
+        const hasCategory = expenseCategories.some((item) => normalizedText.includes(item.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()) || (aliases[item.name] || []).some((alias) => new RegExp(`\\b${alias}\\b`, "i").test(normalizedText)));
+        const followUp = !hasCategory && !hasAmount
+          ? "Which category should I use, and what monthly limit do you want? For example: Food, 360."
+          : !hasCategory
+          ? "Which spending category should I use? For example: food, transportation, or bills."
+          : "What monthly limit should I set? A plain number is fine, like 360.";
+        setClarification({ kind: "budget", original: text });
+        setConversation((current) => [...current, { role: "user", text: userText }, { role: "assistant", text: followUp }]);
+      }
+      setMessage("");
+      return;
+    }
     const localAnswer = answerLocalMoneyQuestion(text, { accounts, transactions, categories });
     if (localAnswer) {
       setDrafts([]);
@@ -1575,6 +1681,37 @@ function ChatLogSheet({
     setDrafts(draftsToReview);
     setRememberCategories(false);
     setMessage("");
+  };
+
+  const saveSetupDraft = async () => {
+    if (!setupDraft) return;
+    if (setupDraft.kind === "account") {
+      const duplicate = accounts.some((account) => account.name.toLowerCase() === setupDraft.name.toLowerCase());
+      if (duplicate) {
+        setConversation((current) => [...current, { role: "assistant", text: `An account named ${setupDraft.name} already exists in this profile.` }]);
+        setSetupDraft(null);
+        return;
+      }
+      await createAccount({
+        profileId, name: setupDraft.name, type: setupDraft.type,
+        openingBalance: setupDraft.amount, currency: "PHP",
+        color: setupDraft.type === "cash" ? "#22C55E" : "#019B51",
+        icon: setupDraft.type === "cash" ? "banknote" : setupDraft.type === "ewallet" ? "wallet" : "landmark",
+        isArchived: false,
+      });
+      setConversation((current) => [...current, { role: "assistant", text: `Saved ${setupDraft.name} with an opening balance of ${formatMoney(setupDraft.amount)}.` }]);
+    } else {
+      const existing = await db.budgets.where("profileId").equals(profileId).filter((budget) => !budget.deletedAt && budget.categoryId === setupDraft.category.id && budget.period === "monthly").first();
+      const timestamp = new Date().toISOString();
+      await db.budgets.put({
+        id: existing?.id || crypto.randomUUID(), profileId,
+        categoryId: setupDraft.category.id, period: "monthly", amount: setupDraft.amount,
+        rolloverEnabled: existing?.rolloverEnabled ?? false,
+        createdAt: existing?.createdAt || timestamp, updatedAt: timestamp,
+      });
+      setConversation((current) => [...current, { role: "assistant", text: `Saved a monthly ${setupDraft.category.name} budget of ${formatMoney(setupDraft.amount)}.` }]);
+    }
+    setSetupDraft(null);
   };
 
   const updateDraft = (index: number, changes: Partial<(typeof drafts)[number]>) => {
@@ -1733,6 +1870,21 @@ function ChatLogSheet({
             </button>
           </div>
           )}
+          {setupDraft && (
+            <div className="chat-drafts">
+              <article>
+                <span><small>{setupDraft.kind === "account" ? `${setupDraft.type} account` : "monthly budget"}</small>
+                  <b>{setupDraft.kind === "account" ? setupDraft.name : setupDraft.category.name}</b></span>
+                <strong>{formatMoney(setupDraft.amount)}</strong>
+                {setupDraft.kind === "account" && <small>Opening balance · saved to this profile on this device</small>}
+              </article>
+              <button className="save-button" onClick={saveSetupDraft}>Yes, save</button>
+              <button className="chat-clear-learning" onClick={() => {
+                setSetupDraft(null);
+                setConversation((current) => [...current, { role: "assistant", text: "No problem. Send the corrected details and I’ll prepare a new draft." }]);
+              }}>Change details</button>
+            </div>
+          )}
         </div>
         <form className="chat-composer" onSubmit={(event) => { event.preventDefault(); parseMessage(); }}>
           <textarea
@@ -1745,7 +1897,7 @@ function ChatLogSheet({
                 parseMessage();
               }
             }}
-            placeholder="Log a transaction or ask about your money"
+            placeholder="Log, create an account or budget, or ask about your money"
             rows={1}
             aria-label="Message your money assistant"
           />

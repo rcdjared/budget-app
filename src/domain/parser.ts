@@ -77,7 +77,7 @@ export function parseTransactionPhrase(
   const text = input.trim();
   const lower = text.toLocaleLowerCase();
   const amountMatches = [...lower.matchAll(/(?:₱|php|â‚±|\$)?\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)\s*(k|m)?\b/gi)]
-    .filter((match) => !/\s*(?:days?|weeks?)\s+ago\b/i.test(lower.slice((match.index || 0) + match[0].length)));
+    .filter((match) => !/^\s*(?:days?|weeks?)\s+ago\b/i.test(lower.slice((match.index || 0) + match[0].length)));
   const amountMatch = amountMatches[amountMatches.length - 1] || null;
   const amount = amountMatch ? parseMoney(`${amountMatch[1]}${amountMatch[2] || ""}`) : 0;
 

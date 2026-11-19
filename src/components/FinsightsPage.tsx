@@ -356,7 +356,7 @@ export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
           className="help-circle-btn"
           onClick={onOpenHelp}
           aria-label="Insights info"
-          title="Finsights guide"
+          title="Money Insights guide"
         >
           <HelpCircle size={22} />
         </button>
