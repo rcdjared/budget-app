@@ -2,7 +2,7 @@
 // Run once when a new profile is created.
 
 import { db } from "./schema";
-import type { Account, Category } from "@/domain/types";
+import type { Category } from "@/domain/types";
 import { ensureDefaultProfile } from "./repositories/profiles";
 
 /** Generate a UUID (works in all modern browsers and Node 19+) */
@@ -183,53 +183,5 @@ export function getAccountTemplates(): AccountTemplate[] {
 export async function initializeAppData(): Promise<string> {
   const profile = await ensureDefaultProfile();
   await seedDefaultCategories(profile.id);
-
-  const accountCount = await db.accounts.where({ profileId: profile.id }).count();
-  if (accountCount === 0) {
-    const timestamp = now();
-    const starterAccounts: Account[] = [
-      {
-        id: uid(),
-        profileId: profile.id,
-        name: "Cash",
-        type: "cash",
-        openingBalance: 500000,
-        currency: "PHP",
-        color: "#10B981",
-        icon: "banknote",
-        isArchived: false,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      },
-      {
-        id: uid(),
-        profileId: profile.id,
-        name: "GCash",
-        type: "ewallet",
-        openingBalance: 850000,
-        currency: "PHP",
-        color: "#007DFE",
-        icon: "wallet",
-        isArchived: false,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      },
-      {
-        id: uid(),
-        profileId: profile.id,
-        name: "BDO",
-        type: "bank",
-        openingBalance: 2500000,
-        currency: "PHP",
-        color: "#003B73",
-        icon: "landmark",
-        isArchived: false,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      },
-    ];
-    await db.accounts.bulkAdd(starterAccounts);
-  }
-
   return profile.id;
 }

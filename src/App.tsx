@@ -105,7 +105,7 @@ function App() {
     <main className="app-shell">
       {!online && <div className="offline-banner">Offline — changes remain saved on this device</div>}
       <div className="page-scroll">
-        {tab === "home" && <HomePage profileId={profileId} onAdd={() => setAddOpen(true)} onChat={() => setChatOpen(true)} onSettings={() => setSettingsOpen(true)} onPlan={() => setTab("plan")} />}
+        {tab === "home" && <HomePage profileId={profileId} onAdd={() => setAddOpen(true)} onAddAccount={() => setAccountOpen(true)} onChat={() => setChatOpen(true)} onSettings={() => setSettingsOpen(true)} onPlan={() => setTab("plan")} />}
         {tab === "wallet" && <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />}
         {tab === "plan" && <BudgetsPage profileId={profileId} />}
         {tab === "history" && <TransactionsPage profileId={profileId} />}
@@ -192,7 +192,7 @@ function TabButton({
   );
 }
 
-function HomePage({ profileId, onAdd, onChat, onSettings, onPlan }: { profileId: string; onAdd: () => void; onChat: () => void; onSettings: () => void; onPlan: () => void }) {
+function HomePage({ profileId, onAdd, onAddAccount, onChat, onSettings, onPlan }: { profileId: string; onAdd: () => void; onAddAccount: () => void; onChat: () => void; onSettings: () => void; onPlan: () => void }) {
   const accounts = useLiveQuery(
     () => db.accounts.where({ profileId }).filter((a) => !a.deletedAt && !a.isArchived).toArray(),
     [profileId],
@@ -290,19 +290,28 @@ function HomePage({ profileId, onAdd, onChat, onSettings, onPlan }: { profileId:
           <h2>My accounts</h2>
           <button>See all</button>
         </div>
-        <div className="account-grid">
-          {accounts.map((account) => (
-            <article className="account-card" key={account.id}>
-              <span className="account-icon" style={{ background: `${account.color}18`, color: account.color }}>
-                {account.type === "bank" ? <Banknote size={19} /> : <WalletCards size={19} />}
-              </span>
-              <div>
-                <p>{account.name}</p>
-                <strong>{formatMoney(balances.get(account.id) ?? account.openingBalance)}</strong>
-              </div>
-            </article>
-          ))}
-        </div>
+        {accounts.length ? (
+          <div className="account-grid">
+            {accounts.map((account) => (
+              <article className="account-card" key={account.id}>
+                <span className="account-icon" style={{ background: `${account.color}18`, color: account.color }}>
+                  {account.type === "bank" ? <Banknote size={19} /> : <WalletCards size={19} />}
+                </span>
+                <div>
+                  <p>{account.name}</p>
+                  <strong>{formatMoney(balances.get(account.id) ?? account.openingBalance)}</strong>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-card">
+            <WalletCards size={28} />
+            <p>No accounts yet</p>
+            <small>Add a cash, bank, or e-wallet account to get started.</small>
+            <button className="empty-action" onClick={onAddAccount}>Add your first account</button>
+          </div>
+        )}
       </section>
 
       <section className="section">
@@ -472,6 +481,14 @@ function AccountsPage({ profileId, onAdd }: { profileId: string; onAdd: () => vo
         <small>Net worth</small>
         <strong>{formatMoney(net.netWorth)}</strong>
       </section>
+      {!accounts.length && (
+        <div className="empty-card">
+          <WalletCards size={28} />
+          <p>Your wallet is empty</p>
+          <small>Add an account to start tracking your money.</small>
+          <button className="empty-action" onClick={onAdd}>Add your first account</button>
+        </div>
+      )}
       {groups.map((group) => {
         const items = accounts.filter((account) => group.types.includes(account.type));
         if (!items.length) return null;

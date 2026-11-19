@@ -1,6 +1,6 @@
 # Kupit
 
-Offline-first personal budgeting PWA for Filipino users. The local Dexie database remains usable without an account; Supabase email sign-in and cloud sync are optional.
+Offline-first personal budgeting PWA for Filipino users. New profiles start with no accounts, transactions, budgets, or goals; the user adds their own financial data. Default expense and income categories are provided for convenience. The local Dexie database remains usable without an account; Supabase email sign-in and cloud sync are optional.
 
 ## Run locally
 
