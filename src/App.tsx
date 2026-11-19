@@ -16,13 +16,14 @@ import {
   Plus,
   ReceiptText,
   Settings,
+  Trash2,
   TrendingUp,
   WalletCards,
   X,
 } from "lucide-react";
 import { db } from "@/db/schema";
 import { initializeAppData, getAccountTemplates } from "@/db/seed";
-import { createAccount } from "@/db/repositories/accounts";
+import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
 import { createTransaction, softDeleteTransaction } from "@/db/repositories/transactions";
 import { computeAccountBalance, computeMonthlyTotals, computeNetWorth } from "@/domain/balances";
 import { formatMoney, parseMoney } from "@/domain/money";
@@ -105,7 +106,7 @@ function App() {
     <main className="app-shell">
       {!online && <div className="offline-banner">Offline — changes remain saved on this device</div>}
       <div className="page-scroll">
-        {tab === "home" && <HomePage profileId={profileId} onAdd={() => setAddOpen(true)} onAddAccount={() => setAccountOpen(true)} onChat={() => setChatOpen(true)} onSettings={() => setSettingsOpen(true)} onPlan={() => setTab("plan")} />}
+        {tab === "home" && <HomePage profileId={profileId} onAdd={() => setAddOpen(true)} onAddAccount={() => setAccountOpen(true)} onChat={() => setChatOpen(true)} onSettings={() => setSettingsOpen(true)} onPlan={() => setTab("plan")} onWallet={() => setTab("wallet")} onHistory={() => setTab("history")} />}
         {tab === "wallet" && <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />}
         {tab === "plan" && <BudgetsPage profileId={profileId} />}
         {tab === "history" && <TransactionsPage profileId={profileId} />}
@@ -192,7 +193,7 @@ function TabButton({
   );
 }
 
-function HomePage({ profileId, onAdd, onAddAccount, onChat, onSettings, onPlan }: { profileId: string; onAdd: () => void; onAddAccount: () => void; onChat: () => void; onSettings: () => void; onPlan: () => void }) {
+function HomePage({ profileId, onAdd, onAddAccount, onChat, onSettings, onPlan, onWallet, onHistory }: { profileId: string; onAdd: () => void; onAddAccount: () => void; onChat: () => void; onSettings: () => void; onPlan: () => void; onWallet: () => void; onHistory: () => void }) {
   const accounts = useLiveQuery(
     () => db.accounts.where({ profileId }).filter((a) => !a.deletedAt && !a.isArchived).toArray(),
     [profileId],
@@ -232,7 +233,7 @@ function HomePage({ profileId, onAdd, onAddAccount, onChat, onSettings, onPlan }
       <section className="net-card">
         <div className="net-card-top">
           <span>Net worth</span>
-          <button aria-label="Net worth details"><ChevronRight size={18} /></button>
+          <button aria-label="View net worth details" onClick={onWallet}><ChevronRight size={18} /></button>
         </div>
         <strong className="net-value">{formatMoney(net.netWorth)}</strong>
         <div className="net-change"><ArrowUpRight size={14} /> Total financial position</div>
@@ -288,7 +289,7 @@ function HomePage({ profileId, onAdd, onAddAccount, onChat, onSettings, onPlan }
       <section className="section">
         <div className="section-heading">
           <h2>My accounts</h2>
-          <button>See all</button>
+          <button onClick={onWallet}>See all</button>
         </div>
         {accounts.length ? (
           <div className="account-grid">
@@ -317,7 +318,7 @@ function HomePage({ profileId, onAdd, onAddAccount, onChat, onSettings, onPlan }
       <section className="section">
         <div className="section-heading">
           <h2>Recent transactions</h2>
-          <button>See all</button>
+          <button onClick={onHistory}>See all</button>
         </div>
         <TransactionList transactions={transactions.slice(0, 5)} accounts={accounts} profileId={profileId} />
       </section>
@@ -381,7 +382,7 @@ function TransactionsPage({ profileId }: { profileId: string }) {
     []
   );
   const accounts = useLiveQuery(
-    () => db.accounts.where({ profileId }).filter((a) => !a.deletedAt).toArray(),
+    () => db.accounts.where({ profileId }).toArray(),
     [profileId],
     []
   );
@@ -422,7 +423,7 @@ function TransactionsPage({ profileId }: { profileId: string }) {
       <div className="history-filters">
         <select value={accountId} onChange={(event) => setAccountId(event.target.value)} aria-label="Filter by account">
           <option value="">All accounts</option>
-          {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+          {accounts.filter((account) => !account.deletedAt).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
         </select>
         <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} aria-label="Filter by category">
           <option value="">All categories</option>
@@ -480,6 +481,10 @@ function AccountsPage({ profileId, onAdd }: { profileId: string; onAdd: () => vo
       <section className="wallet-net">
         <small>Net worth</small>
         <strong>{formatMoney(net.netWorth)}</strong>
+        <div className="wallet-net-breakdown">
+          <span>Assets <b>{formatMoney(net.assets)}</b></span>
+          <span>Liabilities <b>{formatMoney(net.liabilities)}</b></span>
+        </div>
       </section>
       {!accounts.length && (
         <div className="empty-card">
@@ -503,6 +508,25 @@ function AccountsPage({ profileId, onAdd }: { profileId: string; onAdd: () => vo
                   </span>
                   <div><p>{account.name}</p><small>{account.type.replace("_", " ")}</small></div>
                   <strong>{formatMoney(balances.get(account.id) ?? account.openingBalance)}</strong>
+                  <button
+                    className="account-delete"
+                    aria-label={`Delete ${account.name}`}
+                    title={`Delete ${account.name}`}
+                    onClick={async () => {
+                      const confirmed = window.confirm(
+                        `Delete ${account.name}? Its transactions will remain in history, but this account will no longer count toward your wallet or net worth.`
+                      );
+                      if (!confirmed) return;
+                      try {
+                        await softDeleteAccount(account.id);
+                      } catch (error) {
+                        console.error("Could not delete account:", error);
+                        window.alert("The account could not be deleted. Please try again.");
+                      }
+                    }}
+                  >
+                    <Trash2 size={17} />
+                  </button>
                 </article>
               ))}
             </div>

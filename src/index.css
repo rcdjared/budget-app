@@ -273,6 +273,28 @@ body {
   letter-spacing: -0.03em;
 }
 
+.wallet-net-breakdown {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 18%);
+  padding-top: 10px;
+  color: rgb(255 255 255 / 75%);
+  font-size: 11px;
+}
+
+.wallet-net-breakdown span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wallet-net-breakdown b {
+  color: white;
+  font-size: 13px;
+}
+
 .wallet-group {
   margin-top: 16px;
 }
@@ -927,6 +949,22 @@ body {
 
 .account-row > div {
   flex: 1;
+  min-width: 0;
+}
+
+.account-delete {
+  display: grid;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  color: #b94a3f;
+  background: #fff1ee;
+}
+
+.account-delete:active {
+  background: #ffe2dc;
 }
 
 .account-row p {
