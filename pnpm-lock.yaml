@@ -102,6 +102,9 @@ importers:
       vitest:
         specifier: ^5.1.1
         version: 5.1.1(@types/node@26.6.6)(jsdom@31.0.1)(vite@7.3.8(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2))
+      workbox-window:
+        specifier: ^7.4.1
+        version: 7.4.1
 
 packages:
 
