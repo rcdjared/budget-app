@@ -1,0 +1,35 @@
+name: Supabase keepalive
+
+on:
+  schedule:
+    - cron: "0 8 * * 1,4"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check required secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Set SUPABASE_URL and SUPABASE_ANON_KEY in repository Actions secrets."
+            exit 1
+          fi
+
+      - name: Run read-only database heartbeat
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 5 --max-time 30 \
+            --output /dev/null \
+            --write-out "Supabase responded with HTTP %{http_code}\n" \
+            "${SUPABASE_URL%/}/rest/v1/cloud_records?select=updated_at&limit=1" \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $SUPABASE_ANON_KEY"
