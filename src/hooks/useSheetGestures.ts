@@ -65,9 +65,10 @@ export function useSheetGestures(): void {
   useEffect(() => {
     let startY = 0;
     let startX = 0;
-    let startAt = 0;
+    let dragStartedAt = 0;
     let dragY = 0;
     let didMove = false;
+    let didGestureMove = false;
     let animationFrame = 0;
     let pointerId: number | null = null;
     let panel: HTMLElement | null = null;
@@ -75,6 +76,7 @@ export function useSheetGestures(): void {
     let scrollTarget: HTMLElement | null = null;
     let scrollStartTop = 0;
     let approvedClose = false;
+    let suppressMenuClickUntil = 0;
 
     const down = (event: PointerEvent) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -98,9 +100,10 @@ export function useSheetGestures(): void {
       pointerId = event.pointerId;
       startY = event.clientY;
       startX = event.clientX;
-      startAt = performance.now();
+      dragStartedAt = 0;
       dragY = 0;
       didMove = false;
+      didGestureMove = false;
     };
 
     const move = (event: PointerEvent) => {
@@ -113,6 +116,7 @@ export function useSheetGestures(): void {
         pointerId = null;
         return;
       }
+      if (Math.abs(dy) > 6) didGestureMove = true;
       if (scrollTarget && dy < 0) {
         scrollTarget.scrollTop = scrollStartTop - dy;
         return;
@@ -122,6 +126,7 @@ export function useSheetGestures(): void {
       if (scrollTarget && scrollStartTop > 0) scrollTarget.scrollTop = scrollStartTop - scrollConsumed;
       const pullDistance = dy - scrollConsumed;
       if (pullDistance < 4) return;
+      if (!didMove) dragStartedAt = performance.now();
       event.preventDefault();
       didMove = true;
       dragY = pullDistance;
@@ -157,14 +162,20 @@ export function useSheetGestures(): void {
       if (!panel || event.pointerId !== pointerId) return;
       const current = panel;
       const currentBackdrop = backdrop;
-      const distance = Math.max(0, event.clientY - startY - scrollStartTop);
-      const velocity = distance / Math.max(1, performance.now() - startAt);
+      const distance = dragY;
+      const velocity = distance / Math.max(1, performance.now() - dragStartedAt);
+      if (current.classList.contains("add-menu") && didGestureMove) {
+        suppressMenuClickUntil = performance.now() + 500;
+      }
       panel = null;
       backdrop = null;
       pointerId = null;
       if (!didMove) return;
       if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = 0; }
-      const shouldDismiss = distance > current.clientHeight * 0.25 || (distance > 35 && velocity > 0.65);
+      const isQuickActions = current.classList.contains("add-menu");
+      const shouldDismiss = isQuickActions
+        ? distance > current.clientHeight * 0.32 || (distance > 80 && velocity > 1.05)
+        : distance > current.clientHeight * 0.25 || (distance > 35 && velocity > 0.65);
       if (!shouldDismiss) { reset(current, currentBackdrop); return; }
       const dismiss = () => {
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -175,22 +186,20 @@ export function useSheetGestures(): void {
           currentBackdrop.style.transition = `background-color ${closeDuration}ms ease`;
           currentBackdrop.style.backgroundColor = "rgba(0, 0, 0, 0)";
         }
-        window.setTimeout(() => {
-          if (current.classList.contains("add-menu")) {
-            currentBackdrop?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-          } else {
+        if (current.classList.contains("add-menu")) {
+          current.classList.add("is-drag-closing");
+          currentBackdrop?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        } else {
+          window.setTimeout(() => {
             const closeButton = current.querySelector<HTMLElement>(".sheet-close-btn, .sheet-header > button:first-child");
             if (closeButton) {
+              // A deliberate swipe is the user's confirmation to dismiss this sheet.
               approvedClose = true;
               closeButton.click();
             }
-          }
-        }, closeDuration);
+          }, closeDuration);
+        }
       };
-      if (hasUnsavedInput(current)) {
-        void confirmDiscardChanges().then((discard) => discard ? dismiss() : reset(current, currentBackdrop));
-        return;
-      }
       dismiss();
     };
 
@@ -206,6 +215,12 @@ export function useSheetGestures(): void {
 
     const guardClose = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
+      if (performance.now() < suppressMenuClickUntil && target.closest(".add-menu")) {
+        suppressMenuClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       const parentBackdrop = target.closest<HTMLElement>(".sheet-backdrop, .add-menu-overlay");
       if (!parentBackdrop) return;
       if (approvedClose) {

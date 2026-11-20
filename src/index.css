@@ -1866,6 +1866,7 @@ button {
 
 .add-menu-overlay.is-closing { animation: quick-actions-backdrop-exit 200ms ease-in forwards; }
 .add-menu.is-closing { animation: add-menu-exit 200ms ease-in forwards; }
+.add-menu.is-drag-closing { animation: none !important; }
 
 @keyframes add-menu-enter {
   from { opacity: 0; transform: translateY(8px) scale(0.985); }

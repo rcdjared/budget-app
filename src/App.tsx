@@ -3433,7 +3433,7 @@ function AddTransactionSheet({
           {amountKeyboardVisible && receiptStep === "details" && (
             <div className="calculator-popup" role="group" aria-label="Amount calculator">
               <div className="calculator-popup-heading">
-                <span className="calculator-expression" aria-live="polite">{expression || "Calculator"}</span>
+                <span className="calculator-expression" aria-live="polite">{expression}</span>
                 <button
                   type="button"
                   className="calculator-hide-button"
