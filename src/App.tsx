@@ -158,7 +158,11 @@ function App() {
       pointerToBubble: buttonRect.left + buttonRect.width / 2 - event.clientX,
       didDrag: false,
     };
-    try { activeButton.setPointerCapture(event.pointerId); } catch { /* Pointer capture may be unavailable in older browsers. */ }
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      try { activeButton.setPointerCapture(event.pointerId); } catch { /* Pointer capture may be unavailable in older browsers. */ }
+    }
   };
 
   const handleNavPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
