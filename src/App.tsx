@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import {
@@ -81,15 +82,19 @@ const tabItems: { id: Tab | "add"; label: string; icon: typeof Home }[] = [
   { id: "add", label: "Add", icon: Plus },
 ];
 
-const TAB_ORDER: Tab[] = ["home", "wallet", "plan", "history"];
 const EXPENSE_CATEGORY_ORDER = new Map(EXPENSE_CATEGORIES.map((category, index) => [category.name.toLowerCase(), index]));
+const NAV_DROP_ORDER = ["home", "wallet", "plan", "history", "add"] as const;
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("home");
-  const [slideDirection, setSlideDirection] = useState<"forward" | "backward">("forward");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [navCollapsed, setNavCollapsed] = useCollapsingNav(scrollRef, tab);
+  const [navEntering, setNavEntering] = useState(true);
+  const [navDragging, setNavDragging] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  const navDragRef = useRef<{ pointerId: number; startX: number; startY: number; pointerToBubble: number; didDrag: boolean } | null>(null);
+  const suppressNavClickRef = useRef(false);
   const [addOpen, setAddOpen] = useState(false);
   const [receiptFlowOpen, setReceiptFlowOpen] = useState(false);
   const [editingTransferId, setEditingTransferId] = useState<string | null>(null);
@@ -135,11 +140,89 @@ function App() {
     if (addMenuOpen) closeAddMenu();
     setNavCollapsed(false);
     if (nextTab === tab) return;
-    const currentIndex = TAB_ORDER.indexOf(tab);
-    const nextIndex = TAB_ORDER.indexOf(nextTab);
-    setSlideDirection(nextIndex >= currentIndex ? "forward" : "backward");
     setTab(nextTab);
     scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
+  };
+
+  const handleNavPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const activeButton = target.closest<HTMLButtonElement>(".nav-item.active");
+    if (!activeButton) return;
+    const buttonRect = activeButton.getBoundingClientRect();
+    navDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerToBubble: buttonRect.left + buttonRect.width / 2 - event.clientX,
+      didDrag: false,
+    };
+    try { activeButton.setPointerCapture(event.pointerId); } catch { /* Pointer capture may be unavailable in older browsers. */ }
+  };
+
+  const handleNavPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = navDragRef.current;
+    const nav = navRef.current;
+    if (!drag || !nav || drag.pointerId !== event.pointerId) return;
+    const delta = event.clientX - drag.startX;
+    const verticalDelta = event.clientY - drag.startY;
+    if (!drag.didDrag && (Math.abs(delta) < 6 || Math.abs(delta) < Math.abs(verticalDelta) * 1.15)) return;
+    if (!drag.didDrag) {
+      drag.didDrag = true;
+      setNavDragging(true);
+      if (navCollapsed) setNavCollapsed(false);
+    }
+    event.preventDefault();
+    const navRect = nav.getBoundingClientRect();
+    const bubbleCenter = event.clientX + drag.pointerToBubble;
+    nav.style.setProperty("--active-offset", `${bubbleCenter - (navRect.left + navRect.width / 2)}px`);
+  };
+
+  const handleNavPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = navDragRef.current;
+    const nav = navRef.current;
+    if (!drag || !nav || drag.pointerId !== event.pointerId) return;
+    navDragRef.current = null;
+    if (!drag.didDrag) {
+      if (Math.abs(event.clientX - drag.startX) > 8 || Math.abs(event.clientY - drag.startY) > 8) {
+        suppressNavClickRef.current = true;
+        window.setTimeout(() => { suppressNavClickRef.current = false; }, 500);
+      }
+      return;
+    }
+    event.preventDefault();
+    suppressNavClickRef.current = true;
+    setNavDragging(false);
+    setNavCollapsed(false);
+
+    const navRect = nav.getBoundingClientRect();
+    const bubbleCenter = event.clientX + drag.pointerToBubble;
+    const relativePosition = Math.max(0, Math.min(1, (bubbleCenter - navRect.left) / navRect.width));
+    const targetIndex = Math.max(0, Math.min(NAV_DROP_ORDER.length - 1, Math.round(relativePosition * NAV_DROP_ORDER.length - 0.5)));
+    const target = NAV_DROP_ORDER[targetIndex];
+    const targetOffset = navRect.width * ((targetIndex + 0.5) / NAV_DROP_ORDER.length - 0.5);
+    nav.style.setProperty("--active-offset", `${targetOffset}px`);
+
+    if (target === "add") setAddMenuOpen(true);
+    else navigateToTab(target);
+    requestAnimationFrame(() => navRef.current?.style.removeProperty("--active-offset"));
+    window.setTimeout(() => { suppressNavClickRef.current = false; }, 500);
+  };
+
+  const handleNavPointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = navDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    navDragRef.current = null;
+    navRef.current?.style.removeProperty("--active-offset");
+    setNavDragging(false);
+  };
+
+  const handleNavClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
+    if (!suppressNavClickRef.current) return;
+    suppressNavClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
   };
 
   useEffect(() => {
@@ -166,6 +249,11 @@ function App() {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [addMenuOpen]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setNavEntering(false), 520);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const switchProfile = async (nextProfileId: string) => {
     await db.transaction("rw", db.profiles, async () => {
@@ -308,7 +396,7 @@ function App() {
       )}
 
       <div className="page-scroll" ref={scrollRef}>
-        <div key={tab} className={`tab-page-slide slide-${slideDirection}`}>
+        <div key={tab} className="tab-page-slide">
           {tab === "home" && (
             <HomePage
               profileId={profileId}
@@ -332,7 +420,17 @@ function App() {
       </div>
 
       {/* Primary 5-Tab Navigation Bar */}
-      <nav className={`bottom-nav ${navCollapsed ? "collapsed" : ""}`} aria-label="Primary navigation">
+      <nav
+        ref={navRef}
+        className={`bottom-nav ${navCollapsed ? "collapsed" : ""} ${navEntering ? "nav-entering" : ""} ${navDragging ? "dragging" : ""}`}
+        data-active-tab={addMenuOpen ? "add" : tab}
+        aria-label="Primary navigation"
+        onPointerDown={handleNavPointerDown}
+        onPointerMove={handleNavPointerMove}
+        onPointerUp={handleNavPointerUp}
+        onPointerCancel={handleNavPointerCancel}
+        onClickCapture={handleNavClickCapture}
+      >
         {tabItems.map((item) => (
           <TabButton
             key={item.id}
