@@ -275,31 +275,43 @@ export interface AccountTemplate {
   type: "bank" | "ewallet" | "cash";
   color: string;
   icon: string;
+  logo: string;
 }
 
 export const ACCOUNT_TEMPLATES: AccountTemplate[] = [
   // Major banks
-  { name: "BDO", type: "bank", color: "#003B73", icon: "landmark" },
-  { name: "BPI", type: "bank", color: "#C41E3A", icon: "landmark" },
-  { name: "Metrobank", type: "bank", color: "#003366", icon: "landmark" },
-  { name: "UnionBank", type: "bank", color: "#F7941D", icon: "landmark" },
-  { name: "Landbank", type: "bank", color: "#006633", icon: "landmark" },
-  { name: "PNB", type: "bank", color: "#001489", icon: "landmark" },
-  { name: "RCBC", type: "bank", color: "#00529B", icon: "landmark" },
-  { name: "Security Bank", type: "bank", color: "#00A651", icon: "landmark" },
+  { name: "BDO", type: "bank", color: "#003B73", icon: "landmark", logo: "bdo.png" },
+  { name: "BPI", type: "bank", color: "#C41E3A", icon: "landmark", logo: "bpi.png" },
+  { name: "Metrobank", type: "bank", color: "#003366", icon: "landmark", logo: "metrobank.png" },
+  { name: "UnionBank", type: "bank", color: "#F7941D", icon: "landmark", logo: "unionbank.png" },
+  { name: "LandBank", type: "bank", color: "#006633", icon: "landmark", logo: "landbank.png" },
+  { name: "RCBC", type: "bank", color: "#00529B", icon: "landmark", logo: "rcbc.png" },
+  { name: "Security Bank", type: "bank", color: "#00A651", icon: "landmark", logo: "securitybank.png" },
+  { name: "PNB", type: "bank", color: "#001489", icon: "landmark", logo: "pnb.png" },
+  { name: "EastWest Bank", type: "bank", color: "#C41230", icon: "landmark", logo: "eastwest.png" },
+  { name: "China Bank", type: "bank", color: "#00529B", icon: "landmark", logo: "chinabank.png" },
+  { name: "China Bank Savings", type: "bank", color: "#0072BC", icon: "landmark", logo: "chinabanksavings.png" },
+  { name: "Bank of Commerce", type: "bank", color: "#173A70", icon: "landmark", logo: "bankofcommerce.png" },
+  { name: "DBP", type: "bank", color: "#006B3F", icon: "landmark", logo: "dbp.png" },
+  { name: "PSBank", type: "bank", color: "#BE1E2D", icon: "landmark", logo: "psbank.png" },
+  { name: "AUB", type: "bank", color: "#0054A6", icon: "landmark", logo: "aub.png" },
+  { name: "Maybank", type: "bank", color: "#F7C600", icon: "landmark", logo: "maybank.png" },
   // Digital banks
-  { name: "GoTyme", type: "bank", color: "#FF5733", icon: "smartphone" },
-  { name: "SeaBank", type: "bank", color: "#00BFA5", icon: "smartphone" },
-  { name: "Tonik", type: "bank", color: "#6C63FF", icon: "smartphone" },
-  { name: "CIMB", type: "bank", color: "#ED1C24", icon: "smartphone" },
-  { name: "Maya Bank", type: "bank", color: "#00C853", icon: "smartphone" },
-  // E-wallets
-  { name: "GCash", type: "ewallet", color: "#007DFE", icon: "wallet" },
-  { name: "Maya", type: "ewallet", color: "#00C853", icon: "wallet" },
-  { name: "ShopeePay", type: "ewallet", color: "#EE4D2D", icon: "wallet" },
-  { name: "GrabPay", type: "ewallet", color: "#00B14F", icon: "wallet" },
+  { name: "GoTyme Bank", type: "bank", color: "#FF5733", icon: "smartphone", logo: "gotyme.png" },
+  { name: "SeaBank", type: "bank", color: "#00BFA5", icon: "smartphone", logo: "seabank.png" },
+  { name: "MariBank", type: "bank", color: "#F15A24", icon: "smartphone", logo: "maribank.png" },
+  { name: "Tonik", type: "bank", color: "#6C63FF", icon: "smartphone", logo: "tonik.png" },
+  { name: "CIMB", type: "bank", color: "#ED1C24", icon: "smartphone", logo: "cimb.png" },
+  { name: "Maya Bank", type: "bank", color: "#00C853", icon: "smartphone", logo: "mayabank.png" },
+  // E-wallets and payment platforms
+  { name: "GCash", type: "ewallet", color: "#007DFE", icon: "wallet", logo: "gcash.png" },
+  { name: "Maya", type: "ewallet", color: "#00C853", icon: "wallet", logo: "maya.png" },
+  { name: "PayPal", type: "ewallet", color: "#003087", icon: "wallet", logo: "paypal.png" },
+  { name: "ShopeePay", type: "ewallet", color: "#EE4D2D", icon: "wallet", logo: "shopeepay.png" },
+  { name: "GrabPay", type: "ewallet", color: "#00B14F", icon: "wallet", logo: "grabpay.png" },
+  { name: "Coins.ph", type: "ewallet", color: "#2B55CC", icon: "wallet", logo: "coinsph.png" },
   // Cash
-  { name: "Cash / Wallet", type: "cash", color: "#10B981", icon: "banknote" },
+  { name: "Cash / Wallet", type: "cash", color: "#10B981", icon: "banknote", logo: "" },
 ];
 
 export function getAccountTemplates(): AccountTemplate[] {

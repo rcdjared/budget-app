@@ -19,7 +19,7 @@ Open the URL Vite prints (usually `http://localhost:5173`).
    - `http://localhost:5173/**`
    - `https://YOUR-PRODUCTION-DOMAIN/**`
    - Add your Vercel preview URL pattern if you will test sign-in on previews.
-   Supabase must allow the exact origin sent by the app. By default this is the current browser origin, so a link requested from `localhost` returns to `localhost`. For a fixed production callback, set `VITE_AUTH_REDIRECT_URL` to the deployed app origin in `.env.local` and Vercel's environment variables, then rebuild/redeploy. Add that URL to Supabase's redirect allowlist. Keep localhost in the allowlist for local development.
+   Supabase must allow the exact origin sent by the app. By default this is the current browser origin, so a link requested from `localhost` returns to `localhost`. For a fixed production callback, set `VITE_AUTH_REDIRECT_URL` to the deployed app origin in `.env.local` and Vercel's environment variables, then rebuild/redeploy. Add that URL to Supabase's redirect allowlist. Keep localhost in the allowlist for local development. If a hosted sign-in link still goes to `localhost:3000`, set Supabase's **Site URL** to the deployed app origin and check both the **Confirm signup** and **Magic Link** templates: use `{{ .ConfirmationURL }}` for the link, or `{{ .RedirectTo }}` when constructing a custom confirmation URL. Avoid using `{{ .SiteURL }}` as the callback destination.
 4. In **Project Settings → API**, copy the Project URL and the publishable key (`sb_publishable_...`; the legacy `anon` key also works).
 5. Copy `.env.example` to `.env.local` and fill in:
 

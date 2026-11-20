@@ -590,6 +590,57 @@ button {
   border-radius: 12px;
 }
 
+.institution-logo {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  vertical-align: middle;
+}
+
+.institution-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+}
+
+.institution-logo.fallback {
+  flex-direction: column;
+  gap: 0;
+  border-color: color-mix(in oklch, currentColor 12%, var(--border));
+}
+
+.institution-logo.fallback b {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 9px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+}
+
+.account-template-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: var(--card);
+}
+
+.account-template-preview > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.account-template-preview b { color: var(--foreground); font-size: 12px; }
+.account-template-preview small { color: var(--muted-foreground); font-size: 11px; }
+
 .account-card p {
   color: var(--muted-foreground);
   font-size: 11px;
@@ -1982,6 +2033,8 @@ button {
   -webkit-user-select: none;
 }
 
+.add-sheet { transform: translate3d(0, 0, 0); backface-visibility: hidden; }
+
 .add-sheet,
 .account-sheet {
   width: min(100%, 520px);
@@ -2527,6 +2580,81 @@ button {
   background: var(--background);
 }
 
+.receipt-entry-panel {
+  flex: 1;
+  min-height: min(440px, 62dvh);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px 24px calc(30px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+
+.receipt-entry-mark {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  border: 1px solid color-mix(in oklch, var(--primary) 25%, var(--border));
+  border-radius: 18px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+}
+
+.receipt-entry-panel h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+.receipt-entry-panel p { max-width: 300px; margin: 0 0 8px; color: var(--muted-foreground); font-size: 13px; line-height: 1.5; }
+.receipt-entry-panel > button {
+  width: min(100%, 320px);
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 13px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.receipt-primary-action { color: white; background: var(--primary); box-shadow: 0 7px 18px color-mix(in oklch, var(--primary) 22%, transparent); }
+.receipt-secondary-action { border: 1px solid var(--border); color: var(--foreground); background: var(--card); }
+.receipt-processing-panel { gap: 10px; }
+.receipt-scan-loader { width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: pulse-spin .75s linear infinite; }
+
+.receipt-review-photo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.receipt-review-photo > span {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.receipt-review-photo button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--foreground);
+  background: var(--card);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .receipt-picker-heading {
   display: grid;
   gap: 2px;
@@ -2842,28 +2970,86 @@ button {
 }
 
 .settings-brand-banner {
-  flex-direction: row;
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 12px 18px;
-  margin: 0;
-  text-align: left;
-  background: linear-gradient(110deg, color-mix(in oklch, var(--primary) 12%, var(--card)), var(--card) 65%);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 18px 14px 14px;
+  margin: 0 0 5px;
+  text-align: center;
+  background: linear-gradient(180deg, color-mix(in oklch, var(--primary) 10%, var(--card)), var(--card));
 }
 
 .settings-brand-img {
-  width: 72px;
-  max-height: 42px;
+  width: 128px;
+  max-height: none;
   object-fit: contain;
-  object-position: left center;
-  margin: 0;
-  border-radius: 8px;
+  object-position: center;
+  margin: 0 0 6px;
+  border-radius: 14px;
 }
 
 .settings-brand-tagline {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 550;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.appearance-row { width: 100%; }
+.appearance-value { display: flex; flex: none; align-items: center; gap: 4px; }
+.appearance-current-value { color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
+
+.appearance-picker-backdrop { z-index: 65; }
+.appearance-picker-sheet {
+  width: min(100%, 520px);
+  margin: 0 auto;
+  padding: 0 0 max(16px, env(safe-area-inset-bottom));
+  border: 1px solid color-mix(in oklch, var(--border) 75%, white);
+  border-radius: 26px 26px 0 0;
+  background: var(--card);
+  box-shadow: 0 -18px 55px rgb(0 0 0 / 26%);
+  animation: appearance-sheet-in 220ms cubic-bezier(.22,1,.36,1) both;
+}
+
+.appearance-options { display: grid; gap: 8px; padding: 14px 16px 8px; }
+.appearance-option {
+  width: 100%;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  padding: 10px 12px;
+  color: var(--foreground);
+  background: var(--background);
+  text-align: left;
+}
+
+.appearance-option.selected {
+  border-color: color-mix(in oklch, var(--primary) 60%, var(--border));
+  background: color-mix(in oklch, var(--primary) 8%, var(--card));
+}
+
+.appearance-option-icon {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 13%, var(--card));
+}
+
+.appearance-option-copy { flex: 1; display: grid; gap: 3px; }
+.appearance-option-copy b { font-size: 13px; }
+.appearance-option-copy small { color: var(--muted-foreground); font-size: 11px; }
+.appearance-option-check { flex: none; color: var(--primary); }
+
+@keyframes appearance-sheet-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 /* ==========================================================================
@@ -3086,6 +3272,83 @@ button {
   flex-direction: column;
   gap: 12px;
 }
+
+.cloud-account-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, var(--border));
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in oklch, var(--primary) 6%, var(--card));
+}
+
+.cloud-account-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 14%, var(--card));
+}
+
+.cloud-account-copy { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.cloud-account-copy b { font-size: 12px; }
+.cloud-account-copy small { overflow: hidden; color: var(--muted-foreground); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cloud-account-check { flex: none; color: var(--primary); }
+
+.cloud-sync-history {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.cloud-sync-history span { display: flex; align-items: center; gap: 6px; }
+.cloud-sync-history b { color: var(--foreground); font-size: 11px; font-weight: 650; text-align: right; }
+
+.cloud-sync-button {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  color: white;
+  background: var(--primary);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.cloud-sync-button:disabled,
+.cloud-signout-button:disabled { opacity: .55; }
+.sync-icon-active { animation: pulse-spin .85s linear infinite; }
+
+.cloud-signout-button {
+  min-height: 38px;
+  border-radius: 10px;
+  color: var(--muted-foreground);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cloud-auth-checking {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.cloud-auth-spinner { width: 17px; height: 17px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: pulse-spin .8s linear infinite; }
+.cloud-redirect-hint { margin: 0; color: var(--muted-foreground); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.cloud-redirect-hint code { color: var(--foreground); font-size: 10px; }
 
 .cloud-actions {
   display: flex;

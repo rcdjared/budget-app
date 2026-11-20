@@ -32,6 +32,10 @@ import {
   Download,
   Upload,
   FileSpreadsheet,
+  CheckCircle2,
+  Clock3,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { db } from "@/db/schema";
 import { initializeAppData, getAccountTemplates, seedDefaultCategories } from "@/db/seed";
@@ -57,6 +61,7 @@ import {
 } from "@/domain/calculator";
 import type { Account, AccountType, Category, Transaction, TransactionType } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
+import { AccountLogo } from "@/components/AccountLogo";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
 import { FinsightsPage } from "@/components/FinsightsPage";
 
@@ -79,12 +84,15 @@ function App() {
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward">("forward");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [receiptFlowOpen, setReceiptFlowOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [formInitialType, setFormInitialType] = useState<TransactionType>("expense");
   const [accountOpen, setAccountOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [authCallbackNotice, setAuthCallbackNotice] = useState("");
+  const handledAuthCallback = useRef(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -118,6 +126,9 @@ function App() {
   useEffect(() => {
     let startY = 0;
     let startAt = 0;
+    let dragY = 0;
+    let didMove = false;
+    let animationFrame = 0;
     let pointerId: number | null = null;
     let panel: HTMLElement | null = null;
     const down = (event: PointerEvent) => {
@@ -129,13 +140,24 @@ function App() {
       panel = candidate;
       pointerId = event.pointerId;
       startY = event.clientY;
+      dragY = 0;
+      didMove = false;
       startAt = performance.now();
     };
     const move = (event: PointerEvent) => {
       if (!panel || event.pointerId !== pointerId) return;
-      if (event.clientY < startY) return;
-      panel.style.transition = "none";
-      panel.style.transform = `translateY(${event.clientY - startY}px)`;
+      const distance = event.clientY - startY;
+      if (distance < 0) return;
+      if (distance < 4) return;
+      didMove = true;
+      dragY = distance;
+      if (animationFrame) return;
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = 0;
+        if (!panel) return;
+        panel.style.transition = "none";
+        panel.style.transform = `translate3d(0, ${dragY}px, 0)`;
+      });
     };
     const up = (event: PointerEvent) => {
       if (!panel || event.pointerId !== pointerId) return;
@@ -144,16 +166,18 @@ function App() {
       const velocity = distance / Math.max(1, performance.now() - startAt);
       panel = null;
       pointerId = null;
-      current.style.transition = "transform 260ms cubic-bezier(.2,.8,.2,1)";
+      if (!didMove) return;
+      if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = 0; }
+      current.style.transition = "transform 220ms cubic-bezier(.22,1,.36,1)";
       if (distance > 120 || (distance > 35 && velocity > 0.65)) {
-        current.style.transform = "translateY(100%)";
+        current.style.transform = "translate3d(0, 100%, 0)";
         window.setTimeout(() => {
           if (current.classList.contains("add-menu")) current.parentElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
           else current.querySelector<HTMLElement>(".sheet-close-btn, .sheet-header > button")?.click();
           current.style.removeProperty("transform"); current.style.removeProperty("transition");
         }, 230);
       } else {
-        current.style.transform = "translateY(0)";
+        current.style.transform = "translate3d(0, 0, 0)";
         window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 270);
       }
     };
@@ -162,8 +186,10 @@ function App() {
       const current = panel;
       panel = null;
       pointerId = null;
-      current.style.transition = "transform 220ms cubic-bezier(.2,.8,.2,1)";
-      current.style.transform = "translateY(0)";
+      if (!didMove) return;
+      if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = 0; }
+      current.style.transition = "transform 220ms cubic-bezier(.22,1,.36,1)";
+      current.style.transform = "translate3d(0, 0, 0)";
       window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 230);
     };
     const backdropClick = (event: MouseEvent) => {
@@ -217,6 +243,27 @@ function App() {
         setProfileId(id);
       })
       .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || handledAuthCallback.current) return;
+    const callbackUrl = new URL(window.location.href);
+    const hasAuthError = callbackUrl.searchParams.has("error") || callbackUrl.searchParams.has("error_description");
+    const hasAuthCode = callbackUrl.searchParams.has("code") || /access_token=|refresh_token=|type=(signup|magiclink)/i.test(callbackUrl.hash);
+    if (!hasAuthError && !hasAuthCode) return;
+    handledAuthCallback.current = true;
+    setSettingsOpen(true);
+    if (hasAuthError) {
+      setAuthCallbackNotice(callbackUrl.searchParams.get("error_description") || "The sign-in link could not be verified. Request a new link from Kupit.");
+      window.history.replaceState({}, document.title, callbackUrl.pathname);
+      return;
+    }
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error) setAuthCallbackNotice(`We could not complete sign-in: ${error.message}`);
+      else if (data.session) setAuthCallbackNotice("Sign-up complete. Your account is connected. You can return to Kupit and sync this device when ready.");
+      else setAuthCallbackNotice("The verification link was opened. If you are not signed in, request a new link from Kupit.");
+      window.history.replaceState({}, document.title, callbackUrl.pathname);
+    });
   }, []);
 
   useEffect(() => {
@@ -295,6 +342,13 @@ function App() {
               setChatOpen(true);
               return;
             }
+            if (action === "scan") {
+              setFormInitialType("expense");
+              setReceiptFlowOpen(true);
+              setAddOpen(true);
+              return;
+            }
+            setReceiptFlowOpen(false);
             setFormInitialType(action === "transfer" ? "transfer" : action === "income" ? "income" : "expense");
             setAddOpen(true);
           }}
@@ -304,9 +358,10 @@ function App() {
       {/* Sheets and Overlays */}
       <AddTransactionSheet
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        onClose={() => { setAddOpen(false); setReceiptFlowOpen(false); }}
         profileId={profileId}
         initialType={formInitialType}
+        receiptFlow={receiptFlowOpen}
         onOpenCategoryManager={() => setCategoryManagerOpen(true)}
       />
 
@@ -340,6 +395,7 @@ function App() {
           setSettingsOpen(false);
           navigateToTab("plan");
         }}
+        authCallbackNotice={authCallbackNotice}
       />
 
       <CategoryManagerSheet
@@ -978,19 +1034,11 @@ function AccountsPage({
             <div className="accounts-page-list">
               {items.map((account) => (
                 <article className="account-row" key={account.id}>
-                  <span
-                    className="account-icon"
-                    style={{
-                      background: `${account.color}18`,
-                      color: account.color,
-                    }}
-                  >
-                    {account.type === "credit_card" ? (
-                      <WalletCards size={20} />
-                    ) : (
-                      <Banknote size={20} />
-                    )}
-                  </span>
+                  {account.type === "credit_card" ? (
+                    <span className="account-icon"><WalletCards size={20} /></span>
+                  ) : (
+                    <AccountLogo name={account.name} color={account.color} type={account.type} size={42} />
+                  )}
                   <div>
                     <p>{account.name}</p>
                     <small>{account.type.replace("_", " ")}</small>
@@ -2103,6 +2151,7 @@ function SettingsSheet({
   onThemeChange,
   onOpenCategories,
   onOpenPlan,
+  authCallbackNotice,
 }: {
   open: boolean;
   onClose: () => void;
@@ -2110,27 +2159,49 @@ function SettingsSheet({
   onThemeChange: (theme: ThemePreference) => void;
   onOpenCategories: () => void;
   onOpenPlan: () => void;
+  authCallbackNotice: string;
 }) {
   const [confirmReset, setConfirmReset] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [session, setSession] = useState<Session | null>(null);
+  const [authChecking, setAuthChecking] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudMessage, setCloudMessage] = useState("");
   const [cloudError, setCloudError] = useState("");
+  const configuredAuthRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim();
+  const configuredRedirectUrl = configuredAuthRedirect ? new URL(configuredAuthRedirect, window.location.origin) : null;
+  const isCurrentHostLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const isConfiguredHostLocal = configuredRedirectUrl ? ["localhost", "127.0.0.1"].includes(configuredRedirectUrl.hostname) : false;
+  const authRedirectUrl = configuredRedirectUrl && (isCurrentHostLocal || !isConfiguredHostLocal)
+    ? configuredRedirectUrl.toString().replace(/\/$/, "")
+    : window.location.origin;
 
   const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [], []);
 
   useEffect(() => {
+    if (authCallbackNotice) setCloudMessage(authCallbackNotice);
+  }, [authCallbackNotice]);
+
+  useEffect(() => {
     if (!supabase || !open) return;
     let active = true;
+    setAuthChecking(true);
     supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
       if (error) setCloudError(error.message);
       setSession(data.session);
+      setAuthChecking(false);
+    }).catch((error) => {
+      if (!active) return;
+      setCloudError(error instanceof Error ? error.message : "Could not check sign-in status.");
+      setAuthChecking(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, nextSession) => {
         setSession(nextSession);
+        setAuthChecking(false);
         setCloudError("");
       }
     );
@@ -2140,19 +2211,31 @@ function SettingsSheet({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!session) {
+      setLastSyncedAt(null);
+      return;
+    }
+    let active = true;
+    db.settings.get(`cloud-last-sync:${session.user.id}`).then((setting) => {
+      if (!active || !setting) return;
+      try { setLastSyncedAt(JSON.parse(setting.value).iso || null); } catch { setLastSyncedAt(null); }
+    });
+    return () => { active = false; };
+  }, [session?.user.id]);
+
   const sendMagicLink = async () => {
     if (!supabase) return;
     setCloudBusy(true);
     setCloudError("");
     setCloudMessage("");
     try {
-      const redirectTo = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim() || window.location.origin;
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: redirectTo },
+        options: { emailRedirectTo: authRedirectUrl },
       });
       if (error) setCloudError(error.message);
-      else setCloudMessage(`Check your email for the secure sign-in link. It will return to ${redirectTo}.`);
+      else setCloudMessage(`Sign-in link sent to ${email.trim()}. Open it in this browser to finish connecting your account.`);
     } catch (error) {
       setCloudError(error instanceof Error ? error.message : "Could not send the sign-in link.");
     } finally {
@@ -2173,6 +2256,11 @@ function SettingsSheet({
     setCloudMessage("");
     try {
       await syncLocalData(supabase, session.user.id);
+      const lastSyncSetting = await db.settings.get(`cloud-last-sync:${session.user.id}`);
+      if (lastSyncSetting) {
+        try { setLastSyncedAt(JSON.parse(lastSyncSetting.value).iso || new Date().toISOString()); }
+        catch { setLastSyncedAt(new Date().toISOString()); }
+      }
       setCloudMessage("Sync complete. Your local data remains available offline.");
     } catch (error) {
       setCloudError(error instanceof Error ? error.message : "Cloud sync failed.");
@@ -2276,28 +2364,21 @@ function SettingsSheet({
 
               <div className="ios-divider" />
 
-              <div className="ios-row-btn ios-row-non-clickable">
+              <button className="ios-row-btn appearance-row" onClick={() => setAppearanceOpen(true)}>
                 <div className="ios-row-left">
                   <span className="ios-squircle squircle-blue">
                     {themePreference === "dark" || themePreference === "amoled" ? <Moon size={18} /> : <Sun size={18} />}
                   </span>
                   <div className="ios-row-text">
                     <span className="ios-row-label">Appearance</span>
+                    <small className="ios-row-sub">Choose how Kupit looks</small>
                   </div>
                 </div>
-                <div className="ios-segmented-control" role="radiogroup" aria-label="Appearance">
-                  {(["system", "light", "dark", "amoled"] as ThemePreference[]).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      className={`ios-segmented-btn ${themePreference === mode ? "active" : ""}`}
-                      onClick={() => onThemeChange(mode)}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                <span className="appearance-value" aria-hidden="true">
+                  <span className="appearance-current-value">{themePreference === "amoled" ? "AMOLED" : themePreference[0].toUpperCase() + themePreference.slice(1)}</span>
+                  <ChevronRight size={16} className="ios-chevron" />
+                </span>
+              </button>
             </div>
           </div>
 
@@ -2313,37 +2394,36 @@ function SettingsSheet({
                 <span
                   className={session ? "cloud-status connected" : "cloud-status"}
                 >
-                  {session ? "Connected" : "Local only"}
+                  {authChecking ? "Checking" : session ? (cloudBusy ? "Syncing" : "Connected") : "Not connected"}
                 </span>
               </div>
               {!cloudSyncAvailable ? (
                 <p className="cloud-help">
                   Add your Supabase URL and key to <code>.env</code> to activate multi-device cloud sync.
                 </p>
+              ) : authChecking ? (
+                <div className="cloud-auth-checking"><span className="cloud-auth-spinner" /> Checking your secure account session...</div>
               ) : session ? (
                 <div className="cloud-actions">
-                  <p className="cloud-help">
-                    Signed in as {session.user.email}.
-                  </p>
-                  <button
-                    className="save-button"
-                    onClick={syncCloud}
-                    disabled={cloudBusy}
-                  >
-                    {cloudBusy ? "Syncing…" : "Sync this device now"}
+                  <div className="cloud-account-card">
+                    <span className="cloud-account-icon"><ShieldCheck size={19} /></span>
+                    <span className="cloud-account-copy"><b>Private account connected</b><small>{session.user.email}</small></span>
+                    <CheckCircle2 size={19} className="cloud-account-check" />
+                  </div>
+                  <div className="cloud-sync-history">
+                    <span><Clock3 size={15} /> Last device sync</span>
+                    <b>{lastSyncedAt ? new Date(lastSyncedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not synced yet"}</b>
+                  </div>
+                  <button className="cloud-sync-button" onClick={syncCloud} disabled={cloudBusy}>
+                    <RefreshCw size={16} className={cloudBusy ? "sync-icon-active" : ""} />
+                    {cloudBusy ? "Syncing your data..." : "Sync this device"}
                   </button>
-                  <button
-                    className="text-button"
-                    onClick={signOut}
-                    disabled={cloudBusy}
-                  >
-                    Sign out
-                  </button>
+                  <button className="cloud-signout-button" onClick={signOut} disabled={cloudBusy}>Sign out</button>
                 </div>
               ) : (
                 <div className="cloud-actions">
                   <p className="cloud-help">
-                    Sign in with an email link to sync your budget data across all your devices.
+                    Sign in securely with an email link. Your local budget stays available offline.
                   </p>
                   <label className="cloud-email">
                     Email address
@@ -2356,12 +2436,13 @@ function SettingsSheet({
                     />
                   </label>
                   <button
-                    className="save-button"
+                    className="cloud-sync-button"
                     onClick={sendMagicLink}
                     disabled={cloudBusy || !email.includes("@")}
                   >
                     {cloudBusy ? "Sending…" : "Email me a sign-in link"}
                   </button>
+                  <p className="cloud-redirect-hint">Return address: <code>{authRedirectUrl}</code>. If your email opens a different address, check Supabase URL Configuration and its confirmation email template.</p>
                 </div>
               )}
               {cloudMessage && <p className="cloud-message">{cloudMessage}</p>}
@@ -2448,6 +2529,32 @@ function SettingsSheet({
             </div>
           </div>
         </div>
+        {appearanceOpen && (
+          <div className="sheet-backdrop appearance-picker-backdrop" role="dialog" aria-modal="true" aria-label="Choose appearance" onClick={() => setAppearanceOpen(false)}>
+            <section className="appearance-picker-sheet" onClick={(event) => event.stopPropagation()}>
+              <div className="sheet-grabber" />
+              <header className="sheet-header">
+                <button type="button" className="sheet-close-btn" onClick={() => setAppearanceOpen(false)} aria-label="Close appearance picker"><X size={18} /></button>
+                <b>Choose appearance</b>
+                <span />
+              </header>
+              <div className="appearance-options">
+                {([
+                  { mode: "system", label: "System", hint: "Match your device setting", icon: Sun },
+                  { mode: "light", label: "Light", hint: "Bright and clear", icon: Sun },
+                  { mode: "dark", label: "Dark", hint: "Soft contrast for low light", icon: Moon },
+                  { mode: "amoled", label: "AMOLED", hint: "Deep black backgrounds", icon: Moon },
+                ] as { mode: ThemePreference; label: string; hint: string; icon: typeof Sun }[]).map(({ mode, label, hint, icon: Icon }) => (
+                  <button key={mode} className={`appearance-option ${themePreference === mode ? "selected" : ""}`} onClick={() => { onThemeChange(mode); setAppearanceOpen(false); }}>
+                    <span className="appearance-option-icon"><Icon size={18} /></span>
+                    <span className="appearance-option-copy"><b>{label}</b><small>{hint}</small></span>
+                    {themePreference === mode && <CheckCircle2 size={19} className="appearance-option-check" />}
+                  </button>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -2459,12 +2566,14 @@ function AddTransactionSheet({
   profileId,
   initialType,
   onOpenCategoryManager,
+  receiptFlow,
 }: {
   open: boolean;
   onClose: () => void;
   profileId: string;
   initialType: TransactionType;
   onOpenCategoryManager: () => void;
+  receiptFlow: boolean;
 }) {
   const accounts = useLiveQuery(
     () =>
@@ -2489,6 +2598,7 @@ function AddTransactionSheet({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(toDateString(new Date()));
   const [receipt, setReceipt] = useState<File | null>(null);
+  const [receiptStep, setReceiptStep] = useState<"choose" | "details">("details");
   const [receiptScanning, setReceiptScanning] = useState(false);
   const [receiptMessage, setReceiptMessage] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -2503,8 +2613,18 @@ function AddTransactionSheet({
   const [calculatorError, setCalculatorError] = useState("");
 
   useEffect(() => {
-    if (open) setType(initialType);
-  }, [open, initialType]);
+    if (!open) return;
+    setType(initialType);
+    setReceiptStep(receiptFlow ? "choose" : "details");
+    if (receiptFlow) {
+      setReceipt(null);
+      setReceiptMessage("");
+      setReceiptScanning(false);
+      setAmount("");
+      setNote("");
+      setDate(toDateString(new Date()));
+    }
+  }, [open, initialType, receiptFlow]);
 
   useEffect(() => {
     if (!accountId && accounts.length) setAccountId(accounts[0].id);
@@ -2564,6 +2684,7 @@ function AddTransactionSheet({
       const matchedCategory = categories.find((category) => category.type === "expense" && lines.some((line) => line.toLowerCase().includes(category.name.toLowerCase())));
       if (matchedCategory) setCategoryId(matchedCategory.id);
       setType("expense");
+      setReceiptStep("details");
       setReceiptMessage(selectedAmount
         ? "Receipt scanned. Review the merchant, amount, date, and category before saving."
         : "Receipt text was read, but no total was found. Enter the amount and review the other details.");
@@ -2760,23 +2881,57 @@ function AddTransactionSheet({
           <button className="sheet-close-btn" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
-          <div className="type-tabs" role="tablist">
-            {(["expense", "income", "transfer"] as TransactionType[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                className={`type-tab-btn ${type === value ? "active" : ""}`}
-                aria-selected={type === value}
-                onClick={() => setType(value)}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+          {receiptFlow ? <b>{receiptStep === "choose" ? "Scan receipt" : "Review receipt"}</b> : (
+            <div className="type-tabs" role="tablist">
+              {(["expense", "income", "transfer"] as TransactionType[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  className={`type-tab-btn ${type === value ? "active" : ""}`}
+                  aria-selected={type === value}
+                  onClick={() => setType(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="sheet-header-spacer" />
         </header>
 
+        <input
+          ref={receiptFileRef}
+          className="receipt-file-input"
+          type="file"
+          accept="image/*"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void scanReceipt(file);
+            event.currentTarget.value = "";
+          }}
+        />
+
+        {receiptFlow && receiptStep === "choose" ? (
+          <div className="receipt-entry-panel">
+            <div className="receipt-entry-mark"><ScanLine size={24} /></div>
+            <h2>Add a receipt</h2>
+            <p>Take a new photo or choose an existing image. We’ll fill in the transaction details for you to review.</p>
+            <button type="button" className="receipt-primary-action" onClick={() => void requestCameraAccess()}>
+              <Camera size={18} /> Scan receipt
+            </button>
+            <button type="button" className="receipt-secondary-action" onClick={() => receiptFileRef.current?.click()}>
+              <Upload size={18} /> Select from photos
+            </button>
+            {receiptMessage && <small className="receipt-scan-message" role="status">{receiptMessage}</small>}
+          </div>
+        ) : receiptFlow && receiptScanning ? (
+          <div className="receipt-entry-panel receipt-processing-panel" role="status">
+            <div className="receipt-scan-loader" />
+            <h2>Reading your receipt</h2>
+            <p>{receiptMessage || "Preparing receipt scanner..."}</p>
+          </div>
+        ) : <>
         <div className="calculator-display">
           <div className="calculator-expression" aria-live="polite">
             {expression || "Amount"}
@@ -2888,32 +3043,26 @@ function AddTransactionSheet({
             </label>
           </div>
 
-          <div className="receipt-picker">
-            <div className="receipt-picker-heading">
-              <b>Receipt photo</b>
-              <small>{receipt?.name || "Add a photo to fill transaction details"}</small>
-            </div>
-            <div className="receipt-picker-actions">
-              <button type="button" onClick={() => void requestCameraAccess()} disabled={receiptScanning}>
-                <Camera size={16} /> Take photo
+          {receiptFlow ? (
+            <div className="receipt-review-photo">
+              <span><ReceiptText size={16} /> {receipt?.name || "Receipt image attached"}</span>
+              <button type="button" onClick={() => { setReceipt(null); setReceiptStep("choose"); setReceiptMessage(""); setAmount(""); setNote(""); setDate(toDateString(new Date())); }}>
+                Retake photo
               </button>
-              <button type="button" onClick={() => receiptFileRef.current?.click()} disabled={receiptScanning}>
-                <Upload size={16} /> Upload photo
+              <button type="button" onClick={() => receiptFileRef.current?.click()}>
+                Reupload photo
               </button>
-              <input
-                ref={receiptFileRef}
-                className="receipt-file-input"
-                type="file"
-                accept="image/*"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void scanReceipt(file);
-                  event.currentTarget.value = "";
-                }}
-              />
             </div>
-            {receiptMessage && <small className="receipt-scan-message" role="status">{receiptMessage}</small>}
-          </div>
+          ) : (
+            <div className="receipt-picker">
+              <div className="receipt-picker-heading"><b>Receipt photo</b><small>{receipt?.name || "Add a photo to fill transaction details"}</small></div>
+              <div className="receipt-picker-actions">
+                <button type="button" onClick={() => void requestCameraAccess()} disabled={receiptScanning}><Camera size={16} /> Take photo</button>
+                <button type="button" onClick={() => receiptFileRef.current?.click()} disabled={receiptScanning}><Upload size={16} /> Upload photo</button>
+              </div>
+              {receiptMessage && <small className="receipt-scan-message" role="status">{receiptMessage}</small>}
+            </div>
+          )}
         </div>
 
         <div className="keypad calculator-keypad">
@@ -2958,6 +3107,7 @@ function AddTransactionSheet({
         >
           Save transaction
         </button>
+        </>}
 
         {cameraOpen && (
           <div className="camera-capture-overlay" role="dialog" aria-modal="true" aria-label="Capture receipt">
@@ -3005,6 +3155,7 @@ function AccountSheet({
   const [type, setType] = useState<AccountType>("bank");
   const [opening, setOpening] = useState("0");
   const templates = getAccountTemplates();
+  const selectedTemplate = templates.find((item) => item.name === template);
 
   useEffect(() => {
     const match = templates.find((item) => item.name === template);
@@ -3054,6 +3205,12 @@ function AccountSheet({
                 <option key={item.name}>{item.name}</option>
               ))}
             </select>
+            {selectedTemplate && (
+              <div className="account-template-preview">
+                <AccountLogo name={selectedTemplate.name} filename={selectedTemplate.logo} color={selectedTemplate.color} type={selectedTemplate.type} size={42} />
+                <span><b>{selectedTemplate.name}</b><small>{selectedTemplate.type === "ewallet" ? "E-wallet or payment account" : selectedTemplate.type === "cash" ? "Cash account" : "Bank account"}</small></span>
+              </div>
+            )}
           </label>
           <label>
             Type
