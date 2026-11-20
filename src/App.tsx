@@ -5,6 +5,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ArrowLeftRight,
+  Camera,
   ScanLine,
   UserRound,
   BarChart3,
@@ -117,25 +118,32 @@ function App() {
   useEffect(() => {
     let startY = 0;
     let startAt = 0;
+    let pointerId: number | null = null;
     let panel: HTMLElement | null = null;
     const down = (event: PointerEvent) => {
       const target = event.target as HTMLElement;
       const backdrop = target.closest<HTMLElement>(".sheet-backdrop, .add-menu-overlay");
       const candidate = target.closest<HTMLElement>(".account-sheet, .add-sheet, .add-menu") || backdrop?.firstElementChild as HTMLElement | null;
-      if (!backdrop || !candidate || event.clientY < candidate.getBoundingClientRect().top + 4) return;
-      panel = candidate; startY = event.clientY; startAt = performance.now();
+      const dragHandle = target.closest(".sheet-grabber, .sheet-header, .add-menu-heading");
+      if (!backdrop || !candidate || !dragHandle || !candidate.contains(dragHandle)) return;
+      panel = candidate;
+      pointerId = event.pointerId;
+      startY = event.clientY;
+      startAt = performance.now();
     };
     const move = (event: PointerEvent) => {
-      if (!panel) return;
+      if (!panel || event.pointerId !== pointerId) return;
+      if (event.clientY < startY) return;
       panel.style.transition = "none";
-      panel.style.transform = `translateY(${Math.max(0, event.clientY - startY)}px)`;
+      panel.style.transform = `translateY(${event.clientY - startY}px)`;
     };
     const up = (event: PointerEvent) => {
-      if (!panel) return;
+      if (!panel || event.pointerId !== pointerId) return;
       const current = panel;
       const distance = Math.max(0, event.clientY - startY);
       const velocity = distance / Math.max(1, performance.now() - startAt);
       panel = null;
+      pointerId = null;
       current.style.transition = "transform 260ms cubic-bezier(.2,.8,.2,1)";
       if (distance > 120 || (distance > 35 && velocity > 0.65)) {
         current.style.transform = "translateY(100%)";
@@ -149,6 +157,15 @@ function App() {
         window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 270);
       }
     };
+    const cancel = () => {
+      if (!panel) return;
+      const current = panel;
+      panel = null;
+      pointerId = null;
+      current.style.transition = "transform 220ms cubic-bezier(.2,.8,.2,1)";
+      current.style.transform = "translateY(0)";
+      window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 230);
+    };
     const backdropClick = (event: MouseEvent) => {
       const backdrop = event.target as HTMLElement;
       if (!backdrop.matches(".sheet-backdrop, .add-menu-overlay") || backdrop.classList.contains("add-menu-overlay")) return;
@@ -157,11 +174,13 @@ function App() {
     document.addEventListener("pointerdown", down, true);
     document.addEventListener("pointermove", move, true);
     document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", cancel, true);
     document.addEventListener("click", backdropClick, true);
     return () => {
       document.removeEventListener("pointerdown", down, true);
       document.removeEventListener("pointermove", move, true);
       document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", cancel, true);
       document.removeEventListener("click", backdropClick, true);
     };
   }, []);
@@ -2472,6 +2491,10 @@ function AddTransactionSheet({
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptScanning, setReceiptScanning] = useState(false);
   const [receiptMessage, setReceiptMessage] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const receiptFileRef = useRef<HTMLInputElement>(null);
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [storedAmount, setStoredAmount] = useState<number | null>(null);
   const [pendingOperator, setPendingOperator] = useState<CalculatorOperator | null>(null);
@@ -2495,6 +2518,110 @@ function AddTransactionSheet({
       if (first) setCategoryId(first.id);
     }
   }, [categories, type, categoryId]);
+
+  useEffect(() => {
+    const video = cameraVideoRef.current;
+    if (!cameraStream || !video) return;
+    video.srcObject = cameraStream;
+    void video.play().catch(() => {});
+    return () => cameraStream.getTracks().forEach((track) => track.stop());
+  }, [cameraStream, cameraOpen]);
+
+  const scanReceipt = async (file: File) => {
+    setReceipt(file);
+    setReceiptMessage("Preparing receipt scanner...");
+    setReceiptScanning(true);
+    try {
+      const { data } = await recognize(file, "eng", {
+        logger: (progress) => {
+          if (progress.status === "recognizing text" && typeof progress.progress === "number") {
+            setReceiptMessage(`Reading receipt... ${Math.round(progress.progress * 100)}%`);
+          } else if (progress.status) {
+            setReceiptMessage("Preparing receipt scanner...");
+          }
+        },
+      });
+      const lines = data.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const amountsByLine = lines.flatMap((line) => {
+        const hasTotalLabel = /\b(grand\s+total|total\s+due|amount\s+due|total|balance\s+due)\b/i.test(line);
+        const matches = [...line.matchAll(/(?:PHP|\bP\b)\s*([\d,]+(?:\.\d{1,2})?)|([\d,]+\.\d{2})/gi)];
+        const captures = matches.map((match) => match[1] || match[2]);
+        if (hasTotalLabel && !captures.length) {
+          const plainTotal = line.match(/(?:grand\s+total|total\s+due|amount\s+due|total|balance\s+due)\D*([\d,]+(?:\.\d{1,2})?)/i)?.[1];
+          if (plainTotal) captures.push(plainTotal);
+        }
+        return captures.map(parseMoney).filter((value) => value > 0).map((amount) => ({ amount, hasTotalLabel }));
+      });
+      const totalCandidates = amountsByLine.filter((candidate) => candidate.hasTotalLabel);
+      const selectedAmount = totalCandidates.at(-1)?.amount ?? Math.max(0, ...amountsByLine.map((candidate) => candidate.amount));
+      if (selectedAmount) setAmount((selectedAmount / 100).toFixed(2));
+      const dateMatch = data.text.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/) || data.text.match(/\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b/);
+      if (dateMatch) setDate(dateMatch[1].length === 4
+        ? `${dateMatch[1]}-${dateMatch[2].padStart(2,"0")}-${dateMatch[3].padStart(2,"0")}`
+        : `${dateMatch[3]}-${dateMatch[1].padStart(2,"0")}-${dateMatch[2].padStart(2,"0")}`);
+      const merchant = lines.find((line) => /[a-z]{3}/i.test(line) && !/receipt|invoice|cashier|terminal|thank you/i.test(line));
+      if (merchant) setNote(merchant.slice(0, 80));
+      const matchedCategory = categories.find((category) => category.type === "expense" && lines.some((line) => line.toLowerCase().includes(category.name.toLowerCase())));
+      if (matchedCategory) setCategoryId(matchedCategory.id);
+      setType("expense");
+      setReceiptMessage(selectedAmount
+        ? "Receipt scanned. Review the merchant, amount, date, and category before saving."
+        : "Receipt text was read, but no total was found. Enter the amount and review the other details.");
+    } catch (error) {
+      setReceiptMessage(error instanceof Error ? `Could not scan receipt: ${error.message}` : "Could not scan receipt. Enter details manually.");
+    } finally {
+      setReceiptScanning(false);
+    }
+  };
+
+  const requestCameraAccess = async () => {
+    setReceiptMessage("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setReceiptMessage("Camera access requires a supported browser and a secure HTTPS connection. You can upload a photo instead.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      setCameraStream(stream);
+      setCameraOpen(true);
+    } catch (error) {
+      const cameraError = error as DOMException;
+      setReceiptMessage(cameraError.name === "NotAllowedError"
+        ? "Camera permission was denied. Allow camera access in your browser settings or upload a photo instead."
+        : cameraError.name === "NotFoundError"
+        ? "No camera was found. You can upload a photo instead."
+        : `Could not open the camera: ${cameraError.message || "please check browser permissions"}.`);
+    }
+  };
+
+  const closeCamera = () => {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+    setCameraOpen(false);
+  };
+
+  const captureCameraPhoto = () => {
+    const video = cameraVideoRef.current;
+    if (!video?.videoWidth || !video.videoHeight) {
+      setReceiptMessage("The camera is still starting. Please try again in a moment.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setReceiptMessage("Could not capture the photo. Please upload an image instead.");
+      closeCamera();
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (blob) void scanReceipt(new File([blob], `receipt-${Date.now()}.jpg`, { type: "image/jpeg" }));
+      else setReceiptMessage("Could not capture the photo. Please try again.");
+      closeCamera();
+    }, "image/jpeg", 0.92);
+  };
 
   const keypadPress = (key: string) => {
     setCalculatorError("");
@@ -2761,42 +2888,32 @@ function AddTransactionSheet({
             </label>
           </div>
 
-          <label className="receipt-field">
-            Receipt{" "}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={async (event) => {
-                const file = event.target.files?.[0] || null;
-                setReceipt(file);
-                setReceiptMessage("");
-                if (!file) return;
-                setReceiptScanning(true);
-                try {
-                  const { data } = await recognize(file, "eng");
-                  const lines = data.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-                  const amounts = [...data.text.matchAll(/(?:PHP)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})|\d+\.\d{2})/gi)]
-                    .map((match) => parseMoney(match[1])).filter((value) => value > 0);
-                  if (amounts.length) setAmount((Math.max(...amounts) / 100).toFixed(2));
-                  const dateMatch = data.text.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/) || data.text.match(/\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b/);
-                  if (dateMatch) setDate(dateMatch[1].length === 4
-                    ? `${dateMatch[1]}-${dateMatch[2].padStart(2,"0")}-${dateMatch[3].padStart(2,"0")}`
-                    : `${dateMatch[3]}-${dateMatch[1].padStart(2,"0")}-${dateMatch[2].padStart(2,"0")}`);
-                  const merchant = lines.find((line) => /[a-z]{3}/i.test(line) && !/receipt|invoice|cashier|terminal|thank you/i.test(line));
-                  if (merchant) setNote(merchant.slice(0, 80));
-                  const matchedCategory = categories.find((category) => category.type === "expense" && lines.some((line) => line.toLowerCase().includes(category.name.toLowerCase())));
-                  if (matchedCategory) setCategoryId(matchedCategory.id);
-                  setType("expense");
-                  setReceiptMessage("Receipt scanned. Review and edit the details before saving.");
-                } catch (error) {
-                  setReceiptMessage(error instanceof Error ? `Could not scan receipt: ${error.message}` : "Could not scan receipt. Enter details manually.");
-                } finally { setReceiptScanning(false); }
-              }}
-            />
-            <span>{receiptScanning ? "Scanning receipt..." : receipt ? receipt.name : "Scan or add photo"}</span>
-          </label>
-          {receiptMessage && <small className="receipt-scan-message" role="status">{receiptMessage}</small>}
+          <div className="receipt-picker">
+            <div className="receipt-picker-heading">
+              <b>Receipt photo</b>
+              <small>{receipt?.name || "Add a photo to fill transaction details"}</small>
+            </div>
+            <div className="receipt-picker-actions">
+              <button type="button" onClick={() => void requestCameraAccess()} disabled={receiptScanning}>
+                <Camera size={16} /> Take photo
+              </button>
+              <button type="button" onClick={() => receiptFileRef.current?.click()} disabled={receiptScanning}>
+                <Upload size={16} /> Upload photo
+              </button>
+              <input
+                ref={receiptFileRef}
+                className="receipt-file-input"
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void scanReceipt(file);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </div>
+            {receiptMessage && <small className="receipt-scan-message" role="status">{receiptMessage}</small>}
+          </div>
         </div>
 
         <div className="keypad calculator-keypad">
@@ -2841,6 +2958,22 @@ function AddTransactionSheet({
         >
           Save transaction
         </button>
+
+        {cameraOpen && (
+          <div className="camera-capture-overlay" role="dialog" aria-modal="true" aria-label="Capture receipt">
+            <div className="camera-capture-panel">
+              <div className="camera-capture-heading">
+                <div><b>Take a receipt photo</b><small>Allow camera access to capture your receipt.</small></div>
+                <button type="button" onClick={closeCamera} aria-label="Close camera"><X size={20} /></button>
+              </div>
+              <video ref={cameraVideoRef} autoPlay muted playsInline />
+              <div className="camera-capture-actions">
+                <button type="button" className="camera-cancel-button" onClick={closeCamera}>Cancel</button>
+                <button type="button" className="camera-capture-button" onClick={captureCameraPhoto}><Camera size={17} /> Capture photo</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {undoId && (
           <button
