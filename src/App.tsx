@@ -2739,6 +2739,7 @@ function AddTransactionSheet({
   const [awaitingOperand, setAwaitingOperand] = useState(false);
   const [expression, setExpression] = useState("");
   const [calculatorError, setCalculatorError] = useState("");
+  const [amountKeyboardVisible, setAmountKeyboardVisible] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -2795,7 +2796,10 @@ function AddTransactionSheet({
 
   useEffect(() => {
     if (!open || receiptStep !== "details") return;
-    const focusFrame = window.requestAnimationFrame(() => amountInputRef.current?.focus());
+    const focusFrame = window.requestAnimationFrame(() => {
+      setAmountKeyboardVisible(true);
+      amountInputRef.current?.focus({ preventScroll: true });
+    });
     const viewport = window.visualViewport;
     const updateViewport = () => {
       const backdrop = sheetBackdropRef.current;
@@ -3230,7 +3234,15 @@ function AddTransactionSheet({
             <p>{receiptMessage || "Preparing receipt scanner..."}</p>
           </div>
         ) : <>
-        <div className="sheet-fields">
+        <div
+          className="sheet-fields"
+          onFocusCapture={(event) => {
+            if (event.target !== amountInputRef.current) setAmountKeyboardVisible(false);
+          }}
+          onScroll={(event) => {
+            if (event.currentTarget.scrollTop > 8) setAmountKeyboardVisible(false);
+          }}
+        >
           {type === "transfer" ? (
             <>
               <div className="transfer-type-field">
@@ -3409,6 +3421,51 @@ function AddTransactionSheet({
         </div>
 
         <div className="transaction-sticky-footer">
+          {amountKeyboardVisible && receiptStep === "details" && (
+            <div className="calculator-popup" role="group" aria-label="Amount calculator">
+              <div className="calculator-popup-heading">
+                <span className="calculator-expression" aria-live="polite">{expression || "Calculator"}</span>
+                <button
+                  type="button"
+                  className="calculator-hide-button"
+                  aria-label="Hide calculator keyboard"
+                  onClick={() => {
+                    setAmountKeyboardVisible(false);
+                    amountInputRef.current?.blur();
+                  }}
+                >
+                  Hide
+                </button>
+              </div>
+              {calculatorError && <p className="calculator-popup-error" role="alert">{calculatorError}</p>}
+              <div className="calculator-keypad">
+                {[
+                  { key: "AC", label: "AC", className: "utility" },
+                  { key: "back", label: "⌫", className: "utility" },
+                  { key: "%", label: "%", className: "utility" },
+                  { key: "÷", label: "÷", className: "operator" },
+                  { key: "7", label: "7" }, { key: "8", label: "8" }, { key: "9", label: "9" },
+                  { key: "×", label: "×", className: "operator" },
+                  { key: "4", label: "4" }, { key: "5", label: "5" }, { key: "6", label: "6" },
+                  { key: "−", label: "−", className: "operator" },
+                  { key: "1", label: "1" }, { key: "2", label: "2" }, { key: "3", label: "3" },
+                  { key: "+", label: "+", className: "operator" },
+                  { key: "0", label: "0", className: "wide" }, { key: ".", label: "." },
+                  { key: "=", label: "=", className: "equals" },
+                ].map(({ key, label, className = "" }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`calculator-key ${className}`}
+                    aria-label={key === "back" ? "Delete last digit" : label}
+                    onClick={() => keypadPress(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <label className="transaction-amount-field">
             <span>{type === "transfer" ? (sourceType === "external" ? "Amount to receive" : "Transfer amount") : "Amount"}</span>
             <span className="transaction-amount-input-wrap">
@@ -3417,9 +3474,10 @@ function AddTransactionSheet({
                 ref={amountInputRef}
                 autoFocus
                 aria-label="Transaction amount"
-                inputMode="decimal"
+                inputMode="none"
                 type="text"
                 value={amount}
+                onFocus={() => setAmountKeyboardVisible(true)}
                 onChange={(event) => {
                   const normalized = event.target.value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
                   const [whole, ...decimals] = normalized.split(".");
