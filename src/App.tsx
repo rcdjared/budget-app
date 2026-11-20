@@ -3243,6 +3243,29 @@ function AddTransactionSheet({
             if (event.currentTarget.scrollTop > 8) setAmountKeyboardVisible(false);
           }}
         >
+          <label className="transaction-amount-field transaction-amount-top">
+            <span>{type === "transfer" ? (sourceType === "external" ? "Amount to receive" : "Transfer amount") : "Amount"}</span>
+            <span className="transaction-amount-input-wrap">
+              <span aria-hidden="true">{amountCurrencySymbol}</span>
+              <input
+                ref={amountInputRef}
+                autoFocus
+                aria-label="Transaction amount"
+                inputMode="none"
+                type="text"
+                value={amount}
+                onFocus={() => setAmountKeyboardVisible(true)}
+                onPointerDown={() => setAmountKeyboardVisible(true)}
+                onChange={(event) => {
+                  const normalized = event.target.value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+                  const [whole, ...decimals] = normalized.split(".");
+                  setAmount(decimals.length ? `${whole || "0"}.${decimals.join("").slice(0, 2)}` : whole);
+                }}
+                placeholder="0.00"
+                autoComplete="off"
+              />
+            </span>
+          </label>
           {type === "transfer" ? (
             <>
               <div className="transfer-type-field">
@@ -3294,20 +3317,6 @@ function AddTransactionSheet({
             </>
           ) : (
             <>
-              <label>
-                Account
-                <select
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                >
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
               <div className="transaction-category-section">
                 <span className="transaction-section-label">Category</span>
                 <div className="transaction-category-grid" role="group" aria-label="Choose category">
@@ -3466,28 +3475,6 @@ function AddTransactionSheet({
               </div>
             </div>
           )}
-          <label className="transaction-amount-field">
-            <span>{type === "transfer" ? (sourceType === "external" ? "Amount to receive" : "Transfer amount") : "Amount"}</span>
-            <span className="transaction-amount-input-wrap">
-              <span aria-hidden="true">{amountCurrencySymbol}</span>
-              <input
-                ref={amountInputRef}
-                autoFocus
-                aria-label="Transaction amount"
-                inputMode="none"
-                type="text"
-                value={amount}
-                onFocus={() => setAmountKeyboardVisible(true)}
-                onChange={(event) => {
-                  const normalized = event.target.value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
-                  const [whole, ...decimals] = normalized.split(".");
-                  setAmount(decimals.length ? `${whole || "0"}.${decimals.join("").slice(0, 2)}` : whole);
-                }}
-                placeholder="0.00"
-                autoComplete="off"
-              />
-            </span>
-          </label>
           {type === "transfer" && (
             <div className="transfer-total-summary" aria-live="polite">
               <div><span>Amount to receive</span><b>{formatMoney(transferAmountCents, profile?.currency || "PHP")}</b></div>
@@ -3497,13 +3484,28 @@ function AddTransactionSheet({
               </>}
             </div>
           )}
-          <button
-            className="save-button"
-            onClick={save}
-            disabled={parseMoney(amount) <= 0 || !accountId || (type !== "transfer" && !categoryId) || (repeatEnabled && (!repeatStartDate || (repeatEndMode === "date" && (!repeatEndDate || repeatEndDate < repeatStartDate)) || (repeatEndMode === "after" && (!Number(repeatCount) || Number(repeatCount) < 1)))) || (type === "transfer" && ((sourceType === "external" && destinationType === "external") || (sourceType === "my" && destinationType === "my" && (!toAccountId || toAccountId === accountId)) || (sourceType === "external" && !externalFromName.trim()) || (destinationType === "external" && !externalToName.trim()) || (balanceWarning && !sourceCanGoNegative)))}
-          >
-            {type === "transfer" ? "Confirm transfer" : "Save transaction"}
-          </button>
+          <div className={`transaction-sticky-actions ${type === "transfer" ? "transfer-actions" : "entry-actions"}`}>
+            {type !== "transfer" && (
+              <label className="transaction-account-field">
+                <span>Account</span>
+                <select
+                  value={accountId}
+                  onFocus={() => setAmountKeyboardVisible(false)}
+                  onChange={(event) => setAccountId(event.target.value)}
+                >
+                  <option value="">Select account</option>
+                  {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </select>
+              </label>
+            )}
+            <button
+              className="save-button"
+              onClick={save}
+              disabled={parseMoney(amount) <= 0 || !accountId || (type !== "transfer" && !categoryId) || (repeatEnabled && (!repeatStartDate || (repeatEndMode === "date" && (!repeatEndDate || repeatEndDate < repeatStartDate)) || (repeatEndMode === "after" && (!Number(repeatCount) || Number(repeatCount) < 1)))) || (type === "transfer" && ((sourceType === "external" && destinationType === "external") || (sourceType === "my" && destinationType === "my" && (!toAccountId || toAccountId === accountId)) || (sourceType === "external" && !externalFromName.trim()) || (destinationType === "external" && !externalToName.trim()) || (balanceWarning && !sourceCanGoNegative)))}
+            >
+              {type === "transfer" ? "Confirm transfer" : "Save transaction"}
+            </button>
+          </div>
         </div>
         </>}
 
