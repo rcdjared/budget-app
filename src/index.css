@@ -1942,6 +1942,13 @@ button {
 }
 
 .add-sheet,
+.account-sheet,
+.add-menu {
+  will-change: transform;
+  touch-action: pan-y;
+}
+
+.add-sheet,
 .account-sheet {
   width: min(100%, 520px);
   max-height: 94dvh;

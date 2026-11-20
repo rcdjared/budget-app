@@ -330,7 +330,8 @@ export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
 
   const maxTrendAmount = useMemo(() => {
     const max = Math.max(...trendBars.map((b) => b.amount), 0);
-    return max > 0 ? max : 200000; // ₱2,000 default scale
+    // Amounts are centavos. Keep a useful minimum scale and round to readable peso intervals.
+    return max > 0 ? Math.ceil(max / 10000) * 10000 : 10000; // ₱2,000 default scale
   }, [trendBars]);
 
   const selectedAccountName =
@@ -593,13 +594,10 @@ export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
         </div>
 
         <div className="trend-chart-container">
-          {/* Y-Axis Labels matching reference: P0, P0.5K, P1K, P1.5K, P2K */}
           <div className="trend-y-axis">
-            <span>₱{Math.round(maxTrendAmount / 100000)}k</span>
-            <span>₱{Math.round((maxTrendAmount * 0.75) / 100000)}k</span>
-            <span>₱{Math.round((maxTrendAmount * 0.5) / 100000)}k</span>
-            <span>₱{Math.round((maxTrendAmount * 0.25) / 100000)}k</span>
-            <span>₱0</span>
+            {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
+              <span key={fraction}>{formatMoney(Math.round(maxTrendAmount * fraction))}</span>
+            ))}
           </div>
 
           <div className="trend-bars-wrapper">

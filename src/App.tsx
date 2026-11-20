@@ -47,6 +47,7 @@ import { answerLocalMoneyQuestion, explainLocalCapabilities } from "@/domain/loc
 import { cloudSyncAvailable, supabase } from "@/lib/supabase";
 import { syncLocalData } from "@/sync/sync";
 import type { Session } from "@supabase/supabase-js";
+import { recognize } from "tesseract.js";
 import {
   calculateCentavos,
   centavosToEntry,
@@ -111,6 +112,59 @@ function App() {
   });
   const [online, setOnline] = useState(navigator.onLine);
   useRegisterSW({ immediate: true });
+
+  // Shared drag and backdrop dismissal for all bottom sheets and pop-ups.
+  useEffect(() => {
+    let startY = 0;
+    let startAt = 0;
+    let panel: HTMLElement | null = null;
+    const down = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      const backdrop = target.closest<HTMLElement>(".sheet-backdrop, .add-menu-overlay");
+      const candidate = target.closest<HTMLElement>(".account-sheet, .add-sheet, .add-menu") || backdrop?.firstElementChild as HTMLElement | null;
+      if (!backdrop || !candidate || event.clientY < candidate.getBoundingClientRect().top + 4) return;
+      panel = candidate; startY = event.clientY; startAt = performance.now();
+    };
+    const move = (event: PointerEvent) => {
+      if (!panel) return;
+      panel.style.transition = "none";
+      panel.style.transform = `translateY(${Math.max(0, event.clientY - startY)}px)`;
+    };
+    const up = (event: PointerEvent) => {
+      if (!panel) return;
+      const current = panel;
+      const distance = Math.max(0, event.clientY - startY);
+      const velocity = distance / Math.max(1, performance.now() - startAt);
+      panel = null;
+      current.style.transition = "transform 260ms cubic-bezier(.2,.8,.2,1)";
+      if (distance > 120 || (distance > 35 && velocity > 0.65)) {
+        current.style.transform = "translateY(100%)";
+        window.setTimeout(() => {
+          if (current.classList.contains("add-menu")) current.parentElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          else current.querySelector<HTMLElement>(".sheet-close-btn, .sheet-header > button")?.click();
+          current.style.removeProperty("transform"); current.style.removeProperty("transition");
+        }, 230);
+      } else {
+        current.style.transform = "translateY(0)";
+        window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 270);
+      }
+    };
+    const backdropClick = (event: MouseEvent) => {
+      const backdrop = event.target as HTMLElement;
+      if (!backdrop.matches(".sheet-backdrop, .add-menu-overlay") || backdrop.classList.contains("add-menu-overlay")) return;
+      backdrop.querySelector<HTMLElement>(".sheet-close-btn, .sheet-header > button")?.click();
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("click", backdropClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("click", backdropClick, true);
+    };
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1538,6 +1592,21 @@ function ChatLogSheet({
     }
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (node) node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+  }, [conversation, drafts, setupDraft]);
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const scrollBottom = () => node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    const observer = new ResizeObserver(scrollBottom);
+    observer.observe(node);
+    const mutations = new MutationObserver(scrollBottom);
+    mutations.observe(node, { childList: true, subtree: true, characterData: true });
+    return () => { observer.disconnect(); mutations.disconnect(); };
+  }, [open]);
 
   useEffect(() => {
     try {
@@ -1782,7 +1851,7 @@ function ChatLogSheet({
             <Plus size={19} />
           </button>
         </header>
-        <div className="chat-messages">
+        <div className="chat-messages" ref={messagesRef}>
           {!conversation.length && (
             <div className="assistant-message">
               <span className="assistant-mark"><MessageCircle size={17} /></span>
@@ -2395,6 +2464,8 @@ function AddTransactionSheet({
   const [note, setNote] = useState("");
   const [date, setDate] = useState(toDateString(new Date()));
   const [receipt, setReceipt] = useState<File | null>(null);
+  const [receiptScanning, setReceiptScanning] = useState(false);
+  const [receiptMessage, setReceiptMessage] = useState("");
   const [undoId, setUndoId] = useState<string | null>(null);
   const [storedAmount, setStoredAmount] = useState<number | null>(null);
   const [pendingOperator, setPendingOperator] = useState<CalculatorOperator | null>(null);
@@ -2690,10 +2761,36 @@ function AddTransactionSheet({
               type="file"
               accept="image/*"
               capture="environment"
-              onChange={(event) => setReceipt(event.target.files?.[0] || null)}
+              onChange={async (event) => {
+                const file = event.target.files?.[0] || null;
+                setReceipt(file);
+                setReceiptMessage("");
+                if (!file) return;
+                setReceiptScanning(true);
+                try {
+                  const { data } = await recognize(file, "eng");
+                  const lines = data.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+                  const amounts = [...data.text.matchAll(/(?:PHP)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})|\d+\.\d{2})/gi)]
+                    .map((match) => parseMoney(match[1])).filter((value) => value > 0);
+                  if (amounts.length) setAmount((Math.max(...amounts) / 100).toFixed(2));
+                  const dateMatch = data.text.match(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/) || data.text.match(/\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b/);
+                  if (dateMatch) setDate(dateMatch[1].length === 4
+                    ? `${dateMatch[1]}-${dateMatch[2].padStart(2,"0")}-${dateMatch[3].padStart(2,"0")}`
+                    : `${dateMatch[3]}-${dateMatch[1].padStart(2,"0")}-${dateMatch[2].padStart(2,"0")}`);
+                  const merchant = lines.find((line) => /[a-z]{3}/i.test(line) && !/receipt|invoice|cashier|terminal|thank you/i.test(line));
+                  if (merchant) setNote(merchant.slice(0, 80));
+                  const matchedCategory = categories.find((category) => category.type === "expense" && lines.some((line) => line.toLowerCase().includes(category.name.toLowerCase())));
+                  if (matchedCategory) setCategoryId(matchedCategory.id);
+                  setType("expense");
+                  setReceiptMessage("Receipt scanned. Review and edit the details before saving.");
+                } catch (error) {
+                  setReceiptMessage(error instanceof Error ? `Could not scan receipt: ${error.message}` : "Could not scan receipt. Enter details manually.");
+                } finally { setReceiptScanning(false); }
+              }}
             />
-            <span>{receipt ? receipt.name : "Add photo"}</span>
+            <span>{receiptScanning ? "Scanning receipt..." : receipt ? receipt.name : "Scan or add photo"}</span>
           </label>
+          {receiptMessage && <small className="receipt-scan-message" role="status">{receiptMessage}</small>}
         </div>
 
         <div className="keypad calculator-keypad">

@@ -79,10 +79,15 @@ export async function getTransactionById(
 export async function createTransaction(
   data: Omit<Transaction, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
+  if (!Number.isFinite(data.amount) || data.amount === 0) {
+    throw new Error("Transaction amount must be a positive value in centavos.");
+  }
   const id = crypto.randomUUID();
   const timestamp = now();
   await db.transactions.add({
     ...data,
+    // Income and expense direction comes from `type`; ledger amounts stay positive.
+    amount: Math.abs(Math.round(data.amount)),
     id,
     createdAt: timestamp,
     updatedAt: timestamp,
