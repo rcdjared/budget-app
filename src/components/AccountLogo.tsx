@@ -6,6 +6,7 @@ const legacyLogoAliases: Record<string, string> = {
   gotyme: "gotyme.png",
   landbank: "landbank.png",
   eastwest: "eastwest.png",
+  seabank: "maribank.png",
 };
 
 export function getAccountLogoFilename(name: string): string | undefined {
@@ -38,7 +39,7 @@ export function AccountLogo({
     <span
       role="img"
       className={`institution-logo ${failed || !logo ? "fallback" : ""}`}
-      style={{ width: size, height: size, color, backgroundColor: failed || !logo ? `${color}18` : "var(--card)" }}
+      style={{ width: size, height: size, color, backgroundColor: failed || !logo ? `${color}18` : "transparent" }}
       aria-label={`${name} logo`}
       title={name}
     >

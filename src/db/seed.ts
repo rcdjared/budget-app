@@ -298,7 +298,6 @@ export const ACCOUNT_TEMPLATES: AccountTemplate[] = [
   { name: "Maybank", type: "bank", color: "#F7C600", icon: "landmark", logo: "maybank.png" },
   // Digital banks
   { name: "GoTyme Bank", type: "bank", color: "#FF5733", icon: "smartphone", logo: "gotyme.png" },
-  { name: "SeaBank", type: "bank", color: "#00BFA5", icon: "smartphone", logo: "seabank.png" },
   { name: "MariBank", type: "bank", color: "#F15A24", icon: "smartphone", logo: "maribank.png" },
   { name: "Tonik", type: "bank", color: "#6C63FF", icon: "smartphone", logo: "tonik.png" },
   { name: "CIMB", type: "bank", color: "#ED1C24", icon: "smartphone", logo: "cimb.png" },

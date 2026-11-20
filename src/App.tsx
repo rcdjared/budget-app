@@ -1037,7 +1037,7 @@ function AccountsPage({
                   {account.type === "credit_card" ? (
                     <span className="account-icon"><WalletCards size={20} /></span>
                   ) : (
-                    <AccountLogo name={account.name} color={account.color} type={account.type} size={42} />
+                    <AccountLogo name={account.name} color={account.color} type={account.type} size={48} />
                   )}
                   <div>
                     <p>{account.name}</p>
@@ -3207,7 +3207,7 @@ function AccountSheet({
             </select>
             {selectedTemplate && (
               <div className="account-template-preview">
-                <AccountLogo name={selectedTemplate.name} filename={selectedTemplate.logo} color={selectedTemplate.color} type={selectedTemplate.type} size={42} />
+                <AccountLogo name={selectedTemplate.name} filename={selectedTemplate.logo} color={selectedTemplate.color} type={selectedTemplate.type} size={48} />
                 <span><b>{selectedTemplate.name}</b><small>{selectedTemplate.type === "ewallet" ? "E-wallet or payment account" : selectedTemplate.type === "cash" ? "Cash account" : "Bank account"}</small></span>
               </div>
             )}

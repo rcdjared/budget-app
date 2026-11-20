@@ -27,7 +27,6 @@ Upload official transparent or square PNG logos into this folder. The applicatio
 | PNB | `pnb.png` |
 | PSBank | `psbank.png` |
 | RCBC | `rcbc.png` |
-| SeaBank | `seabank.png` |
 | Security Bank | `securitybank.png` |
 | ShopeePay | `shopeepay.png` |
 | Tonik | `tonik.png` |
