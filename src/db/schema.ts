@@ -71,6 +71,30 @@ export class PesoPulseDB extends Dexie {
       outbox: "id, table, recordId, status",
       settings: "id, profileId, key",
     });
+
+    this.version(2).stores({
+      profiles: "id, isDefault",
+      accounts: "id, profileId, type, isArchived",
+      categories: "id, profileId, type, parentId, sortOrder",
+      transactions: "id, profileId, accountId, toAccountId, categoryId, recurringId, transferId, date, type, &occurrenceKey, [profileId+date], [accountId+date], [categoryId+date]",
+      budgets: "id, profileId, categoryId",
+      goals: "id, profileId",
+      debts: "id, profileId, direction",
+      recurring: "id, profileId, nextDueDate, kind",
+      holdings: "id, accountId, symbol",
+      priceCache: "symbol",
+      quickNotes: "id, profileId",
+      splitGroups: "id, profileId",
+      splitMembers: "id, splitGroupId",
+      streaks: "id, profileId",
+      attachments: "id, transactionId",
+      outbox: "id, table, recordId, status",
+      settings: "id, profileId, key",
+    }).upgrade(async (transaction) => {
+      await transaction.table("transactions").toCollection().modify((record) => {
+        if (!record.occurrenceKey) delete record.occurrenceKey;
+      });
+    });
   }
 }
 

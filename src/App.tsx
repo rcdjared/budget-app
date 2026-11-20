@@ -36,12 +36,15 @@ import {
   Clock3,
   RefreshCw,
   ShieldCheck,
+  Pause,
+  Play,
 } from "lucide-react";
 import { db } from "@/db/schema";
-import { initializeAppData, getAccountTemplates, seedDefaultCategories } from "@/db/seed";
+import { initializeAppData, getAccountTemplates, seedDefaultCategories, EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORY_NAMES } from "@/db/seed";
 import { createProfile } from "@/db/repositories/profiles";
 import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
-import { createTransaction, softDeleteTransaction } from "@/db/repositories/transactions";
+import { createTransaction, createTransfer, updateTransfer, softDeleteTransaction } from "@/db/repositories/transactions";
+import { createRecurringRule, processDueRecurringTransactions } from "@/db/repositories/recurring";
 import { computeAccountBalance, computeNetWorth } from "@/domain/balances";
 import { formatMoney, parseMoney } from "@/domain/money";
 import { formatRelativeDate, getCurrentMonthRange, toDateString } from "@/lib/format";
@@ -59,11 +62,13 @@ import {
   percentCentavos,
   type CalculatorOperator,
 } from "@/domain/calculator";
-import type { Account, AccountType, Category, Transaction, TransactionType } from "@/domain/types";
+import type { Account, AccountType, Category, CategoryType, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { AccountLogo } from "@/components/AccountLogo";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
 import { FinsightsPage } from "@/components/FinsightsPage";
+import { useSheetGestures } from "@/hooks/useSheetGestures";
+import { useCollapsingNav } from "@/hooks/useCollapsingNav";
 
 type Tab = "home" | "wallet" | "plan" | "history";
 type ThemePreference = "system" | "light" | "dark" | "amoled";
@@ -77,15 +82,21 @@ const tabItems: { id: Tab | "add"; label: string; icon: typeof Home }[] = [
 ];
 
 const TAB_ORDER: Tab[] = ["home", "wallet", "plan", "history"];
+const EXPENSE_CATEGORY_ORDER = new Map(EXPENSE_CATEGORIES.map((category, index) => [category.name.toLowerCase(), index]));
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward">("forward");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [navCollapsed, setNavCollapsed] = useCollapsingNav(scrollRef, tab);
   const [addOpen, setAddOpen] = useState(false);
   const [receiptFlowOpen, setReceiptFlowOpen] = useState(false);
+  const [editingTransferId, setEditingTransferId] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addMenuClosing, setAddMenuClosing] = useState(false);
+  const addMenuCloseTimer = useRef<number | null>(null);
+  const quickActionHistoryEntry = useRef(false);
   const [formInitialType, setFormInitialType] = useState<TransactionType>("expense");
   const [accountOpen, setAccountOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -94,9 +105,35 @@ function App() {
   const [authCallbackNotice, setAuthCallbackNotice] = useState("");
   const handledAuthCallback = useRef(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [categoryPickMode, setCategoryPickMode] = useState(false);
+  const [categoryManagerType, setCategoryManagerType] = useState<CategoryType>("expense");
+  const categoryPicker = useRef<((categoryId: string) => void) | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [recurringShortcutId, setRecurringShortcutId] = useState<string | null>(null);
+
+  const closeAddMenu = (afterClose?: () => void) => {
+    if (!addMenuOpen) {
+      afterClose?.();
+      return;
+    }
+    if (addMenuCloseTimer.current !== null) return;
+    setAddMenuClosing(true);
+    const closeDuration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 200;
+    if (quickActionHistoryEntry.current) {
+      quickActionHistoryEntry.current = false;
+      window.history.back();
+    }
+    addMenuCloseTimer.current = window.setTimeout(() => {
+      addMenuCloseTimer.current = null;
+      setAddMenuOpen(false);
+      setAddMenuClosing(false);
+      afterClose?.();
+    }, closeDuration);
+  };
 
   const navigateToTab = (nextTab: Tab) => {
+    if (addMenuOpen) closeAddMenu();
+    setNavCollapsed(false);
     if (nextTab === tab) return;
     const currentIndex = TAB_ORDER.indexOf(tab);
     const nextIndex = TAB_ORDER.indexOf(nextTab);
@@ -104,6 +141,31 @@ function App() {
     setTab(nextTab);
     scrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
   };
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    setAddMenuClosing(false);
+    quickActionHistoryEntry.current = true;
+    window.history.pushState({ ...(window.history.state || {}), quickActionsOpen: true }, "", window.location.href);
+    const closeForBack = () => {
+      quickActionHistoryEntry.current = false;
+      closeAddMenu();
+    };
+    const closeOnBackground = () => {
+      if (document.visibilityState === "hidden") closeAddMenu();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeAddMenu();
+    };
+    window.addEventListener("popstate", closeForBack);
+    document.addEventListener("visibilitychange", closeOnBackground);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("popstate", closeForBack);
+      document.removeEventListener("visibilitychange", closeOnBackground);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [addMenuOpen]);
 
   const switchProfile = async (nextProfileId: string) => {
     await db.transaction("rw", db.profiles, async () => {
@@ -121,95 +183,7 @@ function App() {
   });
   const [online, setOnline] = useState(navigator.onLine);
   useRegisterSW({ immediate: true });
-
-  // Shared drag and backdrop dismissal for all bottom sheets and pop-ups.
-  useEffect(() => {
-    let startY = 0;
-    let startAt = 0;
-    let dragY = 0;
-    let didMove = false;
-    let animationFrame = 0;
-    let pointerId: number | null = null;
-    let panel: HTMLElement | null = null;
-    const down = (event: PointerEvent) => {
-      const target = event.target as HTMLElement;
-      const backdrop = target.closest<HTMLElement>(".sheet-backdrop, .add-menu-overlay");
-      const candidate = target.closest<HTMLElement>(".account-sheet, .add-sheet, .add-menu") || backdrop?.firstElementChild as HTMLElement | null;
-      const dragHandle = target.closest(".sheet-grabber, .sheet-header, .add-menu-heading");
-      if (!backdrop || !candidate || !dragHandle || !candidate.contains(dragHandle)) return;
-      panel = candidate;
-      pointerId = event.pointerId;
-      startY = event.clientY;
-      dragY = 0;
-      didMove = false;
-      startAt = performance.now();
-    };
-    const move = (event: PointerEvent) => {
-      if (!panel || event.pointerId !== pointerId) return;
-      const distance = event.clientY - startY;
-      if (distance < 0) return;
-      if (distance < 4) return;
-      didMove = true;
-      dragY = distance;
-      if (animationFrame) return;
-      animationFrame = requestAnimationFrame(() => {
-        animationFrame = 0;
-        if (!panel) return;
-        panel.style.transition = "none";
-        panel.style.transform = `translate3d(0, ${dragY}px, 0)`;
-      });
-    };
-    const up = (event: PointerEvent) => {
-      if (!panel || event.pointerId !== pointerId) return;
-      const current = panel;
-      const distance = Math.max(0, event.clientY - startY);
-      const velocity = distance / Math.max(1, performance.now() - startAt);
-      panel = null;
-      pointerId = null;
-      if (!didMove) return;
-      if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = 0; }
-      current.style.transition = "transform 220ms cubic-bezier(.22,1,.36,1)";
-      if (distance > 120 || (distance > 35 && velocity > 0.65)) {
-        current.style.transform = "translate3d(0, 100%, 0)";
-        window.setTimeout(() => {
-          if (current.classList.contains("add-menu")) current.parentElement?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-          else current.querySelector<HTMLElement>(".sheet-close-btn, .sheet-header > button")?.click();
-          current.style.removeProperty("transform"); current.style.removeProperty("transition");
-        }, 230);
-      } else {
-        current.style.transform = "translate3d(0, 0, 0)";
-        window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 270);
-      }
-    };
-    const cancel = () => {
-      if (!panel) return;
-      const current = panel;
-      panel = null;
-      pointerId = null;
-      if (!didMove) return;
-      if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = 0; }
-      current.style.transition = "transform 220ms cubic-bezier(.22,1,.36,1)";
-      current.style.transform = "translate3d(0, 0, 0)";
-      window.setTimeout(() => { current.style.removeProperty("transform"); current.style.removeProperty("transition"); }, 230);
-    };
-    const backdropClick = (event: MouseEvent) => {
-      const backdrop = event.target as HTMLElement;
-      if (!backdrop.matches(".sheet-backdrop, .add-menu-overlay") || backdrop.classList.contains("add-menu-overlay")) return;
-      backdrop.querySelector<HTMLElement>(".sheet-close-btn, .sheet-header > button")?.click();
-    };
-    document.addEventListener("pointerdown", down, true);
-    document.addEventListener("pointermove", move, true);
-    document.addEventListener("pointerup", up, true);
-    document.addEventListener("pointercancel", cancel, true);
-    document.addEventListener("click", backdropClick, true);
-    return () => {
-      document.removeEventListener("pointerdown", down, true);
-      document.removeEventListener("pointermove", move, true);
-      document.removeEventListener("pointerup", up, true);
-      document.removeEventListener("pointercancel", cancel, true);
-      document.removeEventListener("click", backdropClick, true);
-    };
-  }, []);
+  useSheetGestures();
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -243,6 +217,43 @@ function App() {
         setProfileId(id);
       })
       .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!profileId) return;
+    const processDue = () => {
+      if (document.visibilityState === "visible") {
+        void processDueRecurringTransactions(profileId, toDateString(new Date())).catch(console.error);
+      }
+    };
+    processDue();
+    document.addEventListener("visibilitychange", processDue);
+    window.addEventListener("online", processDue);
+    return () => {
+      document.removeEventListener("visibilitychange", processDue);
+      window.removeEventListener("online", processDue);
+    };
+  }, [profileId]);
+
+  useEffect(() => {
+    const openRule = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      setRecurringShortcutId(custom.detail || "");
+    };
+    window.addEventListener("kupit:recurring-rule", openRule);
+    return () => window.removeEventListener("kupit:recurring-rule", openRule);
+  }, []);
+
+  useEffect(() => {
+    const editTransfer = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      setEditingTransferId(custom.detail);
+      setReceiptFlowOpen(false);
+      setFormInitialType("transfer");
+      setAddOpen(true);
+    };
+    window.addEventListener("kupit:edit-transfer", editTransfer);
+    return () => window.removeEventListener("kupit:edit-transfer", editTransfer);
   }, []);
 
   useEffect(() => {
@@ -321,23 +332,28 @@ function App() {
       </div>
 
       {/* Primary 5-Tab Navigation Bar */}
-      <nav className="bottom-nav" aria-label="Primary navigation">
+      <nav className={`bottom-nav ${navCollapsed ? "collapsed" : ""}`} aria-label="Primary navigation">
         {tabItems.map((item) => (
           <TabButton
             key={item.id}
             item={item}
             active={tab === item.id || (item.id === "add" && addMenuOpen)}
+            collapsed={navCollapsed}
             addMenuOpen={addMenuOpen}
-            onClick={() => item.id === "add" ? setAddMenuOpen((open) => !open) : navigateToTab(item.id)}
+            onClick={() => navCollapsed
+              ? setNavCollapsed(false)
+              : item.id === "add"
+              ? addMenuOpen ? closeAddMenu() : setAddMenuOpen(true)
+              : navigateToTab(item.id)}
           />
         ))}
       </nav>
 
       {addMenuOpen && (
         <AddActionsMenu
-          onClose={() => setAddMenuOpen(false)}
-          onAction={(action) => {
-            setAddMenuOpen(false);
+          closing={addMenuClosing}
+          onClose={() => closeAddMenu()}
+          onAction={(action) => closeAddMenu(() => {
             if (action === "chat") {
               setChatOpen(true);
               return;
@@ -351,18 +367,27 @@ function App() {
             setReceiptFlowOpen(false);
             setFormInitialType(action === "transfer" ? "transfer" : action === "income" ? "income" : "expense");
             setAddOpen(true);
-          }}
+          })}
         />
       )}
 
       {/* Sheets and Overlays */}
       <AddTransactionSheet
         open={addOpen}
-        onClose={() => { setAddOpen(false); setReceiptFlowOpen(false); }}
+        onClose={() => { setAddOpen(false); setReceiptFlowOpen(false); setEditingTransferId(null); }}
         profileId={profileId}
         initialType={formInitialType}
         receiptFlow={receiptFlowOpen}
-        onOpenCategoryManager={() => setCategoryManagerOpen(true)}
+        editTransactionId={editingTransferId || undefined}
+        onOpenCategoryManager={(categoryType, onSelect) => {
+          categoryPicker.current = (categoryId) => {
+            onSelect(categoryId);
+            document.querySelector<HTMLElement>(".add-sheet")?.setAttribute("data-sheet-dirty", "true");
+          };
+          setCategoryManagerType(categoryType);
+          setCategoryPickMode(true);
+          setCategoryManagerOpen(true);
+        }}
       />
 
       <AccountSheet
@@ -390,7 +415,11 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         themePreference={themePreference}
         onThemeChange={setThemePreference}
-        onOpenCategories={() => setCategoryManagerOpen(true)}
+        onOpenCategories={() => {
+          setCategoryManagerType("expense");
+          setCategoryPickMode(false);
+          setCategoryManagerOpen(true);
+        }}
         onOpenPlan={() => {
           setSettingsOpen(false);
           navigateToTab("plan");
@@ -400,9 +429,19 @@ function App() {
 
       <CategoryManagerSheet
         open={categoryManagerOpen}
-        onClose={() => setCategoryManagerOpen(false)}
+        onClose={() => {
+          setCategoryManagerOpen(false);
+          setCategoryPickMode(false);
+          categoryPicker.current = null;
+        }}
         profileId={profileId}
+        defaultType={categoryManagerType}
+        onSelectCategory={categoryPickMode ? (id) => categoryPicker.current?.(id) : undefined}
       />
+
+      {recurringShortcutId !== null && (
+        <RecurringSheet onClose={() => setRecurringShortcutId(null)} focusRuleId={recurringShortcutId || undefined} />
+      )}
 
       {helpOpen && (
         <FinsightsHelpModal onClose={() => setHelpOpen(false)} />
@@ -451,9 +490,11 @@ type AddAction = "chat" | "transfer" | "scan" | "income" | "expense";
 function AddActionsMenu({
   onClose,
   onAction,
+  closing,
 }: {
   onClose: () => void;
   onAction: (action: AddAction) => void;
+  closing: boolean;
 }) {
   const actions: { id: AddAction; label: string; hint: string; icon: typeof Home }[] = [
     { id: "chat", label: "Chat", hint: "Log naturally with your assistant", icon: MessageCircle },
@@ -464,9 +505,9 @@ function AddActionsMenu({
   ];
 
   return (
-    <div className="add-menu-overlay" onClick={onClose}>
+    <div className={`add-menu-overlay ${closing ? "is-closing" : ""}`} onClick={onClose}>
       <section
-        className="add-menu"
+        className={`add-menu ${closing ? "is-closing" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label="Add to your budget"
@@ -559,17 +600,19 @@ function ProfilesSheet({
 function TabButton({
   item,
   active,
+  collapsed,
   addMenuOpen = false,
   onClick,
 }: {
   item: (typeof tabItems)[number];
   active: boolean;
+  collapsed: boolean;
   addMenuOpen?: boolean;
   onClick: () => void;
 }) {
   const Icon = item.id === "add" && addMenuOpen ? X : item.icon;
   return (
-    <button className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""}`} onClick={onClick} aria-label={item.label}>
+    <button className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""}`} onClick={onClick} aria-label={item.id === "home" && collapsed ? "Expand navigation" : item.label} aria-expanded={item.id === "home" ? !collapsed : undefined}>
       <Icon size={20} />
       <span>{item.label}</span>
     </button>
@@ -695,7 +738,11 @@ function TransactionList({
           : category?.name || (positive ? "Income" : "Expense");
 
         const accountLabel =
-          transfer && toAccount
+          transfer && tx.externalFromName
+            ? `${tx.externalFromName} → ${account?.name || "Account"}`
+            : transfer && tx.externalToName
+            ? `${account?.name || "Account"} → ${tx.externalToName}`
+            : transfer && toAccount
             ? `${account?.name || "Account"} → ${toAccount.name}`
             : account?.name || "Account";
 
@@ -715,6 +762,16 @@ function TransactionList({
             <div className="transaction-main">
               <div className="transaction-title-row">
                 <b>{primaryTitle}</b>
+                {tx.recurringId && (
+                  <button
+                    type="button"
+                    className="recurring-transaction-badge"
+                    onClick={() => window.dispatchEvent(new CustomEvent("kupit:recurring-rule", { detail: tx.recurringId }))}
+                    aria-label="Open recurring rule"
+                  >
+                    <CalendarClock size={12} /> Recurring
+                  </button>
+                )}
               </div>
               <div className="transaction-sub-row">
                 {tx.note && <span>"{tx.note}" · </span>}
@@ -725,6 +782,10 @@ function TransactionList({
               {positive ? "+" : transfer ? "" : "−"}
               {formatMoney(tx.amount)}
             </strong>
+            {transfer && <div className="transaction-action-buttons">
+              <button type="button" className="transaction-edit-button" aria-label="Edit transfer" onClick={() => window.dispatchEvent(new CustomEvent("kupit:edit-transfer", { detail: tx.id }))}><Edit2 size={15} /></button>
+              <button type="button" className="transaction-edit-button" aria-label="Delete transfer" onClick={() => { if (window.confirm("Delete this transfer? Its linked fee will also be removed.")) void softDeleteTransaction(tx.id); }}><Trash2 size={15} /></button>
+            </div>}
           </article>
         );
       })}
@@ -1461,29 +1522,33 @@ function GoalForm({
   );
 }
 
-function RecurringSheet({ onClose }: { onClose: () => void }) {
+function RecurringSheet({ onClose, focusRuleId }: { onClose: () => void; focusRuleId?: string }) {
   const profile = useLiveQuery(
     () => db.profiles.filter((item) => item.isDefault && !item.deletedAt).first(),
     [],
     undefined
   );
   const accounts = useLiveQuery(
-    () => db.accounts.filter((item) => !item.deletedAt).toArray(),
-    [],
+    () => profile ? db.accounts.where({ profileId: profile.id }).filter((item) => !item.deletedAt).toArray() : [],
+    [profile?.id],
     []
   );
   const recurring = useLiveQuery(
-    () => db.recurring.filter((item) => !item.deletedAt).toArray(),
-    [],
+    () => profile ? db.recurring.where({ profileId: profile.id }).filter((item) => !item.deletedAt).toArray() : [],
+    [profile?.id],
     []
   );
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState("");
   const [nextDate, setNextDate] = useState(toDateString(new Date()));
-  const [frequency, setFrequency] = useState<
-    "daily" | "weekly" | "monthly" | "yearly"
-  >("monthly");
+  const [frequency, setFrequency] = useState<RecurringFrequency>("monthly");
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusRuleId || !recurring.length) return;
+    window.setTimeout(() => document.getElementById(`recurring-rule-${focusRuleId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
+  }, [focusRuleId, recurring]);
 
   useEffect(() => {
     if (!accountId && accounts.length) setAccountId(accounts[0].id);
@@ -1492,23 +1557,42 @@ function RecurringSheet({ onClose }: { onClose: () => void }) {
   const save = async () => {
     if (!profile || !accountId || !parseMoney(amount)) return;
     const timestamp = new Date().toISOString();
-    await db.recurring.add({
-      id: crypto.randomUUID(),
-      profileId: profile.id,
-      amount: parseMoney(amount),
-      accountId,
-      note: name.trim() || null,
-      transactionType: "expense",
-      frequency,
-      startDate: nextDate,
-      nextDueDate: nextDate,
-      remindDaysBefore: 3,
-      kind: "bill",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
+    if (editingId) {
+      await db.recurring.update(editingId, { amount: parseMoney(amount), accountId, note: name.trim() || null, frequency, nextDueDate: nextDate, updatedAt: timestamp });
+      await processDueRecurringTransactions(profile.id, toDateString(new Date()));
+      setEditingId(null);
+    } else {
+      await db.recurring.add({
+        id: crypto.randomUUID(),
+        profileId: profile.id,
+        amount: parseMoney(amount),
+        accountId,
+        note: name.trim() || null,
+        transactionType: "expense",
+        frequency,
+        startDate: nextDate,
+        nextDueDate: nextDate,
+        remindDaysBefore: 3,
+        kind: "bill",
+        occurrencesCreated: 0,
+        isPaused: false,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      await processDueRecurringTransactions(profile.id, toDateString(new Date()));
+    }
+    document.querySelector<HTMLElement>(".recurring-sheet")?.removeAttribute("data-sheet-dirty");
     setName("");
     setAmount("");
+  };
+
+  const editRule = (item: typeof recurring[number]) => {
+    setEditingId(item.id);
+    setName(item.note || "");
+    setAmount((item.amount / 100).toFixed(2));
+    setAccountId(item.accountId);
+    setNextDate(item.nextDueDate);
+    setFrequency(item.frequency);
   };
 
   return (
@@ -1518,7 +1602,7 @@ function RecurringSheet({ onClose }: { onClose: () => void }) {
       aria-modal="true"
       aria-label="Recurring payments"
     >
-      <section className="account-sheet">
+      <section className="account-sheet recurring-sheet">
         <header className="sheet-header">
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
@@ -1528,14 +1612,21 @@ function RecurringSheet({ onClose }: { onClose: () => void }) {
         </header>
         <div className="recurring-list">
           {recurring.map((item) => (
-            <article key={item.id}>
+            <article id={`recurring-rule-${item.id}`} key={item.id} className={item.isPaused ? "paused" : ""}>
               <span>
                 <b>{item.note || item.kind}</b>
                 <small>
-                  {item.frequency} · {item.nextDueDate}
+                  {item.isPaused ? "Paused · " : ""}{item.frequency} · Next {item.nextDueDate}
                 </small>
               </span>
               <strong>{formatMoney(item.amount)}</strong>
+              <div className="recurring-row-actions">
+                <button type="button" aria-label={item.isPaused ? "Resume recurring rule" : "Pause recurring rule"} onClick={() => void db.recurring.update(item.id, { isPaused: !item.isPaused, updatedAt: new Date().toISOString() })}>
+                  {item.isPaused ? <Play size={16} /> : <Pause size={16} />}
+                </button>
+                <button type="button" aria-label="Edit recurring rule" onClick={() => editRule(item)}><Edit2 size={16} /></button>
+                <button type="button" aria-label="Delete recurring rule" onClick={() => { if (window.confirm("Delete this recurring rule? Past transactions will stay.")) void db.recurring.update(item.id, { deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }}><Trash2 size={16} /></button>
+              </div>
             </article>
           ))}
           {!recurring.length && <p className="muted">No recurring items yet.</p>}
@@ -1590,17 +1681,16 @@ function RecurringSheet({ onClose }: { onClose: () => void }) {
               >
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
+                <option value="biweekly">Every 2 weeks</option>
                 <option value="monthly">Monthly</option>
                 <option value="yearly">Yearly</option>
               </select>
             </label>
           </div>
           <button className="save-button" onClick={save}>
-            Save recurring item
+            {editingId ? "Save changes" : "Add recurring rule"}
           </button>
-          <p className="form-note">
-            Due items wait for your confirmation before creating a transaction.
-          </p>
+          {editingId && <button type="button" className="cat-cancel-btn" onClick={() => { setEditingId(null); setName(""); setAmount(""); }}>Cancel edit</button>}
         </div>
       </section>
     </div>
@@ -2170,6 +2260,8 @@ function SettingsSheet({
   const [cloudBusy, setCloudBusy] = useState(false);
   const [cloudMessage, setCloudMessage] = useState("");
   const [cloudError, setCloudError] = useState("");
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupError, setBackupError] = useState("");
   const configuredAuthRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim();
   const configuredRedirectUrl = configuredAuthRedirect ? new URL(configuredAuthRedirect, window.location.origin) : null;
   const isCurrentHostLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -2235,7 +2327,7 @@ function SettingsSheet({
         options: { emailRedirectTo: authRedirectUrl },
       });
       if (error) setCloudError(error.message);
-      else setCloudMessage(`Sign-in link sent to ${email.trim()}. Open it in this browser to finish connecting your account.`);
+      else setCloudMessage(`Sign-in link sent to ${email.trim()}. Check your inbox.`);
     } catch (error) {
       setCloudError(error instanceof Error ? error.message : "Could not send the sign-in link.");
     } finally {
@@ -2261,7 +2353,7 @@ function SettingsSheet({
         try { setLastSyncedAt(JSON.parse(lastSyncSetting.value).iso || new Date().toISOString()); }
         catch { setLastSyncedAt(new Date().toISOString()); }
       }
-      setCloudMessage("Sync complete. Your local data remains available offline.");
+      setCloudMessage("Your budget is up to date.");
     } catch (error) {
       setCloudError(error instanceof Error ? error.message : "Cloud sync failed.");
     } finally {
@@ -2316,7 +2408,7 @@ function SettingsSheet({
             alt="Kupit Logo"
             className="settings-brand-img"
           />
-          <p className="settings-brand-tagline">Your money, in hand</p>
+          <p className="settings-brand-tagline">Budgeting made simple</p>
         </div>
 
         <div className="ios-settings-container">
@@ -2388,18 +2480,18 @@ function SettingsSheet({
             <div className="ios-group-card cloud-ios-card">
               <div className="cloud-panel-title">
                 <div>
-                  <b>Private Cloud Sync</b>
-                  <small>Offline-first · Row-level security</small>
+                  <b>Cloud Sync</b>
+                    <small>Sync your budget across devices</small>
                 </div>
                 <span
-                  className={session ? "cloud-status connected" : "cloud-status"}
+                  className={`cloud-status ${authChecking ? "checking" : !cloudSyncAvailable ? "setup-needed" : session ? "connected" : "sign-in-needed"}`}
                 >
-                  {authChecking ? "Checking" : session ? (cloudBusy ? "Syncing" : "Connected") : "Not connected"}
+                  {authChecking ? "Checking" : !cloudSyncAvailable ? "Unavailable" : session ? (cloudBusy ? "Syncing" : "Connected") : "Sign in"}
                 </span>
               </div>
               {!cloudSyncAvailable ? (
                 <p className="cloud-help">
-                  Add your Supabase URL and key to <code>.env</code> to activate multi-device cloud sync.
+                  Cloud sync is unavailable right now. Please try again later.
                 </p>
               ) : authChecking ? (
                 <div className="cloud-auth-checking"><span className="cloud-auth-spinner" /> Checking your secure account session...</div>
@@ -2407,23 +2499,23 @@ function SettingsSheet({
                 <div className="cloud-actions">
                   <div className="cloud-account-card">
                     <span className="cloud-account-icon"><ShieldCheck size={19} /></span>
-                    <span className="cloud-account-copy"><b>Private account connected</b><small>{session.user.email}</small></span>
+                    <span className="cloud-account-copy"><b>Signed in</b><small>{session.user.email}</small></span>
                     <CheckCircle2 size={19} className="cloud-account-check" />
                   </div>
                   <div className="cloud-sync-history">
-                    <span><Clock3 size={15} /> Last device sync</span>
+                    <span><Clock3 size={15} /> Last synced</span>
                     <b>{lastSyncedAt ? new Date(lastSyncedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Not synced yet"}</b>
                   </div>
                   <button className="cloud-sync-button" onClick={syncCloud} disabled={cloudBusy}>
                     <RefreshCw size={16} className={cloudBusy ? "sync-icon-active" : ""} />
-                    {cloudBusy ? "Syncing your data..." : "Sync this device"}
+                    {cloudBusy ? "Syncing…" : "Sync now"}
                   </button>
                   <button className="cloud-signout-button" onClick={signOut} disabled={cloudBusy}>Sign out</button>
                 </div>
               ) : (
                 <div className="cloud-actions">
                   <p className="cloud-help">
-                    Sign in securely with an email link. Your local budget stays available offline.
+                    We’ll email you a link to sign in and sync your budget.
                   </p>
                   <label className="cloud-email">
                     Email address
@@ -2442,7 +2534,6 @@ function SettingsSheet({
                   >
                     {cloudBusy ? "Sending…" : "Email me a sign-in link"}
                   </button>
-                  <p className="cloud-redirect-hint">Return address: <code>{authRedirectUrl}</code>. If your email opens a different address, check Supabase URL Configuration and its confirmation email template.</p>
                 </div>
               )}
               {cloudMessage && <p className="cloud-message">{cloudMessage}</p>}
@@ -2505,10 +2596,25 @@ function SettingsSheet({
                   style={{ display: "none" }}
                   onChange={async (event) => {
                     const file = event.target.files?.[0];
-                    if (file) await importJsonBackup(file);
+                    setBackupMessage("");
+                    setBackupError("");
+                    if (file) {
+                      try {
+                        await importJsonBackup(file);
+                        setBackupMessage(session
+                          ? `Backup imported. Sync now to upload it to your account.`
+                          : `Backup imported. Sign in and sync to upload it to your account.`);
+                      } catch (error) {
+                        setBackupError(error instanceof Error ? error.message : "Could not import this backup.");
+                      } finally {
+                        event.target.value = "";
+                      }
+                    }
                   }}
                 />
               </label>
+              {backupMessage && <p className="backup-import-message" role="status">{backupMessage}</p>}
+              {backupError && <p className="cloud-error" role="alert">{backupError}</p>}
             </div>
           </div>
 
@@ -2567,13 +2673,15 @@ function AddTransactionSheet({
   initialType,
   onOpenCategoryManager,
   receiptFlow,
+  editTransactionId,
 }: {
   open: boolean;
   onClose: () => void;
   profileId: string;
   initialType: TransactionType;
-  onOpenCategoryManager: () => void;
+  onOpenCategoryManager: (categoryType: CategoryType, onSelect: (categoryId: string) => void) => void;
   receiptFlow: boolean;
+  editTransactionId?: string;
 }) {
   const accounts = useLiveQuery(
     () =>
@@ -2584,8 +2692,14 @@ function AddTransactionSheet({
     [profileId],
     []
   );
+  const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId], undefined);
   const categories = useLiveQuery(
     () => db.categories.where({ profileId }).filter((c) => !c.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const ledgerTransactions = useLiveQuery(
+    () => db.transactions.where({ profileId }).filter((transaction) => !transaction.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -2594,9 +2708,21 @@ function AddTransactionSheet({
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
+  const [sourceType, setSourceType] = useState<"my" | "external">("my");
+  const [destinationType, setDestinationType] = useState<"my" | "external">("my");
+  const [externalFromName, setExternalFromName] = useState("");
+  const [externalToName, setExternalToName] = useState("");
+  const [transferFee, setTransferFee] = useState("");
+  const [transferTime, setTransferTime] = useState(() => new Date().toTimeString().slice(0, 5));
   const [categoryId, setCategoryId] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(toDateString(new Date()));
+  const [repeatEnabled, setRepeatEnabled] = useState(false);
+  const [repeatFrequency, setRepeatFrequency] = useState<RecurringFrequency>("monthly");
+  const [repeatStartDate, setRepeatStartDate] = useState(toDateString(new Date()));
+  const [repeatEndMode, setRepeatEndMode] = useState<"never" | "date" | "after">("never");
+  const [repeatEndDate, setRepeatEndDate] = useState("");
+  const [repeatCount, setRepeatCount] = useState("12");
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptStep, setReceiptStep] = useState<"choose" | "details">("details");
   const [receiptScanning, setReceiptScanning] = useState(false);
@@ -2605,6 +2731,8 @@ function AddTransactionSheet({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const receiptFileRef = useRef<HTMLInputElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+  const sheetBackdropRef = useRef<HTMLDivElement>(null);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [storedAmount, setStoredAmount] = useState<number | null>(null);
   const [pendingOperator, setPendingOperator] = useState<CalculatorOperator | null>(null);
@@ -2616,6 +2744,26 @@ function AddTransactionSheet({
     if (!open) return;
     setType(initialType);
     setReceiptStep(receiptFlow ? "choose" : "details");
+    setRepeatEnabled(false);
+    setRepeatStartDate(toDateString(new Date()));
+    setRepeatEndMode("never");
+    setRepeatEndDate("");
+    setRepeatCount("12");
+    if (!editTransactionId) {
+      setAmount("");
+      setDate(toDateString(new Date()));
+      setNote("");
+      setCategoryId("");
+      setAccountId("");
+      setToAccountId("");
+      setUndoId(null);
+    }
+    setSourceType("my");
+    setDestinationType("my");
+    setExternalFromName("");
+    setExternalToName("");
+    setTransferFee("");
+    setTransferTime(new Date().toTimeString().slice(0, 5));
     if (receiptFlow) {
       setReceipt(null);
       setReceiptMessage("");
@@ -2624,18 +2772,60 @@ function AddTransactionSheet({
       setNote("");
       setDate(toDateString(new Date()));
     }
-  }, [open, initialType, receiptFlow]);
+  }, [open, initialType, receiptFlow, editTransactionId]);
+
+  useEffect(() => {
+    if (!open || !editTransactionId) return;
+    void db.transactions.get(editTransactionId).then((transaction) => {
+      if (!transaction || transaction.type !== "transfer") return;
+      setType("transfer");
+      setAmount((transaction.amount / 100).toFixed(2));
+      setAccountId(transaction.accountId);
+      setToAccountId(transaction.toAccountId || "");
+      setSourceType(transaction.sourceType || "my");
+      setDestinationType(transaction.destinationType || "my");
+      setExternalFromName(transaction.externalFromName || "");
+      setExternalToName(transaction.externalToName || "");
+      setTransferFee(((transaction.transferFee || 0) / 100).toFixed(2));
+      setTransferTime(transaction.transferTime || "12:00");
+      setDate(transaction.date);
+      setNote(transaction.note || "");
+    });
+  }, [open, editTransactionId]);
+
+  useEffect(() => {
+    if (!open || receiptStep !== "details") return;
+    const focusFrame = window.requestAnimationFrame(() => amountInputRef.current?.focus());
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      const backdrop = sheetBackdropRef.current;
+      if (!backdrop) return;
+      backdrop.style.setProperty("--sheet-visible-height", `${viewport?.height || window.innerHeight}px`);
+      backdrop.style.setProperty("--sheet-visible-top", `${viewport?.offsetTop || 0}px`);
+    };
+    updateViewport();
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, [open, receiptStep]);
 
   useEffect(() => {
     if (!accountId && accounts.length) setAccountId(accounts[0].id);
   }, [accounts, accountId]);
 
   useEffect(() => {
-    if (!categoryId) {
+    const expectedType = type === "income" ? "income" : "expense";
+    if (!categoryId || !categories.some((category) => category.id === categoryId && category.type === expectedType)) {
       const first = categories.find(
-        (c) => c.type === (type === "income" ? "income" : "expense") && !c.parentId
+        (c) => c.type === expectedType && !c.parentId
       );
-      if (first) setCategoryId(first.id);
+      setCategoryId(first?.id || "");
     }
   }, [categories, type, categoryId]);
 
@@ -2831,18 +3021,98 @@ function AddTransactionSheet({
   const save = async () => {
     const cents = parseMoney(amount);
     if (!cents || !accountId) return;
-    if (type === "transfer" && (!toAccountId || toAccountId === accountId)) return;
-    const transactionId = await createTransaction({
-      profileId,
-      type,
-      amount: cents,
-      accountId,
-      toAccountId: type === "transfer" ? toAccountId : null,
-      categoryId: type === "transfer" ? null : categoryId || null,
-      date,
-      note: note.trim() || null,
-    });
-    if (receipt) {
+    let transactionId: string | null = null;
+    if (type === "transfer") {
+      if ((sourceType === "external" && destinationType === "external") ||
+        (sourceType === "my" && destinationType === "my" && (!toAccountId || toAccountId === accountId)) ||
+        (sourceType === "external" && !externalFromName.trim()) ||
+        (destinationType === "external" && !externalToName.trim())) return;
+      const feeCents = sourceType === "my" ? parseMoney(transferFee || "0") : 0;
+      let feeCategoryId: string | undefined;
+      if (feeCents > 0) {
+        feeCategoryId = categories.find((category) => category.type === "expense" && category.name.trim().toLocaleLowerCase() === "fees")?.id;
+        if (!feeCategoryId) {
+          const timestamp = new Date().toISOString();
+          feeCategoryId = crypto.randomUUID();
+          await db.categories.add({
+            id: feeCategoryId,
+            profileId,
+            name: "Fees",
+            type: "expense",
+            icon: "credit-card",
+            color: "#64748B",
+            sortOrder: categories.length,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+        }
+      }
+      const transferData = {
+        profileId,
+        amount: cents,
+        accountId,
+        toAccountId: sourceType === "my" && destinationType === "my" ? toAccountId : null,
+        sourceType,
+        destinationType,
+        externalFromName: sourceType === "external" ? externalFromName : null,
+        externalToName: destinationType === "external" ? externalToName : null,
+        transferFee: feeCents,
+        feeCategoryId,
+        date,
+        time: transferTime,
+        note: note.trim() || null,
+      };
+      if (editTransactionId) {
+        await updateTransfer(editTransactionId, transferData);
+        onClose();
+        return;
+      }
+      transactionId = await createTransfer(transferData);
+      sheetBackdropRef.current?.querySelector(".add-sheet")?.removeAttribute("data-sheet-dirty");
+      setAmount("");
+      setTransferFee("");
+      setNote("");
+      setUndoId(transactionId);
+      return;
+    }
+    if (type === "expense" && repeatEnabled) {
+      if (!categoryId || !repeatStartDate || (repeatEndMode === "date" && !repeatEndDate) || (repeatEndMode === "after" && (!Number(repeatCount) || Number(repeatCount) < 1))) return;
+      const ruleId = await createRecurringRule({
+        profileId,
+        amount: cents,
+        categoryId,
+        accountId,
+        note: note.trim() || null,
+        transactionType: "expense",
+        frequency: repeatFrequency,
+        startDate: repeatStartDate,
+        endDate: repeatEndMode === "date" ? repeatEndDate : null,
+        endsAfter: repeatEndMode === "after" ? Number(repeatCount) : null,
+        occurrencesCreated: 0,
+        isPaused: false,
+        nextDueDate: repeatStartDate,
+        remindDaysBefore: null,
+        kind: "bill",
+      });
+      await processDueRecurringTransactions(profileId, toDateString(new Date()));
+      transactionId = await db.transactions
+        .where("occurrenceKey")
+        .startsWith(`${ruleId}:`)
+        .first()
+        .then((item) => item?.id || null);
+    } else {
+      transactionId = await createTransaction({
+        profileId,
+        type,
+        amount: cents,
+        accountId,
+        toAccountId: null,
+        categoryId: categoryId || null,
+        date,
+        note: note.trim() || null,
+      });
+    }
+    if (receipt && transactionId) {
       await db.attachments.add({
         id: crypto.randomUUID(),
         transactionId,
@@ -2852,6 +3122,7 @@ function AddTransactionSheet({
       });
     }
     setUndoId(transactionId);
+    sheetBackdropRef.current?.querySelector(".add-sheet")?.removeAttribute("data-sheet-dirty");
     setAmount("");
     setStoredAmount(null);
     setPendingOperator(null);
@@ -2861,16 +3132,43 @@ function AddTransactionSheet({
     setNote("");
     setCategoryId("");
     setReceipt(null);
+    setRepeatEnabled(false);
   };
 
   if (!open) return null;
-  const filteredCategories = categories.filter(
-    (c) => c.type === (type === "income" ? "income" : "expense")
-  );
+  const sortedCategories = categories.filter(
+    (c) => c.type === (type === "income" ? "income" : "expense") &&
+      (type === "income" || !LEGACY_EXPENSE_CATEGORY_NAMES.has(c.name))
+  ).sort((a, b) => {
+    if (type === "income") return a.sortOrder - b.sortOrder;
+    const aOrder = EXPENSE_CATEGORY_ORDER.get(a.name.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = EXPENSE_CATEGORY_ORDER.get(b.name.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+    return aOrder - bOrder || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+  });
+  const uniqueCategories = new Map<string, Category>();
+  for (const category of sortedCategories) {
+    const key = `${category.type}:${category.name.trim().toLowerCase()}`;
+    const current = uniqueCategories.get(key);
+    if (!current || category.id === categoryId) uniqueCategories.set(key, category);
+  }
+  const filteredCategories = [...uniqueCategories.values()];
+  const amountCurrencySymbol = new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: profile?.currency || "PHP",
+  }).formatToParts(0).find((part) => part.type === "currency")?.value || "₱";
+  const transferAmountCents = parseMoney(amount);
+  const transferFeeCents = sourceType === "my" ? parseMoney(transferFee || "0") : 0;
+  const totalTransferDeduction = transferAmountCents + transferFeeCents;
+  const sourceAccount = accounts.find((account) => account.id === accountId);
+  const sourceBalance = sourceAccount ? computeAccountBalance(sourceAccount.id, sourceAccount.openingBalance, ledgerTransactions) : 0;
+  const sourceAvailable = sourceAccount?.type === "credit_card" ? (sourceAccount.creditLimit || 0) + sourceBalance : sourceBalance;
+  const sourceCanGoNegative = sourceAccount?.type === "credit_card" || sourceAccount?.type === "loan";
+  const balanceWarning = type === "transfer" && sourceType === "my" && Boolean(sourceAccount) && totalTransferDeduction > sourceAvailable;
 
   return (
     <div
-      className="sheet-backdrop"
+      ref={sheetBackdropRef}
+      className="sheet-backdrop transaction-sheet-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="Add transaction"
@@ -2932,55 +3230,55 @@ function AddTransactionSheet({
             <p>{receiptMessage || "Preparing receipt scanner..."}</p>
           </div>
         ) : <>
-        <div className="calculator-display">
-          <div className="calculator-expression" aria-live="polite">
-            {expression || "Amount"}
-          </div>
-          <div className="amount-display">
-            <small>₱</small>
-            {amount && Number.isFinite(parseMoney(amount))
-              ? formatMoney(parseMoney(amount)).replace("₱", "")
-              : "0.00"}
-          </div>
-          {calculatorError && (
-            <p className="calculator-error" role="alert">
-              {calculatorError}
-            </p>
-          )}
-        </div>
-
         <div className="sheet-fields">
           {type === "transfer" ? (
             <>
-              <label>
-                From
-                <select
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                >
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                To
-                <select
-                  value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
-                >
-                  <option value="">Select destination account</option>
-                  {accounts
-                    .filter((a) => a.id !== accountId)
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <div className="transfer-type-field">
+                <span className="transaction-section-label">Source type</span>
+                <div className="transfer-segment" role="group" aria-label="Source type">
+                  {(["my", "external"] as const).map((value) => <button type="button" key={value} className={sourceType === value ? "active" : ""} aria-pressed={sourceType === value} onClick={() => setSourceType(value)}>{value === "my" ? "My account" : "External"}</button>)}
+                </div>
+              </div>
+              <div className="transfer-type-field">
+                <span className="transaction-section-label">Destination type</span>
+                <div className="transfer-segment" role="group" aria-label="Destination type">
+                  {(["my", "external"] as const).map((value) => <button type="button" key={value} className={destinationType === value ? "active" : ""} aria-pressed={destinationType === value} onClick={() => setDestinationType(value)}>{value === "my" ? "My account" : "External"}</button>)}
+                </div>
+              </div>
+              {sourceType === "my" ? (
+                <label>From
+                  <select value={accountId} onChange={(event) => setAccountId(event.target.value)}>
+                    {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <label>From
+                  <input value={externalFromName} maxLength={60} onChange={(event) => setExternalFromName(event.target.value)} placeholder="Name or source" />
+                </label>
+              )}
+              {destinationType === "my" ? (
+                <label>To
+                  <select value={sourceType === "external" ? accountId : toAccountId} onChange={(event) => sourceType === "external" ? setAccountId(event.target.value) : setToAccountId(event.target.value)}>
+                    <option value="">Select account</option>
+                    {accounts.filter((account) => sourceType === "external" || account.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <label>To
+                  <input value={externalToName} maxLength={60} onChange={(event) => setExternalToName(event.target.value)} placeholder="Name or destination" />
+                </label>
+              )}
+              {sourceType === "external" && destinationType === "external" && <p className="transfer-inline-error" role="alert">Choose at least one of your accounts.</p>}
+              {sourceType === "my" && (
+                <label>Transfer fee (optional)
+                  <input inputMode="decimal" value={transferFee} onChange={(event) => {
+                    const normalized = event.target.value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+                    const [whole, ...decimals] = normalized.split(".");
+                    setTransferFee(decimals.length ? `${whole || "0"}.${decimals.join("").slice(0, 2)}` : whole);
+                  }} placeholder="0.00" />
+                </label>
+              )}
+              {balanceWarning && <p className={sourceCanGoNegative ? "transfer-balance-warning" : "transfer-inline-error"} role="status">This transfer is more than the available balance{sourceCanGoNegative ? ". You can continue." : ". Choose another account or lower the amount."}</p>}
             </>
           ) : (
             <>
@@ -2998,50 +3296,95 @@ function AddTransactionSheet({
                 </select>
               </label>
 
-              <div className="category-select-row">
-                <label>
-                  Category
-                  <select
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
+              <div className="transaction-category-section">
+                <span className="transaction-section-label">Category</span>
+                <div className="transaction-category-grid" role="group" aria-label="Choose category">
+                  {filteredCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      className={`transaction-category-tile ${categoryId === category.id ? "selected" : ""}`}
+                      aria-pressed={categoryId === category.id}
+                      onClick={() => setCategoryId(category.id)}
+                    >
+                      <CategoryIcon icon={category.icon} color={category.color} size={20} />
+                      <span>{category.name}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="transaction-category-tile add-category-tile"
+                    onClick={() => onOpenCategoryManager(type === "income" ? "income" : "expense", setCategoryId)}
                   >
-                    {filteredCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="manage-cat-inline-btn"
-                  onClick={onOpenCategoryManager}
-                  title="Add or edit categories and icons"
-                >
-                  <Edit2 size={13} /> Categories
-                </button>
+                    <span className="add-category-icon"><Plus size={20} /></span>
+                    <span>Add category</span>
+                  </button>
+                </div>
               </div>
             </>
           )}
 
-          <div className="field-row">
-            <label>
-              Date
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </label>
-            <label>
-              Note
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Optional (e.g. Starbucks)"
-              />
-            </label>
-          </div>
+          {type === "transfer" ? (
+            <>
+              <div className="field-row">
+                <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+                <label>Time<input type="time" value={transferTime} onChange={(event) => setTransferTime(event.target.value)} /></label>
+              </div>
+              <label>Note (optional)<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note" /></label>
+            </>
+          ) : (
+            <div className="field-row">
+              <label>Date<input type="date" value={date} onChange={(event) => {
+                const nextDate = event.target.value;
+                setDate(nextDate);
+                setRepeatStartDate((current) => current === date ? nextDate : current);
+              }} /></label>
+              <label>Note<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional (e.g. Starbucks)" /></label>
+            </div>
+          )}
+
+          {type === "expense" && !receiptFlow && (
+            <div className="repeat-control">
+              <button
+                type="button"
+                className="repeat-toggle-row"
+                aria-pressed={repeatEnabled}
+                onClick={() => setRepeatEnabled((enabled) => !enabled)}
+              >
+                <span><CalendarClock size={17} /> Repeat</span>
+                <span className={`switch-track ${repeatEnabled ? "on" : ""}`} aria-hidden="true"><i /></span>
+              </button>
+              {repeatEnabled && (
+                <div className="repeat-fields">
+                  <label>Frequency
+                    <select value={repeatFrequency} onChange={(event) => setRepeatFrequency(event.target.value as RecurringFrequency)}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Every 2 weeks</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                  </label>
+                  <label>Starts
+                    <input type="date" value={repeatStartDate} onChange={(event) => setRepeatStartDate(event.target.value)} />
+                  </label>
+                  <label>Ends
+                    <select value={repeatEndMode} onChange={(event) => setRepeatEndMode(event.target.value as typeof repeatEndMode)}>
+                      <option value="never">Never</option>
+                      <option value="date">On date</option>
+                      <option value="after">After a number of times</option>
+                    </select>
+                  </label>
+                  {repeatEndMode === "date" && <label>End date
+                    <input type="date" value={repeatEndDate} min={repeatStartDate} onChange={(event) => setRepeatEndDate(event.target.value)} />
+                  </label>}
+                  {repeatEndMode === "after" && <label>Number of times
+                    <input type="number" inputMode="numeric" min="1" step="1" value={repeatCount} onChange={(event) => setRepeatCount(event.target.value)} />
+                  </label>}
+                </div>
+              )}
+            </div>
+          )}
 
           {receiptFlow ? (
             <div className="receipt-review-photo">
@@ -3065,48 +3408,45 @@ function AddTransactionSheet({
           )}
         </div>
 
-        <div className="keypad calculator-keypad">
-          {[
-            { key: "AC", label: "AC", kind: "utility" },
-            { key: "%", label: "%", kind: "utility" },
-            { key: "back", label: "⌫", kind: "utility", aria: "Delete last digit" },
-            { key: "÷", label: "÷", kind: "operator", aria: "Divide" },
-            { key: "7", label: "7", kind: "number" },
-            { key: "8", label: "8", kind: "number" },
-            { key: "9", label: "9", kind: "number" },
-            { key: "×", label: "×", kind: "operator", aria: "Multiply" },
-            { key: "4", label: "4", kind: "number" },
-            { key: "5", label: "5", kind: "number" },
-            { key: "6", label: "6", kind: "number" },
-            { key: "−", label: "−", kind: "operator", aria: "Subtract" },
-            { key: "1", label: "1", kind: "number" },
-            { key: "2", label: "2", kind: "number" },
-            { key: "3", label: "3", kind: "number" },
-            { key: "+", label: "+", kind: "operator", aria: "Add" },
-            { key: "00", label: "00", kind: "number" },
-            { key: "0", label: "0", kind: "number" },
-            { key: ".", label: ".", kind: "number" },
-            { key: "=", label: "=", kind: "equals", aria: "Calculate" },
-          ].map(({ key, label, kind, aria }) => (
-            <button
-              key={key}
-              type="button"
-              className={`calculator-key ${kind}`}
-              aria-label={aria || label}
-              onClick={() => keypadPress(key)}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="transaction-sticky-footer">
+          <label className="transaction-amount-field">
+            <span>{type === "transfer" ? (sourceType === "external" ? "Amount to receive" : "Transfer amount") : "Amount"}</span>
+            <span className="transaction-amount-input-wrap">
+              <span aria-hidden="true">{amountCurrencySymbol}</span>
+              <input
+                ref={amountInputRef}
+                autoFocus
+                aria-label="Transaction amount"
+                inputMode="decimal"
+                type="text"
+                value={amount}
+                onChange={(event) => {
+                  const normalized = event.target.value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+                  const [whole, ...decimals] = normalized.split(".");
+                  setAmount(decimals.length ? `${whole || "0"}.${decimals.join("").slice(0, 2)}` : whole);
+                }}
+                placeholder="0.00"
+                autoComplete="off"
+              />
+            </span>
+          </label>
+          {type === "transfer" && (
+            <div className="transfer-total-summary" aria-live="polite">
+              <div><span>Amount to receive</span><b>{formatMoney(transferAmountCents, profile?.currency || "PHP")}</b></div>
+              {sourceType === "my" && <>
+                <div><span>Transfer fee</span><b>{formatMoney(transferFeeCents, profile?.currency || "PHP")}</b></div>
+                <div className="transfer-total-line"><span>Total deduction</span><b>{formatMoney(totalTransferDeduction, profile?.currency || "PHP")}</b></div>
+              </>}
+            </div>
+          )}
+          <button
+            className="save-button"
+            onClick={save}
+            disabled={parseMoney(amount) <= 0 || !accountId || (type !== "transfer" && !categoryId) || (repeatEnabled && (!repeatStartDate || (repeatEndMode === "date" && (!repeatEndDate || repeatEndDate < repeatStartDate)) || (repeatEndMode === "after" && (!Number(repeatCount) || Number(repeatCount) < 1)))) || (type === "transfer" && ((sourceType === "external" && destinationType === "external") || (sourceType === "my" && destinationType === "my" && (!toAccountId || toAccountId === accountId)) || (sourceType === "external" && !externalFromName.trim()) || (destinationType === "external" && !externalToName.trim()) || (balanceWarning && !sourceCanGoNegative)))}
+          >
+            {type === "transfer" ? "Confirm transfer" : "Save transaction"}
+          </button>
         </div>
-
-        <button
-          className="save-button"
-          onClick={save}
-          disabled={parseMoney(amount) <= 0 || !accountId}
-        >
-          Save transaction
-        </button>
         </>}
 
         {cameraOpen && (

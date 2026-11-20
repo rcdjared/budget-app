@@ -1,4 +1,4 @@
-import { db } from "@/db/schema";
+import { db, withoutOutbox } from "@/db/schema";
 
 const TABLE_NAMES = [
   "profiles",
@@ -57,12 +57,31 @@ export async function exportTransactionsCsv(): Promise<void> {
 export async function importJsonBackup(file: File): Promise<number> {
   const data = JSON.parse(await file.text()) as Record<string, unknown[]>;
   let imported = 0;
-  for (const table of TABLE_NAMES) {
-    const rows = data[table];
-    if (!Array.isArray(rows) || rows.length === 0) continue;
-    await db.table(table).bulkPut(rows);
-    imported += rows.length;
-  }
+  const importedAt = new Date().toISOString();
+  await withoutOutbox(() => db.transaction("rw", db.tables, async () => {
+    for (const table of TABLE_NAMES) {
+      const rows = data[table];
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      for (const value of rows) {
+        if (!value || typeof value !== "object" || typeof (value as { id?: unknown }).id !== "string") continue;
+        const original = value as Record<string, unknown>;
+        const record = { ...original, updatedAt: importedAt };
+        const existing = await db.table(table).get(record.id as string);
+        await db.table(table).put(record);
+        await db.outbox.add({
+          id: crypto.randomUUID(),
+          table,
+          recordId: record.id as string,
+          op: existing ? "update" : "create",
+          payload: JSON.stringify(record),
+          status: "pending",
+          createdAt: importedAt,
+          updatedAt: importedAt,
+        });
+        imported++;
+      }
+    }
+  }));
   return imported;
 }
 

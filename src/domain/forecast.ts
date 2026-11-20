@@ -1,4 +1,5 @@
 import type { Recurring, Transaction } from "./types";
+import { getNextOccurrenceDate } from "@/domain/recurrence";
 
 export interface ForecastDay {
   date: string;
@@ -9,26 +10,14 @@ export function getNextRecurrenceDate(
   recurring: Recurring,
   afterDate: Date = new Date()
 ): Date {
-  let next = new Date(`${recurring.nextDueDate}T00:00:00`);
+  let nextKey = recurring.nextDueDate;
   const afterKey = [
     afterDate.getFullYear(),
     String(afterDate.getMonth() + 1).padStart(2, "0"),
     String(afterDate.getDate()).padStart(2, "0"),
   ].join("-");
-  const nextKey = () =>
-    [
-      next.getFullYear(),
-      String(next.getMonth() + 1).padStart(2, "0"),
-      String(next.getDate()).padStart(2, "0"),
-    ].join("-");
-  while (nextKey() < afterKey) {
-    if (recurring.frequency === "daily") next.setDate(next.getDate() + 1);
-    else if (recurring.frequency === "weekly") next.setDate(next.getDate() + 7);
-    else if (recurring.frequency === "monthly") next.setMonth(next.getMonth() + 1);
-    else if (recurring.frequency === "yearly") next.setFullYear(next.getFullYear() + 1);
-    else next.setDate(next.getDate() + (recurring.customIntervalDays || 1));
-  }
-  return next;
+  while (nextKey < afterKey) nextKey = getNextOccurrenceDate(recurring, nextKey);
+  return new Date(`${nextKey}T00:00:00`);
 }
 
 export function generateForecast(
@@ -51,7 +40,7 @@ export function generateForecast(
     ].join("-");
 
     for (const recurring of recurringItems) {
-      if (recurring.deletedAt) continue;
+      if (recurring.deletedAt || recurring.isPaused || (recurring.endsAfter && (recurring.occurrencesCreated || 0) >= recurring.endsAfter)) continue;
       if (recurring.endDate && dateKey > recurring.endDate) continue;
       const next = getNextRecurrenceDate(recurring, date);
       const nextKey = [
@@ -102,6 +91,10 @@ export function sumLiquidAccountBalance(
     if (tx.type === "income" && liquidIds.has(tx.accountId)) total += tx.amount;
     if (tx.type === "expense" && liquidIds.has(tx.accountId)) total -= tx.amount;
     if (tx.type === "transfer") {
+      if (tx.externalFromName) {
+        if (liquidIds.has(tx.accountId)) total += tx.amount;
+        continue;
+      }
       if (liquidIds.has(tx.accountId)) total -= tx.amount;
       if (tx.toAccountId && liquidIds.has(tx.toAccountId)) total += tx.amount;
     }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { X, Plus, Edit2, Trash2, Check, FolderPlus, Sparkles } from "lucide-react";
 import { db } from "@/db/schema";
@@ -13,7 +13,7 @@ import {
   CATEGORY_ICON_LIST,
   CATEGORY_COLORS,
 } from "@/components/CategoryIcon";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/db/seed";
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, LEGACY_EXPENSE_CATEGORY_NAMES } from "@/db/seed";
 
 interface CategoryManagerSheetProps {
   open: boolean;
@@ -41,6 +41,7 @@ export function CategoryManagerSheet({
   const [formColor, setFormColor] = useState(CATEGORY_COLORS[0]);
   const [formParentId, setFormParentId] = useState<string>("");
   const [showIconPicker, setShowIconPicker] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const categories = useLiveQuery(
     () =>
@@ -52,9 +53,28 @@ export function CategoryManagerSheet({
     []
   );
 
+  useEffect(() => {
+    if (open) setActiveTab(defaultType);
+  }, [open, defaultType]);
+
   if (!open) return null;
 
-  const currentTabCategories = categories.filter((c) => c.type === activeTab);
+  const currentTabCategories = (() => {
+    const visible = categories.filter((category) =>
+      category.type === activeTab && (activeTab === "income" || !LEGACY_EXPENSE_CATEGORY_NAMES.has(category.name))
+    );
+    const unique = new Map<string, Category>();
+    for (const category of visible) {
+      const key = category.name.trim().toLowerCase();
+      if (!unique.has(key)) unique.set(key, category);
+    }
+    return [...unique.values()].sort((a, b) => {
+      if (activeTab === "income") return a.sortOrder - b.sortOrder;
+      const aOrder = EXPENSE_CATEGORIES.findIndex((seed) => seed.name.toLowerCase() === a.name.trim().toLowerCase());
+      const bOrder = EXPENSE_CATEGORIES.findIndex((seed) => seed.name.toLowerCase() === b.name.trim().toLowerCase());
+      return (aOrder < 0 ? Number.MAX_SAFE_INTEGER : aOrder) - (bOrder < 0 ? Number.MAX_SAFE_INTEGER : bOrder) || a.sortOrder - b.sortOrder;
+    });
+  })();
   const parentCategories = currentTabCategories.filter((c) => !c.parentId);
 
   const startAdd = () => {
@@ -65,6 +85,7 @@ export function CategoryManagerSheet({
     setFormColor(CATEGORY_COLORS[Math.floor(Math.random() * CATEGORY_COLORS.length)]);
     setFormParentId("");
     setShowIconPicker(false);
+    setFormError("");
     setIsAdding(true);
   };
 
@@ -76,16 +97,27 @@ export function CategoryManagerSheet({
     setFormColor(cat.color || CATEGORY_COLORS[0]);
     setFormParentId(cat.parentId || "");
     setShowIconPicker(false);
+    setFormError("");
     setIsAdding(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim()) return;
+    const name = formName.trim();
+    if (!name) return;
+    if (name.length > 20) {
+      setFormError("Use 20 characters or fewer.");
+      return;
+    }
+    if (categories.some((category) => category.id !== editingCategory?.id && category.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setFormError("A category with this name already exists.");
+      return;
+    }
+    setFormError("");
 
     if (editingCategory) {
       await updateCategory(editingCategory.id, {
-        name: formName.trim(),
+        name,
         type: formType,
         icon: formIcon,
         color: formColor,
@@ -103,8 +135,11 @@ export function CategoryManagerSheet({
       });
       if (onSelectCategory) {
         onSelectCategory(newId);
+        onClose();
       }
     }
+
+    document.querySelector<HTMLElement>(".category-manager-sheet")?.removeAttribute("data-sheet-dirty");
 
     setIsAdding(false);
     setEditingCategory(null);
@@ -251,12 +286,14 @@ export function CategoryManagerSheet({
               <input
                 type="text"
                 value={formName}
-                onChange={(e) => setFormName(e.target.value)}
+                onChange={(e) => { setFormName(e.target.value.slice(0, 20)); setFormError(""); }}
                 placeholder="e.g. Groceries, Streaming, Coffee"
+                maxLength={20}
                 required
                 autoFocus
               />
             </label>
+            {formError && <p className="category-form-error" role="alert">{formError}</p>}
 
             <div className="form-field">
               <span>Category Icon</span>

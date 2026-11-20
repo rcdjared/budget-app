@@ -95,6 +95,137 @@ export async function createTransaction(
   return id;
 }
 
+export interface TransferData {
+  profileId: string;
+  amount: number;
+  accountId: string;
+  toAccountId?: string | null;
+  sourceType: "my" | "external";
+  destinationType: "my" | "external";
+  externalFromName?: string | null;
+  externalToName?: string | null;
+  transferFee: number;
+  feeCategoryId?: string | null;
+  date: string;
+  time: string;
+  note?: string | null;
+}
+
+export async function createTransfer(data: TransferData): Promise<string> {
+  const amount = Math.abs(Math.round(data.amount));
+  const transferFee = Math.max(0, Math.round(data.transferFee));
+  if (!amount) throw new Error("Transfer amount must be greater than zero.");
+  if (data.sourceType === "external" && data.destinationType === "external") throw new Error("At least one side must be one of your accounts.");
+  if (data.sourceType === "my" && data.destinationType === "my" && (!data.toAccountId || data.accountId === data.toAccountId)) throw new Error("Choose two different accounts.");
+  if (data.sourceType === "external" && transferFee) throw new Error("External transfers cannot include a transfer fee.");
+  if (transferFee && !data.feeCategoryId) throw new Error("A fee category is required for this transfer.");
+
+  const id = crypto.randomUUID();
+  const feeTransactionId = data.sourceType === "my" && transferFee ? crypto.randomUUID() : null;
+  const timestamp = now();
+  await db.transaction("rw", db.tables, async () => {
+    await db.transactions.add({
+      id,
+      profileId: data.profileId,
+      type: "transfer",
+      amount,
+      accountId: data.accountId,
+      toAccountId: data.toAccountId || null,
+      categoryId: null,
+      date: data.date,
+      transferTime: data.time,
+      note: data.note?.trim() || null,
+      sourceType: data.sourceType,
+      destinationType: data.destinationType,
+      externalFromName: data.sourceType === "external" ? data.externalFromName?.trim() || "External" : null,
+      externalToName: data.destinationType === "external" ? data.externalToName?.trim() || "External" : null,
+      transferFee,
+      feeTransactionId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    if (feeTransactionId && data.feeCategoryId) {
+      await db.transactions.add({
+        id: feeTransactionId,
+        profileId: data.profileId,
+        type: "expense",
+        amount: transferFee,
+        accountId: data.accountId,
+        toAccountId: null,
+        categoryId: data.feeCategoryId,
+        date: data.date,
+        note: data.note?.trim() ? `Transfer fee · ${data.note.trim()}` : "Transfer fee",
+        transferId: id,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+    }
+  });
+  return id;
+}
+
+export async function updateTransfer(id: string, data: TransferData): Promise<void> {
+  const amount = Math.abs(Math.round(data.amount));
+  const transferFee = Math.max(0, Math.round(data.transferFee));
+  if (!amount) throw new Error("Transfer amount must be greater than zero.");
+  if (data.sourceType === "external" && data.destinationType === "external") throw new Error("At least one side must be one of your accounts.");
+  if (data.sourceType === "my" && data.destinationType === "my" && (!data.toAccountId || data.accountId === data.toAccountId)) throw new Error("Choose two different accounts.");
+  if (data.sourceType === "external" && transferFee) throw new Error("External transfers cannot include a transfer fee.");
+  if (transferFee && !data.feeCategoryId) throw new Error("A fee category is required for this transfer.");
+
+  await db.transaction("rw", db.tables, async () => {
+    const existing = await db.transactions.get(id);
+    if (!existing || existing.type !== "transfer") throw new Error("Transfer not found.");
+    const timestamp = now();
+    const existingFee = existing.feeTransactionId ? await db.transactions.get(existing.feeTransactionId) : undefined;
+    await db.transactions.update(id, {
+      amount,
+      accountId: data.accountId,
+      toAccountId: data.toAccountId || null,
+      date: data.date,
+      transferTime: data.time,
+      note: data.note?.trim() || null,
+      sourceType: data.sourceType,
+      destinationType: data.destinationType,
+      externalFromName: data.sourceType === "external" ? data.externalFromName?.trim() || "External" : null,
+      externalToName: data.destinationType === "external" ? data.externalToName?.trim() || "External" : null,
+      transferFee,
+      updatedAt: timestamp,
+    });
+    if (data.sourceType === "my" && transferFee && data.feeCategoryId) {
+      if (existingFee) {
+        await db.transactions.update(existingFee.id, {
+          amount: transferFee,
+          accountId: data.accountId,
+          categoryId: data.feeCategoryId,
+          date: data.date,
+          note: data.note?.trim() ? `Transfer fee · ${data.note.trim()}` : "Transfer fee",
+          deletedAt: null,
+          updatedAt: timestamp,
+        });
+      } else {
+        const feeId = crypto.randomUUID();
+        await db.transactions.add({
+          id: feeId,
+          profileId: data.profileId,
+          type: "expense",
+          amount: transferFee,
+          accountId: data.accountId,
+          categoryId: data.feeCategoryId,
+          date: data.date,
+          note: "Transfer fee",
+          transferId: id,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+        await db.transactions.update(id, { feeTransactionId: feeId });
+      }
+    } else if (existingFee) {
+      await db.transactions.update(existingFee.id, { deletedAt: timestamp, updatedAt: timestamp });
+    }
+  });
+}
+
 export async function updateTransaction(
   id: string,
   data: Partial<Transaction>
@@ -103,7 +234,17 @@ export async function updateTransaction(
 }
 
 export async function softDeleteTransaction(id: string): Promise<void> {
-  await db.transactions.update(id, { deletedAt: now(), updatedAt: now() });
+  const transaction = await db.transactions.get(id);
+  const timestamp = now();
+  if (transaction?.type !== "transfer") {
+    await db.transactions.update(id, { deletedAt: timestamp, updatedAt: timestamp });
+    return;
+  }
+  await db.transaction("rw", db.tables, async () => {
+    await db.transactions.update(id, { deletedAt: timestamp, updatedAt: timestamp });
+    const linkedFees = await db.transactions.filter((item) => item.transferId === id && !item.deletedAt).toArray();
+    for (const fee of linkedFees) await db.transactions.update(fee.id, { deletedAt: timestamp, updatedAt: timestamp });
+  });
 }
 
 /** Get the most recent transaction to remember last-used account/category */

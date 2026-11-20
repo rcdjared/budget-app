@@ -41,6 +41,10 @@ export function computeAccountBalance(
         break;
 
       case "transfer":
+        if (tx.externalFromName) {
+          if (tx.accountId === accountId) balance += tx.amount;
+          break;
+        }
         // Money leaves the source account
         if (tx.accountId === accountId) {
           balance -= tx.amount;

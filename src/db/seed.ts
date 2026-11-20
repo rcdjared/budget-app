@@ -23,146 +23,31 @@ export interface CategorySeed {
 }
 
 export const EXPENSE_CATEGORIES: CategorySeed[] = [
-  {
-    name: "Food & Dining",
-    icon: "utensils",
-    color: "#F97316",
-    type: "expense",
-    children: [
-      { name: "Groceries", icon: "shopping-cart", color: "#FB923C" },
-      { name: "Restaurants & Fastfood", icon: "utensils", color: "#FDBA74" },
-      { name: "Coffee & Milk Tea", icon: "coffee", color: "#C2410C" },
-      { name: "Food Delivery", icon: "shopping-bag", color: "#EA580C" },
-    ],
-  },
-  {
-    name: "Transportation",
-    icon: "car",
-    color: "#3B82F6",
-    type: "expense",
-    children: [
-      { name: "Gas & Fuel", icon: "fuel", color: "#60A5FA" },
-      { name: "Commute & Jeep/MRT", icon: "bus", color: "#2563EB" },
-      { name: "Grab & Taxi", icon: "car", color: "#1D4ED8" },
-      { name: "Parking & Tolls", icon: "receipt", color: "#93C5FD" },
-    ],
-  },
-  {
-    name: "Bills & Utilities",
-    icon: "zap",
-    color: "#EAB308",
-    type: "expense",
-    children: [
-      { name: "Electricity (Meralco)", icon: "zap", color: "#FACC15" },
-      { name: "Water (Maynilad/Manila Water)", icon: "droplets", color: "#06B6D4" },
-      { name: "Internet & WiFi", icon: "wifi", color: "#8B5CF6" },
-      { name: "Mobile Load & Postpaid", icon: "smartphone", color: "#A855F7" },
-    ],
-  },
-  {
-    name: "Housing & Rent",
-    icon: "home",
-    color: "#78716C",
-    type: "expense",
-    children: [
-      { name: "House Rent", icon: "building", color: "#A8A29E" },
-      { name: "Condo/HOA Dues", icon: "receipt", color: "#78716C" },
-      { name: "Home Repairs", icon: "wrench", color: "#57534E" },
-    ],
-  },
-  {
-    name: "Shopping",
-    icon: "shopping-bag",
-    color: "#EC4899",
-    type: "expense",
-    children: [
-      { name: "Clothing & Shoes", icon: "shirt", color: "#F472B6" },
-      { name: "Gadgets & Tech", icon: "laptop", color: "#DB2777" },
-      { name: "Online Shopping (Shopee/Lazada)", icon: "shopping-bag", color: "#BE185D" },
-    ],
-  },
-  {
-    name: "Health & Wellness",
-    icon: "heart-pulse",
-    color: "#EF4444",
-    type: "expense",
-    children: [
-      { name: "Medicine & Pharmacy", icon: "pill", color: "#F87171" },
-      { name: "Doctor & Hospital", icon: "heart-pulse", color: "#DC2626" },
-      { name: "Fitness & Gym", icon: "dumbbell", color: "#B91C1C" },
-    ],
-  },
-  {
-    name: "Entertainment & Leisure",
-    icon: "gamepad-2",
-    color: "#8B5CF6",
-    type: "expense",
-    children: [
-      { name: "Streaming (Netflix/Spotify)", icon: "tv", color: "#A78BFA" },
-      { name: "Games & Hobbies", icon: "gamepad-2", color: "#7C3AED" },
-      { name: "Movies & Outings", icon: "film", color: "#6D28D9" },
-    ],
-  },
-  {
-    name: "Family & Padala",
-    icon: "gift",
-    color: "#14B8A6",
-    type: "expense",
-    children: [
-      { name: "Padala / Support", icon: "banknote", color: "#2DD4BF" },
-      { name: "Kids / School Allowance", icon: "baby", color: "#0D9488" },
-      { name: "Pets & Vet", icon: "dog", color: "#0F766E" },
-    ],
-  },
-  {
-    name: "Education & Learning",
-    icon: "graduation-cap",
-    color: "#0EA5E9",
-    type: "expense",
-    children: [
-      { name: "Tuition & Courses", icon: "graduation-cap", color: "#38BDF8" },
-      { name: "Books & Materials", icon: "receipt", color: "#0284C7" },
-    ],
-  },
-  {
-    name: "Personal Care & Beauty",
-    icon: "sparkles",
-    color: "#F43F5E",
-    type: "expense",
-    children: [
-      { name: "Haircut & Salon", icon: "scissors", color: "#FB7185" },
-      { name: "Skincare & Toiletries", icon: "sparkles", color: "#E11D48" },
-    ],
-  },
-  {
-    name: "Travel & Vacation",
-    icon: "plane",
-    color: "#06B6D4",
-    type: "expense",
-  },
-  {
-    name: "Insurance & Financial",
-    icon: "shield",
-    color: "#475569",
-    type: "expense",
-    children: [
-      { name: "Life/Health Insurance", icon: "shield", color: "#64748B" },
-      { name: "Bank & ATM Fees", icon: "credit-card", color: "#334155" },
-    ],
-  },
-  {
-    name: "Gifts & Celebrations",
-    icon: "gift",
-    color: "#D946EF",
-    type: "expense",
-  },
-  {
-    name: "Others",
-    icon: "more-horizontal",
-    color: "#6B7280",
-    type: "expense",
-  },
+  { name: "Shopping", icon: "shopping-bag", color: "#EC4899", type: "expense" },
+  { name: "Food", icon: "utensils", color: "#F97316", type: "expense" },
+  { name: "Transport", icon: "car", color: "#3B82F6", type: "expense" },
+  { name: "Phone", icon: "smartphone", color: "#8B5CF6", type: "expense" },
+  { name: "Bills", icon: "receipt", color: "#EAB308", type: "expense" },
+  { name: "Fun", icon: "gamepad-2", color: "#14B8A6", type: "expense" },
+  { name: "Health", icon: "heart-pulse", color: "#EF4444", type: "expense" },
+  { name: "Fees", icon: "credit-card", color: "#64748B", type: "expense" },
 ];
+
+// Names from the older, detailed starter set. Keep those records for history,
+// but don't offer them as choices in new expense forms.
+export const LEGACY_EXPENSE_CATEGORY_NAMES = new Set([
+  "Food & Dining", "Groceries", "Restaurants & Fastfood", "Coffee & Milk Tea", "Food Delivery",
+  "Transportation", "Gas & Fuel", "Commute & Jeep/MRT", "Grab & Taxi", "Parking & Tolls",
+  "Bills & Utilities", "Electricity (Meralco)", "Water (Maynilad/Manila Water)", "Internet & WiFi", "Mobile Load & Postpaid",
+  "Housing & Rent", "House Rent", "Condo/HOA Dues", "Home Repairs",
+  "Clothing & Shoes", "Gadgets & Tech", "Online Shopping (Shopee/Lazada)",
+  "Health & Wellness", "Medicine & Pharmacy", "Doctor & Hospital", "Fitness & Gym",
+  "Entertainment & Leisure", "Streaming (Netflix/Spotify)", "Games & Hobbies", "Movies & Outings",
+  "Family & Padala", "Padala / Support", "Kids / School Allowance", "Pets & Vet",
+  "Education & Learning", "Tuition & Courses", "Books & Materials",
+  "Personal Care & Beauty", "Haircut & Salon", "Skincare & Toiletries", "Travel & Vacation",
+  "Insurance & Financial", "Life/Health Insurance", "Bank & ATM Fees", "Gifts & Celebrations", "Others",
+]);
 
 export const INCOME_CATEGORIES: CategorySeed[] = [
   {
@@ -224,49 +109,64 @@ export const INCOME_CATEGORIES: CategorySeed[] = [
  * Idempotent — checks if categories already exist.
  */
 export async function seedDefaultCategories(profileId: string): Promise<void> {
-  const existing = await db.categories.where({ profileId }).count();
-  if (existing > 0) return; // Already seeded
+  await db.transaction("rw", db.categories, db.settings, async () => {
+    const seedVersionId = `category-seed-v2:${profileId}`;
+    if ((await db.settings.get(seedVersionId))?.value === "done") return;
 
-  const timestamp = now();
-  const categories: Category[] = [];
-  let sortOrder = 0;
+    const existingCategories = await db.categories.where({ profileId }).filter((category) => !category.deletedAt).toArray();
+    const hasLegacyExpenseDefaults = existingCategories.some(
+      (category) => category.type === "expense" && LEGACY_EXPENSE_CATEGORY_NAMES.has(category.name)
+    );
+    if (existingCategories.length > 0 && !hasLegacyExpenseDefaults) return;
+    const isLegacyUpgrade = existingCategories.length > 0;
 
-  for (const seeds of [EXPENSE_CATEGORIES, INCOME_CATEGORIES]) {
-    for (const seed of seeds) {
-      const parentId = uid();
-      categories.push({
-        id: parentId,
-        profileId,
-        name: seed.name,
-        parentId: null,
-        type: seed.type,
-        icon: seed.icon,
-        color: seed.color,
-        sortOrder: sortOrder++,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      });
+    const existingNames = new Set(existingCategories.map((category) => category.name.trim().toLowerCase()));
 
-      if (seed.children) {
-        for (const child of seed.children) {
-          categories.push({
-            id: uid(),
-            profileId,
-            name: child.name,
-            parentId,
-            type: seed.type,
-            icon: child.icon,
-            color: child.color,
-            sortOrder: sortOrder++,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          });
+    const timestamp = now();
+    const categories: Category[] = [];
+    let sortOrder = 0;
+
+    const seedGroups = isLegacyUpgrade ? [EXPENSE_CATEGORIES] : [EXPENSE_CATEGORIES, INCOME_CATEGORIES];
+    for (const seeds of seedGroups) {
+      for (const seed of seeds) {
+        if (existingNames.has(seed.name.toLowerCase())) continue;
+        const parentId = uid();
+        categories.push({
+          id: parentId,
+          profileId,
+          name: seed.name,
+          parentId: null,
+          type: seed.type,
+          icon: seed.icon,
+          color: seed.color,
+          sortOrder: sortOrder++,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+
+        if (seed.children) {
+          for (const child of seed.children) {
+            if (existingNames.has(child.name.toLowerCase())) continue;
+            categories.push({
+              id: uid(),
+              profileId,
+              name: child.name,
+              parentId,
+              type: seed.type,
+              icon: child.icon,
+              color: child.color,
+              sortOrder: sortOrder++,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            });
+          }
         }
       }
     }
-  }
 
-  await db.categories.bulkAdd(categories);
+    if (categories.length) await db.categories.bulkAdd(categories);
+    await db.settings.put({ id: seedVersionId, profileId, key: seedVersionId, value: "done" });
+  });
 }
 
 /** PH bank/e-wallet templates for quick account creation */

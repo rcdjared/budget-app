@@ -69,6 +69,15 @@ export interface Transaction extends BaseRecord {
   tags?: string[];
   attachmentIds?: string[];
   recurringId?: string | null;
+  occurrenceKey?: string;
+  transferId?: string | null;
+  sourceType?: "my" | "external";
+  destinationType?: "my" | "external";
+  externalFromName?: string | null;
+  externalToName?: string | null;
+  transferFee?: number;
+  transferTime?: string | null;
+  feeTransactionId?: string | null;
   debtId?: string | null;
   splitGroupId?: string | null;
 }
@@ -107,6 +116,7 @@ export interface Debt extends BaseRecord {
 export type RecurringFrequency =
   | "daily"
   | "weekly"
+  | "biweekly"
   | "monthly"
   | "yearly"
   | "custom";
@@ -131,6 +141,9 @@ export interface Recurring extends BaseRecord {
   kind: RecurringKind;
   installmentsTotal?: number | null;
   installmentsPaid?: number | null;
+  endsAfter?: number | null;
+  occurrencesCreated?: number;
+  isPaused?: boolean;
 }
 
 /** Investment holding */
