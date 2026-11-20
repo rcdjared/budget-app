@@ -19,6 +19,7 @@ Open the URL Vite prints (usually `http://localhost:5173`).
    - `http://localhost:5173/**`
    - `https://YOUR-PRODUCTION-DOMAIN/**`
    - Add your Vercel preview URL pattern if you will test sign-in on previews.
+   Supabase must allow the exact origin sent by the app. By default this is the current browser origin, so a link requested from `localhost` returns to `localhost`. For a fixed production callback, set `VITE_AUTH_REDIRECT_URL` to the deployed app origin in `.env.local` and Vercel's environment variables, then rebuild/redeploy. Add that URL to Supabase's redirect allowlist. Keep localhost in the allowlist for local development.
 4. In **Project Settings → API**, copy the Project URL and the publishable key (`sb_publishable_...`; the legacy `anon` key also works).
 5. Copy `.env.example` to `.env.local` and fill in:
 
@@ -53,6 +54,8 @@ The workflow also supports manual runs from the repository’s **Actions** tab. 
 4. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as Vercel environment variables for **Production** (and Preview if desired).
 5. Deploy. Set your final domain in Supabase Auth URL Configuration after Vercel assigns it, then redeploy.
 6. Open the production URL in iPhone Safari, use **Share → Add to Home Screen**, and test a sync and airplane-mode launch.
+
+If the cloud-sync migration has already been applied, also run the additive migration [`supabase/migrations/20261120100000_cloud_sync_grants.sql`](./supabase/migrations/20261120100000_cloud_sync_grants.sql) in the Supabase SQL Editor. It grants authenticated clients table access required by the sync RPC; row-level security continues to restrict each account to its own records.
 
 Vercel reads [`vercel.json`](./vercel.json) to serve the SPA route fallback. The PWA must be opened over HTTPS for installation and service workers.
 

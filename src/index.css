@@ -1268,7 +1268,16 @@ button {
    CATEGORY MANAGER SHEET
    ========================================================================== */
 .category-manager-sheet {
+  display: flex;
+  flex-direction: column;
   max-height: 90dvh;
+  min-height: min(560px, 78dvh);
+  overflow: hidden;
+}
+
+.category-manager-sheet > .sheet-header,
+.category-manager-sheet > .cat-type-switch {
+  flex: none;
 }
 
 .add-cat-top-btn {
@@ -1304,19 +1313,29 @@ button {
 }
 
 .category-manager-list {
-  padding: 8px 14px 24px;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 14px max(24px, env(safe-area-inset-bottom));
 }
 
 .cat-list-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  position: sticky;
+  top: -10px;
+  z-index: 2;
+  padding: 4px 0 10px;
+  background: var(--card);
 }
 
 .add-cat-inline-btn {
-  flex: 1;
-  height: 40px;
-  border-radius: 10px;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 12px;
   background: var(--primary);
   color: white;
   font-size: 13px;
@@ -1328,14 +1347,15 @@ button {
 }
 
 .template-seed-btn {
-  height: 40px;
-  border-radius: 10px;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--foreground);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
-  padding: 0 12px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1345,8 +1365,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 56dvh;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .cat-group-card {
@@ -1360,6 +1379,7 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 54px;
   padding: 10px 12px;
   cursor: pointer;
 }
@@ -1368,7 +1388,13 @@ button {
   background: var(--card);
 }
 
+.cat-item-row.parent-row .cat-item-details b {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
 .cat-item-row.child-row {
+  min-height: 46px;
   padding-left: 28px;
   position: relative;
   border-top: 1px solid var(--border);

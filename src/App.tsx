@@ -2126,13 +2126,19 @@ function SettingsSheet({
     setCloudBusy(true);
     setCloudError("");
     setCloudMessage("");
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
-    });
-    setCloudBusy(false);
-    if (error) setCloudError(error.message);
-    else setCloudMessage("Check your email for the secure sign-in link.");
+    try {
+      const redirectTo = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim() || window.location.origin;
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: redirectTo },
+      });
+      if (error) setCloudError(error.message);
+      else setCloudMessage(`Check your email for the secure sign-in link. It will return to ${redirectTo}.`);
+    } catch (error) {
+      setCloudError(error instanceof Error ? error.message : "Could not send the sign-in link.");
+    } finally {
+      setCloudBusy(false);
+    }
   };
 
   const syncCloud = async () => {
