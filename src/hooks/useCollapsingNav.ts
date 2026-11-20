@@ -2,11 +2,13 @@ import { useEffect, useState, type RefObject } from "react";
 
 export function useCollapsingNav<T extends HTMLElement>(
   scrollRef: RefObject<T | null>,
-  activeTab: string
+  activeTab: string,
+  enabled = true
 ): [boolean, (collapsed: boolean) => void] {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
+    if (!enabled) return;
     const scroller = scrollRef.current;
     if (!scroller) return;
     setCollapsed(false);
@@ -45,7 +47,7 @@ export function useCollapsingNav<T extends HTMLElement>(
       scroller.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", checkScrollable);
     };
-  }, [scrollRef, activeTab]);
+  }, [scrollRef, activeTab, enabled]);
 
   return [collapsed, setCollapsed];
 }

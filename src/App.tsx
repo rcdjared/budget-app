@@ -89,7 +89,7 @@ function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [navCollapsed, setNavCollapsed] = useCollapsingNav(scrollRef, tab);
+  const [navCollapsed, setNavCollapsed] = useCollapsingNav(scrollRef, tab, Boolean(profileId));
   const [navEntering, setNavEntering] = useState(true);
   const [navDragging, setNavDragging] = useState(false);
   const navRef = useRef<HTMLElement>(null);
