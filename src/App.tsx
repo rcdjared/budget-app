@@ -41,7 +41,7 @@ import {
   Play,
 } from "lucide-react";
 import { db } from "@/db/schema";
-import { initializeAppData, getAccountTemplates, seedDefaultCategories, EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORY_NAMES } from "@/db/seed";
+import { initializeAppData, getAccountTemplates, seedDefaultCategories, EXPENSE_CATEGORIES, INCOME_CATEGORIES, LEGACY_EXPENSE_CATEGORY_NAMES } from "@/db/seed";
 import { createProfile } from "@/db/repositories/profiles";
 import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
 import { createTransaction, createTransfer, updateTransfer, softDeleteTransaction } from "@/db/repositories/transactions";
@@ -83,7 +83,12 @@ const tabItems: { id: Tab | "add"; label: string; icon: typeof Home }[] = [
 ];
 
 const EXPENSE_CATEGORY_ORDER = new Map(EXPENSE_CATEGORIES.map((category, index) => [category.name.toLowerCase(), index]));
+const INCOME_CATEGORY_ORDER = new Map(INCOME_CATEGORIES.map((category, index) => [category.name.toLowerCase(), index]));
 const NAV_DROP_ORDER = ["home", "wallet", "plan", "history", "add"] as const;
+
+function categoryFilterKey(category: Pick<Category, "type" | "name">): string {
+  return `${category.type}:${category.name.trim().toLowerCase()}`;
+}
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -260,6 +265,7 @@ function App() {
   }, []);
 
   const switchProfile = async (nextProfileId: string) => {
+    await seedDefaultCategories(nextProfileId);
     await db.transaction("rw", db.profiles, async () => {
       await db.profiles.toCollection().modify((profile) => {
         if (!profile.deletedAt) profile.isDefault = profile.id === nextProfileId;
@@ -924,6 +930,26 @@ function TransactionsPage({ profileId }: { profileId: string }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  const historyCategoryOptions = useMemo(() => {
+    const unique = new Map<string, Category>();
+    for (const category of categories) {
+      if (category.type === "expense" && LEGACY_EXPENSE_CATEGORY_NAMES.has(category.name)) continue;
+      const key = categoryFilterKey(category);
+      if (!unique.has(key)) unique.set(key, category);
+    }
+    return [...unique.values()].sort((a, b) => {
+      if (a.type !== b.type) return a.type === "expense" ? -1 : 1;
+      const order = a.type === "expense" ? EXPENSE_CATEGORY_ORDER : INCOME_CATEGORY_ORDER;
+      const aOrder = order.get(a.name.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = order.get(b.name.trim().toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder || a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+    });
+  }, [categories]);
+  const selectedCategoryIds = useMemo(
+    () => new Set(categories.filter((category) => categoryFilterKey(category) === categoryId).map((category) => category.id)),
+    [categories, categoryId]
+  );
+
   const { filterStart, filterEnd } = useMemo(() => {
     if (timeFilter === "this_month") {
       const now = new Date();
@@ -947,7 +973,7 @@ function TransactionsPage({ profileId }: { profileId: string }) {
     const haystack = `${tx.note || ""} ${account?.name || ""} ${category?.name || ""}`.toLowerCase();
     if (search && !haystack.includes(search.toLowerCase())) return false;
     if (accountId && tx.accountId !== accountId) return false;
-    if (categoryId && tx.categoryId !== categoryId) return false;
+    if (categoryId && !selectedCategoryIds.has(tx.categoryId || "")) return false;
     if (filterStart && tx.date < filterStart) return false;
     if (filterEnd && tx.date > filterEnd) return false;
     return true;
@@ -1028,8 +1054,8 @@ function TransactionsPage({ profileId }: { profileId: string }) {
           aria-label="Filter by category"
         >
           <option value="">All categories</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
+          {historyCategoryOptions.map((category) => (
+            <option key={categoryFilterKey(category)} value={categoryFilterKey(category)}>
               {category.name}
             </option>
           ))}

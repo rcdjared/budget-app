@@ -49,6 +49,20 @@ export const LEGACY_EXPENSE_CATEGORY_NAMES = new Set([
   "Insurance & Financial", "Life/Health Insurance", "Bank & ATM Fees", "Gifts & Celebrations", "Others",
 ]);
 
+const LEGACY_EXPENSE_CATEGORY_TARGETS: Record<string, string> = {
+  "Food & Dining": "Food", Groceries: "Food", "Restaurants & Fastfood": "Food", "Coffee & Milk Tea": "Food", "Food Delivery": "Food",
+  Transportation: "Transport", "Gas & Fuel": "Transport", "Commute & Jeep/MRT": "Transport", "Grab & Taxi": "Transport", "Parking & Tolls": "Transport",
+  "Bills & Utilities": "Bills", "Electricity (Meralco)": "Bills", "Water (Maynilad/Manila Water)": "Bills", "Internet & WiFi": "Bills", "Mobile Load & Postpaid": "Phone",
+  "Housing & Rent": "Bills", "House Rent": "Bills", "Condo/HOA Dues": "Bills", "Home Repairs": "Bills",
+  "Clothing & Shoes": "Shopping", "Gadgets & Tech": "Shopping", "Online Shopping (Shopee/Lazada)": "Shopping",
+  "Health & Wellness": "Health", "Medicine & Pharmacy": "Health", "Doctor & Hospital": "Health", "Fitness & Gym": "Health",
+  "Entertainment & Leisure": "Fun", "Streaming (Netflix/Spotify)": "Fun", "Games & Hobbies": "Fun", "Movies & Outings": "Fun",
+  "Family & Padala": "Bills", "Padala / Support": "Bills", "Kids / School Allowance": "Bills", "Pets & Vet": "Health",
+  "Education & Learning": "Bills", "Tuition & Courses": "Bills", "Books & Materials": "Shopping",
+  "Personal Care & Beauty": "Shopping", "Haircut & Salon": "Shopping", "Skincare & Toiletries": "Shopping", "Travel & Vacation": "Fun",
+  "Insurance & Financial": "Fees", "Life/Health Insurance": "Health", "Bank & ATM Fees": "Fees", "Gifts & Celebrations": "Fun", Others: "Shopping",
+};
+
 export const INCOME_CATEGORIES: CategorySeed[] = [
   {
     name: "Salary",
@@ -166,6 +180,83 @@ export async function seedDefaultCategories(profileId: string): Promise<void> {
 
     if (categories.length) await db.categories.bulkAdd(categories);
     await db.settings.put({ id: seedVersionId, profileId, key: seedVersionId, value: "done" });
+  });
+  await migrateLegacyExpenseCategories(profileId);
+}
+
+/** Move old starter-category links to the simple defaults without deleting ledger history. */
+export async function migrateLegacyExpenseCategories(profileId: string): Promise<void> {
+  await db.transaction("rw", db.tables, async () => {
+    const allCategories = await db.categories.where({ profileId }).toArray();
+    const activeCategories = allCategories.filter((category) => !category.deletedAt);
+    const currentByName = new Map<string, Category>();
+    for (const category of activeCategories) {
+      if (category.type !== "expense") continue;
+      const name = category.name.trim().toLowerCase();
+      if (!currentByName.has(name)) currentByName.set(name, category);
+    }
+
+    const categoryIdMap = new Map<string, string>();
+    const legacyCategories = allCategories.filter(
+      (category) => category.type === "expense" && LEGACY_EXPENSE_CATEGORY_NAMES.has(category.name)
+    );
+    for (const legacy of legacyCategories) {
+      const targetName = LEGACY_EXPENSE_CATEGORY_TARGETS[legacy.name];
+      const target = targetName ? currentByName.get(targetName.toLowerCase()) : undefined;
+      if (target && target.id !== legacy.id) categoryIdMap.set(legacy.id, target.id);
+    }
+    if (!categoryIdMap.size) return;
+
+    const timestamp = now();
+    const transactions = await db.transactions.where({ profileId }).toArray();
+    for (const transaction of transactions) {
+      const targetId = transaction.categoryId ? categoryIdMap.get(transaction.categoryId) : undefined;
+      if (targetId) await db.transactions.update(transaction.id, { categoryId: targetId, updatedAt: timestamp });
+    }
+
+    const recurringRules = await db.recurring.where({ profileId }).toArray();
+    for (const rule of recurringRules) {
+      const targetId = rule.categoryId ? categoryIdMap.get(rule.categoryId) : undefined;
+      if (targetId) await db.recurring.update(rule.id, { categoryId: targetId, updatedAt: timestamp });
+    }
+
+    const activeBudgets = await db.budgets.where({ profileId }).filter((budget) => !budget.deletedAt).toArray();
+    const budgetTargetsWithLegacyRules = new Set(
+      activeBudgets.map((budget) => categoryIdMap.get(budget.categoryId)).filter((id): id is string => Boolean(id))
+    );
+    const budgetGroups = new Map<string, typeof activeBudgets>();
+    for (const budget of activeBudgets) {
+      const targetId = categoryIdMap.get(budget.categoryId) || budget.categoryId;
+      if (!categoryIdMap.has(budget.categoryId) && !budgetTargetsWithLegacyRules.has(targetId)) continue;
+      const key = `${targetId}:${budget.period}`;
+      const group = budgetGroups.get(key) || [];
+      group.push(budget);
+      budgetGroups.set(key, group);
+    }
+    for (const [key, group] of budgetGroups) {
+      const targetId = key.slice(0, key.lastIndexOf(":"));
+      const keeper = group.find((budget) => budget.categoryId === targetId) || group[0];
+      if (!keeper) continue;
+      const amount = group.reduce((total, budget) => total + budget.amount, 0);
+      const rolloverEnabled = group.some((budget) => budget.rolloverEnabled);
+      await db.budgets.update(keeper.id, { categoryId: targetId, amount, rolloverEnabled, updatedAt: timestamp });
+      for (const budget of group) {
+        if (budget.id === keeper.id) continue;
+        await db.budgets.update(budget.id, { deletedAt: timestamp, updatedAt: timestamp });
+      }
+    }
+
+    const legacyIds = new Set(legacyCategories.map((category) => category.id));
+    for (const category of activeCategories) {
+      if (category.parentId && legacyIds.has(category.parentId) && !LEGACY_EXPENSE_CATEGORY_NAMES.has(category.name)) {
+        await db.categories.update(category.id, { parentId: null, updatedAt: timestamp });
+      }
+    }
+    for (const legacy of legacyCategories) {
+      if (!legacy.deletedAt && categoryIdMap.has(legacy.id)) {
+        await db.categories.update(legacy.id, { deletedAt: timestamp, updatedAt: timestamp });
+      }
+    }
   });
 }
 
