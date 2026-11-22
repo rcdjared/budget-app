@@ -33,12 +33,14 @@ import type {
   Transaction,
 } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
+import { Kupi } from "@/features/spending-pulse/Kupi";
 import { SpendingPulse } from "@/features/spending-pulse/SpendingPulse";
 
 interface FinsightsPageProps {
   profileId: string;
   onOpenHelp?: () => void;
   showNetWorth?: boolean;
+  onAddAccount: () => void;
   onAddTransaction: (type: "expense" | "income") => void;
   onHistory: (filters?: { accountId?: string; categoryId?: string; startDate?: string; endDate?: string }) => void;
   onPlan: () => void;
@@ -76,6 +78,7 @@ function daysBetween(from: string, to: string) {
 
 export function FinsightsPage({
   profileId,
+  onAddAccount,
   onAddTransaction,
   onHistory,
   onPlan,
@@ -106,11 +109,11 @@ export function FinsightsPage({
     };
   }, []);
 
-  const accounts = useLiveQuery(
+  const accountResults = useLiveQuery(
     () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt && !account.isArchived).toArray(),
-    [profileId],
-    []
+    [profileId]
   );
+  const accounts = accountResults ?? [];
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
   const formatProfileMoney = (amount: number) => formatMoney(amount, profile?.currency || "PHP");
   const categories = useLiveQuery(
@@ -231,6 +234,12 @@ export function FinsightsPage({
       : Promise.resolve([] as Transaction[]),
     [profileId, selectedAccountId, hiddenSections.has("recent")],
     [] as Transaction[]
+  );
+  const transactionCount = useLiveQuery(
+    () => profileRecords(db.transactions, profileId)
+      .filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt)
+      .count(),
+    [profileId]
   );
 
   const income = filteredTxs.filter((tx) => tx.type === "income").reduce((sum, tx) => sum + tx.amount, 0);
@@ -676,22 +685,59 @@ export function FinsightsPage({
       <ChevronDown size={14} aria-hidden="true" />
     </label>
   );
+  const homeHasNoTransactions = transactionCount === 0;
+  const homeIsLoaded = transactionCount !== undefined && accountResults !== undefined;
 
   return (
-    <div className="home-dashboard">
-      <SpendingPulse
-        profileId={profileId}
-        accountId={selectedAccountId}
-        accountFilter={accountFilter}
-        period={period}
-        onPeriodChange={setPeriod}
-        budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
-        weekStartsOn={sectionSettings.weekStartsOn}
-        tone={sectionSettings.spendingPulseTone}
-        reduceMotion={sectionSettings.reduceMotion}
-      />
+    <div className="home-dashboard" aria-busy={!homeIsLoaded}>
+      {!homeIsLoaded ? null : accounts.length === 0 ? (
+        <section className="home-account-onboarding">
+          <div className="home-account-onboarding__message">
+            <span className="home-account-onboarding__mascot">
+              <Kupi mood="calm" size={76} />
+            </span>
+            <span className="spending-pulse__bubble">
+              <span className="spending-pulse__speaker">Kupi</span>
+              <span className="spending-pulse__message">{tForLanguage("homeAccountRequired", language)}</span>
+            </span>
+          </div>
+          <button type="button" className="kupit-primary-button" onClick={onAddAccount}>
+            {tForLanguage("addAccount", language)}
+          </button>
+        </section>
+      ) : homeHasNoTransactions ? (
+        <section className="home-first-record">
+          <ReceiptText size={24} aria-hidden="true" />
+          <h2>{tForLanguage("homeFirstRecordTitle", language)}</h2>
+          <p>{tForLanguage("homeFirstRecordBody", language)}</p>
+          <div className="home-first-record-actions">
+            <button type="button" className="kupit-primary-button" onClick={() => onAddTransaction("expense")}>
+              {tForLanguage("addExpense", language)}
+            </button>
+            <button type="button" className="home-first-record-income" onClick={() => onAddTransaction("income")}>
+              {tForLanguage("addIncome", language)}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <SpendingPulse
+          profileId={profileId}
+          accountId={selectedAccountId}
+          accountFilter={accountFilter}
+          period={period}
+          onPeriodChange={setPeriod}
+          budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
+          weekStartsOn={sectionSettings.weekStartsOn}
+          tone={sectionSettings.spendingPulseTone}
+          reduceMotion={sectionSettings.reduceMotion}
+        />
+      )}
       <div className="home-section-list">
-        {sectionOrder.map(renderSection)}
+        {homeIsLoaded && accounts.length > 0 && sectionOrder.map((sectionId) => (
+          homeHasNoTransactions && sectionId !== "budgets" && sectionId !== "upcoming"
+            ? null
+            : renderSection(sectionId)
+        ))}
       </div>
     </div>
   );

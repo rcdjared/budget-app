@@ -312,6 +312,79 @@ button {
   padding: 16px;
 }
 
+.home-account-onboarding {
+  --pulse-text: var(--foreground);
+  --pulse-muted: var(--muted-foreground);
+  --pulse-green: var(--primary);
+  --pulse-bubble: color-mix(in srgb, var(--card) 88%, var(--primary) 12%);
+  --pulse-bubble-border: color-mix(in srgb, var(--primary) 22%, var(--border));
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 28px 8px 20px;
+}
+
+.home-account-onboarding__message {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.home-account-onboarding__mascot {
+  flex: 0 0 76px;
+  filter: drop-shadow(0 6px 9px color-mix(in srgb, var(--foreground) 14%, transparent));
+}
+
+.home-account-onboarding > button {
+  width: min(100%, 260px);
+  min-height: 44px;
+}
+
+.home-first-record {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.home-first-record > svg { color: var(--primary); }
+.home-first-record h2 { margin: 0; font-size: 18px; }
+.home-first-record p {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.home-first-record-actions {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.home-first-record-actions button {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.home-first-record-income {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .home-net-card {
   min-height: 106px;
   display: flex;
