@@ -14,6 +14,17 @@ import { distributeEqualSplit, distributePercentSplit, validateExactShares } fro
 
 const now = () => new Date().toISOString();
 
+function dateInManila(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function oppositeDirection(direction: FriendLedgerEntry["direction"]): FriendLedgerEntry["direction"] {
   return direction === "owed_to_me" ? "you_owe" : "owed_to_me";
 }
@@ -423,6 +434,20 @@ export async function recordFriendPayment(
 
     let member: SharedBillMember | undefined;
     let bill: SharedBill | undefined;
+    if (direction === "received" && !sharedBillMemberId) {
+      const activeBills = await profileRecords(db.sharedBills, profileId)
+        .filter((item) => item.status === "active" && !item.deletedAt).toArray();
+      const activeBillIds = new Set(activeBills.map((item) => item.id));
+      const candidates = await db.sharedBillMembers.toCollection()
+        .filter((item) => activeBillIds.has(item.sharedBillId)
+          && item.friendId === friendId && !item.isMe && item.amount > item.paidAmount)
+        .toArray();
+      const exactMatches = candidates.filter((item) => item.amount - item.paidAmount === amount);
+      if (exactMatches.length === 1) {
+        member = exactMatches[0];
+        bill = activeBills.find((item) => item.id === member?.sharedBillId);
+      }
+    }
     if (sharedBillMemberId) {
       member = await db.sharedBillMembers.get(sharedBillMemberId);
       if (member) bill = await db.sharedBills.get(member.sharedBillId);
@@ -729,8 +754,28 @@ export async function markSharedBillMemberPaid(
     const balanceEntries = await profileRecords(db.friendLedger, bill.profileId)
       .filter((entry) => entry.friendId === friend.id && !entry.deletedAt)
       .toArray();
-    if (paidAmount > computeFriendBalance(balanceEntries)) {
-      throw new Error("Payment cannot exceed this friend's outstanding balance.");
+    const outstandingFriendBalance = computeFriendBalance(balanceEntries);
+    if (paidAmount > outstandingFriendBalance) {
+      const alreadyRecorded = balanceEntries.filter((entry) => entry.type === "payment"
+        && entry.direction === "you_owe" && !entry.sharedBillMemberId && entry.amount === paidAmount);
+      if (alreadyRecorded.length !== 1) {
+        throw new Error("Payment cannot exceed this friend's outstanding balance.");
+      }
+      const priorPayment = alreadyRecorded[0];
+      const timestamp = now();
+      const nextPaidAmount = member.paidAmount + paidAmount;
+      await db.friendLedger.update(priorPayment.id, {
+        sharedBillId,
+        sharedBillMemberId: member.id,
+        updatedAt: timestamp,
+      });
+      await db.sharedBillMembers.update(memberId, {
+        paidAmount: nextPaidAmount,
+        status: nextPaidAmount >= member.amount ? "paid" : "partial",
+        accountId: priorPayment.accountId || member.accountId || null,
+        updatedAt: timestamp,
+      });
+      return;
     }
     const nextPaidAmount = member.paidAmount + paidAmount;
     const status = nextPaidAmount >= member.amount ? "paid" : "partial";
@@ -756,7 +801,7 @@ export async function markSharedBillMemberPaid(
       type: "payment",
       direction: "you_owe",
       amount: paidAmount,
-      date: timestamp.slice(0, 10),
+      date: dateInManila(new Date(timestamp)),
       accountId: accountId || null,
       note: note?.trim() || "Shared bill payment",
       createdAt: timestamp,
@@ -771,7 +816,7 @@ export async function markSharedBillMemberPaid(
         accountId,
         toAccountId: null,
         categoryId: null,
-        date: timestamp.slice(0, 10),
+        date: dateInManila(new Date(timestamp)),
         note: `Payment from ${friend.name}`,
         friendPaymentDirection: "received",
         createdAt: timestamp,

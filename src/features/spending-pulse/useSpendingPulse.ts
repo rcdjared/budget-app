@@ -4,7 +4,7 @@ import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
 import type { Budget, Category, Transaction } from "@/domain/types";
 import { getSpendingPulseStats, type SpendingPulseOptions } from "./periods";
-import type { SpendingPulsePeriod, SpendingPulseStats, SpendingPulseTone } from "./types";
+import type { SpendingPulseLanguage, SpendingPulsePeriod, SpendingPulseStats, SpendingPulseTone } from "./types";
 import { getInsights } from "./insights";
 
 export interface UseSpendingPulseOptions extends SpendingPulseOptions {
@@ -12,6 +12,7 @@ export interface UseSpendingPulseOptions extends SpendingPulseOptions {
   accountId: string;
   period: SpendingPulsePeriod;
   tone: SpendingPulseTone;
+  language: SpendingPulseLanguage;
 }
 
 export interface UseSpendingPulseResult {
@@ -28,6 +29,7 @@ export function useSpendingPulse({
   budgetCycleStartDay,
   weekStartsOn,
   tone,
+  language,
 }: UseSpendingPulseOptions): UseSpendingPulseResult {
   const [now, setNow] = useState(() => new Date());
   const transactions = useLiveQuery(
@@ -53,8 +55,8 @@ export function useSpendingPulse({
     [period, transactions, now, options, budgets, categories]
   );
   const insights = useMemo(
-    () => getInsights({ stats, categories, budgets: accountId === "all" ? budgets : [], now, tone }),
-    [stats, categories, budgets, now, tone, accountId]
+    () => getInsights({ stats, categories, budgets: accountId === "all" ? budgets : [], transactions, budgetCycleStartDay, language, now, tone }),
+    [stats, categories, budgets, transactions, budgetCycleStartDay, language, now, tone, accountId]
   );
 
   useEffect(() => {

@@ -9,7 +9,6 @@ import {
   Repeat2,
   TrendingDown,
   TrendingUp,
-  UserRound,
   Wallet,
 } from "lucide-react";
 import { db } from "@/db/schema";
@@ -17,6 +16,7 @@ import { profileRecords } from "@/db/profileScope";
 import { formatMoney } from "@/domain/money";
 import { sortTransactionsNewestFirst } from "@/domain/history";
 import { computeInsights } from "@/domain/homeInsights";
+import { computeFriendBalance } from "@/domain/friendLedger";
 import { addDateDays, getSpendingPulseRange } from "@/features/spending-pulse/periods";
 import type { SpendingPulsePeriod } from "@/features/spending-pulse/types";
 import { getBudgetSpendSnapshot } from "@/lib/notificationEngine";
@@ -28,6 +28,7 @@ import type {
   Budget,
   Category,
   Debt,
+  Friend,
   FriendLedgerEntry,
   Recurring,
   Transaction,
@@ -54,10 +55,7 @@ interface FinsightsPageProps {
 type SectionId = "netBalance" | "totals" | "insight" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
 
 const DEFAULT_SECTION_ORDER: SectionId[] = [
-  "netBalance",
-  "totals",
   "insight",
-  "trend",
   "categories",
   "budgets",
   "upcoming",
@@ -135,7 +133,8 @@ export function FinsightsPage({
     }
   }
   const hiddenSections = new Set(sectionSettings.homeSections);
-  const sectionOrder = (sectionSettings.homeSectionOrder || DEFAULT_SECTION_ORDER) as SectionId[];
+  const sectionOrder = ((sectionSettings.homeSectionOrder || DEFAULT_SECTION_ORDER) as string[])
+    .filter((section): section is SectionId => DEFAULT_SECTION_ORDER.includes(section as SectionId));
 
   const today = useMemo(() => new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
@@ -217,11 +216,14 @@ export function FinsightsPage({
     [] as Debt[]
   );
   const friendLedger = useLiveQuery(
-    () => hiddenSections.has("upcoming")
-      ? profileRecords(db.friendLedger, profileId).filter((item) => !item.deletedAt && item.direction === "owed_to_me").toArray()
-      : Promise.resolve([] as FriendLedgerEntry[]),
-    [profileId, hiddenSections.has("upcoming")],
+    () => profileRecords(db.friendLedger, profileId).filter((item) => !item.deletedAt).toArray(),
+    [profileId],
     [] as FriendLedgerEntry[]
+  );
+  const friends = useLiveQuery(
+    () => profileRecords(db.friends, profileId).filter((item) => !item.deletedAt).toArray(),
+    [profileId],
+    [] as Friend[]
   );
   const recentTransactions = useLiveQuery(
     () => hiddenSections.has("recent")
@@ -234,6 +236,18 @@ export function FinsightsPage({
       : Promise.resolve([] as Transaction[]),
     [profileId, selectedAccountId, hiddenSections.has("recent")],
     [] as Transaction[]
+  );
+
+  const friendBalances = useMemo(() => {
+    const entries = friendLedger as FriendLedgerEntry[];
+    return (friends as Friend[])
+      .map((friend) => ({ friend, balance: computeFriendBalance(entries, friend.id) }))
+      .filter(({ balance }) => balance !== 0)
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+  }, [friendLedger, friends]);
+  const debtBalances = useMemo(
+    () => (debts as Debt[]).filter((debt) => debt.principal > 0),
+    [debts]
   );
   const transactionCount = useLiveQuery(
     () => profileRecords(db.transactions, profileId)
@@ -369,7 +383,7 @@ export function FinsightsPage({
       date: string;
       title: string;
       amount: number;
-      kind: "recurring" | "debt" | "friend";
+      kind: "recurring";
       accountId?: string | null;
     }[] = [];
     for (const item of recurring as Recurring[]) {
@@ -385,32 +399,8 @@ export function FinsightsPage({
         });
       }
     }
-    for (const item of debts as Debt[]) {
-      if (item.dueDate && item.dueDate >= today && item.dueDate <= end) {
-        items.push({
-          id: item.id,
-          date: item.dueDate,
-          title: item.counterparty,
-          amount: item.direction === "owed_to_me" ? item.principal : -item.principal,
-          kind: "debt",
-        });
-      }
-    }
-    for (const item of friendLedger as FriendLedgerEntry[]) {
-      if (item.expectedBy && item.expectedBy >= today && item.expectedBy <= end
-        && (selectedAccountId === "all" || !item.accountId || item.accountId === selectedAccountId)) {
-        items.push({
-          id: item.id,
-          date: item.expectedBy,
-          title: item.note || tForLanguage("owedToMe", language),
-          amount: item.amount,
-          kind: "friend",
-          accountId: item.accountId,
-        });
-      }
-    }
     return items.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
-  }, [recurring, debts, friendLedger, selectedAccountId, hiddenSections, now, language]);
+  }, [recurring, selectedAccountId, hiddenSections, now, language]);
 
   const openHistory = (categoryId?: string) => {
     const category = categoryId ? categories.find((item) => item.id === categoryId) : undefined;
@@ -522,31 +512,34 @@ export function FinsightsPage({
     if (sectionId === "categories") {
       if (!categoryBreakdown.length) return null;
       return (
-        <section className="home-section-card" key={sectionId}>
+        <section className="home-category-showcase" key={sectionId}>
           <div className="home-section-heading">
             <h2>{tForLanguage("categories", language)}</h2>
             <button type="button" onClick={() => openHistory()}>{tForLanguage("seeAll", language)}</button>
           </div>
-          <div className="home-category-list">
-            {categoryBreakdown.map((row) => (
+          <div className="home-category-showcase-grid">
+            {categoryBreakdown.map((row, index) => (
               <button
                 type="button"
-                className="home-category-row"
+                className={`home-category-showcase-item ${index === 0 ? "featured" : ""}`}
                 key={row.categoryId}
                 onClick={() => row.categoryId !== "__other" ? openHistory(row.categoryId === "__uncategorized" ? undefined : row.categoryId) : openHistory()}
+                style={{ "--category-color": row.category?.color || "var(--primary)" } as React.CSSProperties}
               >
-                <CategoryIcon
-                  icon={row.category?.icon}
-                  color={row.category?.color}
-                  size={18}
-                />
-                <span className="home-category-copy">
-                  <b>{row.categoryId === "__other" ? tForLanguage("other", language) : row.category?.name || tForLanguage("other", language)}</b>
-                  <span className="home-category-bar"><i style={{ width: `${Math.min(100, row.percentage)}%` }} /></span>
+                <span className="home-category-showcase-top">
+                  <CategoryIcon
+                    icon={row.category?.icon}
+                    color={row.category?.color}
+                    size={index === 0 ? 18 : 15}
+                    className="home-category-showcase-icon"
+                    style={{ backgroundColor: "transparent", borderRadius: "0", width: "24px", height: "24px" }}
+                  />
+                  <small>{index === 0 ? (language === "fil" ? "PINAKAMALAKI" : "TOP SPEND") : `${Math.round(row.percentage)}%`}</small>
                 </span>
-                <span className="home-category-value">
-                  <b>{formatProfileMoney(row.amount)}</b>
-                  <small>{Math.round(row.percentage)}%</small>
+                <b className="home-category-showcase-name">{row.categoryId === "__other" ? tForLanguage("other", language) : row.category?.name || tForLanguage("other", language)}</b>
+                <strong>{formatProfileMoney(row.amount)}</strong>
+                <span className="home-category-showcase-bar">
+                  <i style={{ width: `${Math.min(100, row.percentage)}%` }} />
                 </span>
               </button>
             ))}
@@ -582,29 +575,69 @@ export function FinsightsPage({
       );
     }
     if (sectionId === "upcoming") {
-      if (!upcomingItems.length) return null;
+      if (!upcomingItems.length && !friendBalances.length && !debtBalances.length) return null;
       return (
         <section className="home-section-card" key={sectionId}>
           <div className="home-section-heading">
-            <h2>{tForLanguage("upcoming", language)}</h2>
+            <h2>{tForLanguage("upcomingBalances", language)}</h2>
+            <button type="button" onClick={friendBalances.length > 0 && !debtBalances.length && !upcomingItems.length ? onOpenFriends : onPlan}>{tForLanguage("seeAll", language)}</button>
           </div>
-          <div className="home-upcoming-list">
-            {upcomingItems.map((item) => {
-              const distance = daysBetween(toDateString(now), item.date);
-              const relative = distance === 0 ? tForLanguage("today", language) : distance === 1 ? tForLanguage("tomorrow", language) : item.date;
-              const open = item.kind === "recurring" ? onOpenRecurring : item.kind === "debt" ? onOpenDebt : onOpenFriends;
-              const Icon = item.kind === "recurring" ? Repeat2 : item.kind === "debt" ? Landmark : UserRound;
-              return (
-                <button type="button" className="home-upcoming-row" key={`${item.kind}-${item.id}`} onClick={open}>
-                  <span className="home-row-icon"><Icon size={18} /></span>
-                  <span><b>{item.title}</b><small>{relative}</small></span>
-                  <strong className={item.amount >= 0 ? "income" : "expense"}>
-                    {item.amount >= 0 ? "+" : "-"}{formatProfileMoney(Math.abs(item.amount))}
-                  </strong>
-                </button>
-              );
-            })}
-          </div>
+          {friendBalances.length > 0 && (
+            <div className="home-balance-group">
+              <h3>{tForLanguage("friendBalances", language)}</h3>
+              <div className="home-friend-balance-list">
+                {friendBalances.slice(0, 4).map(({ friend, balance }) => (
+                  <button type="button" className="home-friend-balance-row" key={friend.id} onClick={onOpenFriends}>
+                    <span className="home-friend-balance-avatar" style={{ background: friend.avatarColor }}>{friend.name[0]?.toUpperCase()}</span>
+                    <span className="home-friend-balance-copy">
+                      <b>{friend.name}</b>
+                      <small>{balance > 0 ? tForLanguage("someoneOwesMe", language) : tForLanguage("iOweSomeone", language)}</small>
+                    </span>
+                    <strong className={balance > 0 ? "income" : "expense"}>{formatProfileMoney(Math.abs(balance))}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {debtBalances.length > 0 && (
+            <div className="home-balance-group">
+              <h3>{tForLanguage("debtsAndReceivables", language)}</h3>
+              <div className="home-upcoming-list">
+                {debtBalances.slice(0, 4).map((debt) => (
+                  <button type="button" className="home-upcoming-row" key={debt.id} onClick={onOpenDebt}>
+                    <span className="home-row-icon"><Landmark size={18} /></span>
+                    <span>
+                      <b>{debt.counterparty}</b>
+                      <small>{debt.direction === "owed_to_me" ? tForLanguage("someoneOwesMe", language) : tForLanguage("iOweSomeone", language)}{debt.dueDate ? ` · ${debt.dueDate}` : ""}</small>
+                    </span>
+                    <strong className={debt.direction === "owed_to_me" ? "income" : "expense"}>{formatProfileMoney(debt.principal)}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {upcomingItems.length > 0 && (
+            <div className="home-balance-group">
+              {(friendBalances.length > 0 || debtBalances.length > 0) && <h3>{tForLanguage("dueSoon", language)}</h3>}
+              <div className="home-upcoming-list">
+                {upcomingItems.map((item) => {
+                  const distance = daysBetween(toDateString(now), item.date);
+                  const relative = distance === 0 ? tForLanguage("today", language) : distance === 1 ? tForLanguage("tomorrow", language) : item.date;
+                  const open = onOpenRecurring;
+                  const Icon = Repeat2;
+                  return (
+                    <button type="button" className="home-upcoming-row" key={`${item.kind}-${item.id}`} onClick={open}>
+                      <span className="home-row-icon"><Icon size={18} /></span>
+                      <span><b>{item.title}</b><small>{relative}</small></span>
+                      <strong className={item.amount >= 0 ? "income" : "expense"}>
+                        {item.amount >= 0 ? "+" : "-"}{formatProfileMoney(Math.abs(item.amount))}
+                      </strong>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       );
     }
@@ -631,10 +664,18 @@ export function FinsightsPage({
                 const relativeTime = tx.date === toDateString(now)
                   ? tForLanguage("today", language)
                   : recentDateFormatter.format(new Date(`${tx.date.slice(0, 10)}T12:00:00+08:00`));
-                const signedAmount = tx.type === "income" ? tx.amount : tx.type === "expense" ? -(tx.personalShareAmount ?? tx.amount) : 0;
+                const signedAmount = tx.type === "income"
+                  ? tx.amount
+                  : tx.type === "expense"
+                    ? -(tx.personalShareAmount ?? tx.amount)
+                    : tx.type === "friend_payment"
+                      ? tx.friendPaymentDirection === "sent" ? -tx.amount : tx.amount
+                      : 0;
                 const transactionType = tx.type === "transfer"
                   ? "Transfer"
-                  : tForLanguage(tx.type, language);
+                  : tx.type === "friend_payment"
+                    ? tForLanguage(tx.friendPaymentDirection === "sent" ? "friendPaymentSent" : "friendPaymentReceived", language)
+                    : tForLanguage(tx.type, language);
                 const details = [
                   tx.note ? category?.name : undefined,
                   account?.name || tForLanguage("account", language),
@@ -720,24 +761,30 @@ export function FinsightsPage({
           </div>
         </section>
       ) : (
-        <SpendingPulse
-          profileId={profileId}
-          accountId={selectedAccountId}
-          accountFilter={accountFilter}
-          period={period}
-          onPeriodChange={setPeriod}
-          budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
-          weekStartsOn={sectionSettings.weekStartsOn}
-          tone={sectionSettings.spendingPulseTone}
-          reduceMotion={sectionSettings.reduceMotion}
-        />
+        <>
+          <SpendingPulse
+            profileId={profileId}
+            accountId={selectedAccountId}
+            accountFilter={accountFilter}
+            period={period}
+            onPeriodChange={setPeriod}
+            budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
+            weekStartsOn={sectionSettings.weekStartsOn}
+            tone={sectionSettings.spendingPulseTone}
+            language={language}
+            reduceMotion={sectionSettings.reduceMotion}
+          />
+          {renderSection("categories")}
+        </>
       )}
       <div className="home-section-list">
-        {homeIsLoaded && accounts.length > 0 && sectionOrder.map((sectionId) => (
-          homeHasNoTransactions && sectionId !== "budgets" && sectionId !== "upcoming"
+        {homeIsLoaded && accounts.length > 0 && sectionOrder.filter((sectionId) => !["categories", "upcoming", "recent"].includes(sectionId)).map((sectionId) => (
+          homeHasNoTransactions && sectionId !== "budgets"
             ? null
             : renderSection(sectionId)
         ))}
+        {homeIsLoaded && accounts.length > 0 && renderSection("upcoming")}
+        {homeIsLoaded && accounts.length > 0 && renderSection("recent")}
       </div>
     </div>
   );
