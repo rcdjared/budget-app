@@ -51,7 +51,7 @@ import {
   setActiveProfile,
   updateProfile,
 } from "@/db/repositories/profiles";
-import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
+import { createAccount, softDeleteAccount, updateAccount } from "@/db/repositories/accounts";
 import { createTransaction, createTransfer, updateTransfer, softDeleteTransaction, cancelTransaction, restoreTransaction, updateTransaction } from "@/db/repositories/transactions";
 import { cancelRecurringOccurrence, deleteRecurringOccurrence } from "@/db/repositories/historyActions";
 import {
@@ -87,7 +87,7 @@ import {
   percentCentavos,
   type CalculatorOperator,
 } from "@/domain/calculator";
-import type { Account, AccountType, Category, CategoryType, Friend, FriendLedgerEntry, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
+import type { Account, AccountType, Budget, Category, CategoryType, Friend, FriendLedgerEntry, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { AccountLogo } from "@/components/AccountLogo";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
@@ -667,7 +667,7 @@ function App() {
               onOpenTransaction={(transactionId) => setHomeTransactionDetailId(transactionId)}
               onOpenDebt={() => navigateToTab("plan")}
               onOpenRecurring={() => navigateToTab("plan")}
-              onOpenFriends={() => navigateToTab("plan")}
+              onOpenFriends={() => setFriendsOpen(true)}
               onOpenBudget={() => navigateToTab("plan")}
               onPlan={() => navigateToTab("plan")}
             />
@@ -1238,19 +1238,21 @@ function HomeTransactionDetailSheet({
     ? transaction.amount
     : transaction.type === "expense"
       ? -(transaction.personalShareAmount ?? transaction.amount)
-      : 0;
+      : transaction.type === "friend_payment"
+        ? transaction.friendPaymentDirection === "sent" ? -transaction.amount : transaction.amount
+        : transaction.type === "transfer" ? transaction.amount : 0;
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Transaction details" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="account-sheet transaction-detail-sheet">
         <header className="sheet-header">
           <button type="button" onClick={onClose} aria-label={t("close")}><X size={20} /></button>
-          <b>{category?.name || (transaction.type === "income" ? t("income") : transaction.type === "expense" ? t("expense") : "Transfer")}</b>
+            <b>{category?.name || (transaction.type === "income" ? t("income") : transaction.type === "expense" ? t("expense") : transaction.type === "friend_payment" ? t(transaction.friendPaymentDirection === "sent" ? "friendPaymentSent" : "friendPaymentReceived") : "Transfer")}</b>
           <span />
         </header>
         <div className="transaction-detail-content">
           <div className={`transaction-detail-amount ${transaction.cancelledAt ? "cancelled" : ""}`}>
             <small>{account?.name || t("account")} · {formatRelativeDate(transaction.date)}</small>
-            <strong className={signedAmount >= 0 ? "income" : signedAmount < 0 ? "expense" : ""}>
+            <strong className={transaction.type === "transfer" ? "" : signedAmount >= 0 ? "income" : "expense"}>
               {signedAmount >= 0 && transaction.type !== "transfer" ? "+" : signedAmount < 0 ? "-" : ""}
               {formatMoney(Math.abs(signedAmount))}
             </strong>
@@ -1424,6 +1426,7 @@ function TransactionList({
     profileId: string;
     onClose: () => void;
   }) {
+    const language = loadAppSettings().language;
     const transaction = useLiveQuery(
       () => getProfileRecord(db.transactions, transactionId, profileId),
       [transactionId, profileId]
@@ -1451,6 +1454,10 @@ function TransactionList({
     );
     const [flow, setFlow] = useState<"actions" | "split" | "shared">("actions");
     const [friendIds, setFriendIds] = useState<string[]>([]);
+    const [addingFriend, setAddingFriend] = useState(false);
+    const [newFriendName, setNewFriendName] = useState("");
+    const [friendCreateError, setFriendCreateError] = useState("");
+    const [friendSaving, setFriendSaving] = useState(false);
     const [mode, setMode] = useState<"equal" | "exact" | "percent">("equal");
     const [exactShares, setExactShares] = useState<number[]>([]);
     const [percentShares, setPercentShares] = useState<number[]>([]);
@@ -1459,6 +1466,7 @@ function TransactionList({
     const [undoVisible, setUndoVisible] = useState(false);
     const [paymentMemberId, setPaymentMemberId] = useState<string | null>(null);
     const [paymentCreditAccountId, setPaymentCreditAccountId] = useState("");
+    const [paymentMemberAmount, setPaymentMemberAmount] = useState("");
     const deleteTimerRef = useRef<number | null>(null);
 
     if (!transaction) return null;
@@ -1474,6 +1482,23 @@ function TransactionList({
       setFriendIds((current) => current.includes(friendId)
         ? current.filter((id) => id !== friendId)
         : [...current, friendId]);
+    };
+
+    const addFriendFromPanel = async () => {
+      const name = newFriendName.trim();
+      if (!name || friendSaving) return;
+      setFriendSaving(true);
+      setFriendCreateError("");
+      try {
+        const friendId = await createFriend(profileId, { name, avatarColor: "#019B51" });
+        setFriendIds((current) => current.includes(friendId) ? current : [...current, friendId]);
+        setNewFriendName("");
+        setAddingFriend(false);
+      } catch (error) {
+        setFriendCreateError(error instanceof Error ? error.message : "Could not add this friend.");
+      } finally {
+        setFriendSaving(false);
+      }
     };
 
     const saveSplit = async () => {
@@ -1636,7 +1661,8 @@ function TransactionList({
                       <div key={member.id}>
                         <span><b>{member.name}</b><small>{member.status} · {formatMoney(member.paidAmount)} / {formatMoney(member.amount)}</small></span>
                         {!member.isMe && member.status !== "paid" && <button type="button" onClick={() => {
-                          setPaymentCreditAccountId("");
+                          setPaymentCreditAccountId(member.accountId || accounts[0]?.id || "");
+                          setPaymentMemberAmount(((member.amount - member.paidAmount) / 100).toFixed(2));
                           setPaymentMemberId(member.id);
                         }}>Mark paid</button>}
                       </div>
@@ -1656,11 +1682,15 @@ function TransactionList({
                   <div className="shared-payment-overlay" role="dialog" aria-modal="true" aria-label="Record shared bill payment">
                     <section className="shared-payment-dialog">
                       <h3>Mark portion paid</h3>
-                      <p>This records a repayment against the participant’s share. Optionally, add the amount to one of your accounts.</p>
+                      <p>Enter what your friend actually paid. Choose an account to add the received money to its balance.</p>
                       <label>
-                        Credit account <span>Optional</span>
+                        Amount received
+                        <input inputMode="decimal" value={paymentMemberAmount} onChange={(event) => setPaymentMemberAmount(event.target.value)} placeholder="0.00" />
+                      </label>
+                      <label>
+                        Deposit to account
                         <select value={paymentCreditAccountId} onChange={(event) => setPaymentCreditAccountId(event.target.value)}>
-                          <option value="">Tracking only — don’t change account balance</option>
+                          <option value="">Track only — no wallet change</option>
                           {accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                         </select>
                       </label>
@@ -1669,19 +1699,25 @@ function TransactionList({
                         <button type="button" className="save-button" onClick={async () => {
                           const member = (sharedMembers || []).find((item) => item.id === paymentMemberId);
                           if (!member) return;
+                          const amount = parseMoney(paymentMemberAmount);
+                          if (!Number.isSafeInteger(amount) || amount <= 0) {
+                            window.alert("Enter the amount your friend actually paid.");
+                            return;
+                          }
+                          if (!paymentCreditAccountId && !window.confirm("This will settle the debt without changing any wallet balance. Continue?")) return;
                           try {
                             await markSharedBillMemberPaid(
                               profileId,
                               transaction.sharedBillId!,
                               member.id,
-                              member.amount - member.paidAmount,
+                              amount,
                               paymentCreditAccountId || undefined
                             );
                             setPaymentMemberId(null);
                           } catch (error) {
                             window.alert(error instanceof Error ? error.message : "Could not update the bill payment.");
                           }
-                        }}>Mark paid</button>
+                        }}>Record payment</button>
                       </div>
                     </section>
                   </div>
@@ -1708,12 +1744,23 @@ function TransactionList({
                       {friendIds.includes(friend.id) && <CheckCircle2 size={17} />}
                     </button>
                   ))}
-                  <button type="button" onClick={async () => {
-                    const name = window.prompt("Friend name");
-                    if (!name?.trim()) return;
-                    const friendId = await createFriend(profileId, { name, avatarColor: "#019B51" });
-                    setFriendIds((current) => [...current, friendId]);
-                  }}><Plus size={17} />{t("addFriend")}</button>
+                  {!addingFriend ? (
+                    <button type="button" onClick={() => { setAddingFriend(true); setFriendCreateError(""); }}><Plus size={17} />{t("addFriend")}</button>
+                  ) : (
+                    <div className="transaction-friend-add">
+                      <input
+                        autoFocus
+                        value={newFriendName}
+                        onChange={(event) => setNewFriendName(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === "Enter") void addFriendFromPanel(); }}
+                        placeholder={language === "fil" ? "Pangalan ng kaibigan" : "Friend name"}
+                        aria-label={language === "fil" ? "Pangalan ng kaibigan" : "Friend name"}
+                      />
+                      <button type="button" disabled={!newFriendName.trim() || friendSaving} onClick={() => void addFriendFromPanel()}>{friendSaving ? "Saving" : t("save")}</button>
+                      <button type="button" onClick={() => { setAddingFriend(false); setNewFriendName(""); setFriendCreateError(""); }}>{t("cancel")}</button>
+                      {friendCreateError && <small role="alert">{friendCreateError}</small>}
+                    </div>
+                  )}
                 </div>
                 {friendIds.length > 0 && (
                   <label className="notification-expected-date">
@@ -2145,6 +2192,7 @@ function AccountsPage({
   profileId: string;
   onAdd: () => void;
 }) {
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const accounts = useLiveQuery(
     () => profileRecords(db.accounts, profileId).filter((a) => !a.deletedAt).toArray(),
     [profileId],
@@ -2160,14 +2208,29 @@ function AccountsPage({
     [profileId],
     []
   );
+  const friends = useLiveQuery(
+    () => profileRecords(db.friends, profileId).filter((friend) => !friend.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const debts = useLiveQuery(
+    () => profileRecords(db.debts, profileId).filter((debt) => !debt.deletedAt).toArray(),
+    [profileId],
+    []
+  );
   const netWorthSetting = useLiveQuery(
     () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
     [profileId]
   );
   let netWorthAccountIds: string[] = [];
+  let includeFriendReceivables = loadAppSettings().includeFriendReceivables;
   if (netWorthSetting?.value) {
     try {
-      netWorthAccountIds = JSON.parse(netWorthSetting.value).netWorthAccountIds || [];
+      const savedSettings = JSON.parse(netWorthSetting.value);
+      netWorthAccountIds = savedSettings.netWorthAccountIds || [];
+      if (typeof savedSettings.includeFriendReceivables === "boolean") {
+        includeFriendReceivables = savedSettings.includeFriendReceivables;
+      }
     } catch {
       netWorthAccountIds = [];
     }
@@ -2186,13 +2249,48 @@ function AccountsPage({
     [includedAccounts, transactions]
   );
   const baseNet = computeNetWorth(includedAccounts, balances);
-  const friendReceivables = loadAppSettings().includeFriendReceivables
-    ? computeFriendBalance(friendEntries)
+  const friendBalances = friends.map((friend) => ({
+    friend,
+    balance: computeFriendBalance(friendEntries, friend.id),
+  }));
+  const friendAssets = includeFriendReceivables
+    ? friendBalances.reduce((total, item) => total + Math.max(0, item.balance), 0)
     : 0;
+  const friendLiabilities = includeFriendReceivables
+    ? friendBalances.reduce((total, item) => total + Math.max(0, -item.balance), 0)
+    : 0;
+  const friendsByName = new Map<string, typeof friendBalances>();
+  for (const item of friendBalances) {
+    const key = item.friend.name.trim().toLocaleLowerCase();
+    friendsByName.set(key, [...(friendsByName.get(key) || []), item]);
+  }
+  const standaloneDebtTotals = new Map<string, { direction: "owed_to_me" | "i_owe"; amount: number; friendBalance: number }>();
+  for (const debt of debts) {
+    const matchingFriends = friendsByName.get(debt.counterparty.trim().toLocaleLowerCase()) || [];
+    const friend = matchingFriends.length === 1 ? matchingFriends[0] : undefined;
+    const linkedBalance = friend?.balance || 0;
+    const matchesDirection = debt.direction === "owed_to_me" ? linkedBalance > 0 : linkedBalance < 0;
+    const key = friend && matchesDirection ? `${friend.friend.id}:${debt.direction}` : `debt:${debt.id}`;
+    const current = standaloneDebtTotals.get(key);
+    standaloneDebtTotals.set(key, {
+      direction: debt.direction,
+      amount: (current?.amount || 0) + debt.principal,
+      friendBalance: matchesDirection ? Math.abs(linkedBalance) : 0,
+    });
+  }
+  let debtReceivables = 0;
+  let debtPayables = 0;
+  for (const debt of standaloneDebtTotals.values()) {
+    const amount = Math.max(0, debt.amount - debt.friendBalance);
+    if (debt.direction === "owed_to_me") debtReceivables += amount;
+    else debtPayables += amount;
+  }
+  const friendNet = friendAssets - friendLiabilities;
   const net = {
     ...baseNet,
-    assets: baseNet.assets + Math.max(0, friendReceivables),
-    netWorth: baseNet.netWorth + friendReceivables,
+    assets: baseNet.assets + friendAssets + debtReceivables,
+    liabilities: baseNet.liabilities + friendLiabilities + debtPayables,
+    netWorth: baseNet.netWorth + friendNet + debtReceivables - debtPayables,
   };
   const groups: { label: string; types: Account["type"][] }[] = [
     { label: "Cash & banks", types: ["cash", "bank", "ewallet"] },
@@ -2261,6 +2359,14 @@ function AccountsPage({
                     {formatMoney(balances.get(account.id) ?? account.openingBalance)}
                   </strong>
                   <button
+                    className="account-edit"
+                    aria-label={`Edit ${account.name}`}
+                    title={`Edit ${account.name}`}
+                    onClick={() => setEditingAccount(account)}
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button
                     className="account-delete"
                     aria-label={`Delete ${account.name}`}
                     title={`Delete ${account.name}`}
@@ -2301,6 +2407,86 @@ function AccountsPage({
           profileId={profileId}
         />
       </section>
+      {editingAccount && (
+        <EditAccountSheet
+          account={editingAccount}
+          profileId={profileId}
+          onClose={() => setEditingAccount(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditAccountSheet({
+  account,
+  profileId,
+  onClose,
+}: {
+  account: Account;
+  profileId: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(account.name);
+  const [type, setType] = useState<AccountType>(account.type);
+  const [opening, setOpening] = useState((account.openingBalance / 100).toFixed(2));
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const cleanName = name.trim();
+    if (!cleanName) {
+      window.alert("Enter an account name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateAccount(account.id, profileId, {
+        name: cleanName,
+        type,
+        openingBalance: parseMoney(opening),
+      });
+      onClose();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not update this account.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Edit account">
+      <section className="account-sheet">
+        <header className="sheet-header">
+          <button type="button" onClick={onClose} aria-label="Close"><X size={20} /></button>
+          <b>Edit account</b>
+          <span />
+        </header>
+        <div className="account-form">
+          <label>
+            Account name
+            <input value={name} onChange={(event) => setName(event.target.value)} autoFocus />
+          </label>
+          <label>
+            Account type
+            <select value={type} onChange={(event) => setType(event.target.value as AccountType)}>
+              <option value="bank">Bank</option>
+              <option value="ewallet">E-wallet</option>
+              <option value="cash">Cash</option>
+              <option value="credit_card">Credit card</option>
+              <option value="investment">Investment</option>
+              <option value="loan">Loan</option>
+            </select>
+          </label>
+          <label>
+            Opening balance
+            <input inputMode="decimal" value={opening} onChange={(event) => setOpening(event.target.value)} />
+            <small>Changing this adjusts the account balance while keeping transaction history.</small>
+          </label>
+          <button className="save-button" onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -2336,6 +2522,7 @@ function BudgetsPage({
   );
 
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [debtsOpen, setDebtsOpen] = useState(false);
@@ -2367,7 +2554,7 @@ function BudgetsPage({
           </button>
           <button
             className="header-action"
-            onClick={() => setBudgetOpen(true)}
+            onClick={() => { setEditingBudget(null); setBudgetOpen(true); }}
             aria-label="Add budget"
           >
             <Plus size={20} />
@@ -2411,6 +2598,18 @@ function BudgetsPage({
                     <b>
                       {formatMoney(spent)} / {formatMoney(budget.amount)}
                     </b>
+                    <span className="budget-row-actions">
+                      <button type="button" aria-label={`Edit ${category?.name || "budget"} budget`} onClick={() => { setEditingBudget(budget); setBudgetOpen(true); }}>
+                        <Edit2 size={15} />
+                      </button>
+                      <button type="button" className="danger" aria-label={`Remove ${category?.name || "budget"} budget`} onClick={() => {
+                        if (!window.confirm(`Remove the ${category?.name || "category"} budget?`)) return;
+                        const timestamp = new Date().toISOString();
+                        void db.budgets.update(budget.id, { deletedAt: timestamp, updatedAt: timestamp });
+                      }}>
+                        <Trash2 size={15} />
+                      </button>
+                    </span>
                   </div>
                   <div
                     className={`budget-track ${
@@ -2515,7 +2714,8 @@ function BudgetsPage({
         <BudgetForm
           profileId={profileId}
           categories={categories}
-          onClose={() => setBudgetOpen(false)}
+          budget={editingBudget || undefined}
+          onClose={() => { setBudgetOpen(false); setEditingBudget(null); }}
         />
       )}
       {goalOpen && <GoalForm profileId={profileId} onClose={() => setGoalOpen(false)} />}
@@ -2528,30 +2728,33 @@ function BudgetsPage({
 function BudgetForm({
   profileId,
   categories,
+  budget,
   onClose,
 }: {
   profileId: string;
   categories: Category[];
+  budget?: Budget;
   onClose: () => void;
 }) {
   const expenseCategories = categories.filter((c) => c.type === "expense");
-  const [categoryId, setCategoryId] = useState(expenseCategories[0]?.id || "");
-  const [amount, setAmount] = useState("");
+  const [categoryId, setCategoryId] = useState(budget?.categoryId || expenseCategories[0]?.id || "");
+  const [amount, setAmount] = useState(budget ? (budget.amount / 100).toFixed(2) : "");
   const [period, setPeriod] = useState<
     "daily" | "weekly" | "biweekly" | "monthly" | "annual"
-  >("monthly");
+  >(budget?.period || "monthly");
 
   const save = async () => {
     if (!categoryId || !parseMoney(amount)) return;
     const timestamp = new Date().toISOString();
     await db.budgets.put({
-      id: crypto.randomUUID(),
-      profileId,
+      ...(budget || {}),
+      id: budget?.id || crypto.randomUUID(),
+      profileId: budget?.profileId || profileId,
       categoryId,
       period,
       amount: parseMoney(amount),
-      rolloverEnabled: false,
-      createdAt: timestamp,
+      rolloverEnabled: budget?.rolloverEnabled || false,
+      createdAt: budget?.createdAt || timestamp,
       updatedAt: timestamp,
     });
     onClose();
@@ -2562,14 +2765,14 @@ function BudgetForm({
       className="sheet-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Add budget"
+      aria-label={budget ? "Edit budget" : "Add budget"}
     >
       <section className="account-sheet">
         <header className="sheet-header">
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <b>Add budget</b>
+          <b>{budget ? "Edit budget" : "Add budget"}</b>
           <span />
         </header>
         <div className="account-form">
@@ -2613,7 +2816,7 @@ function BudgetForm({
             onClick={save}
             disabled={!parseMoney(amount)}
           >
-            Save budget
+            {budget ? "Save changes" : "Save budget"}
           </button>
         </div>
       </section>
@@ -3969,6 +4172,7 @@ function FriendsSheet({
       window.alert("Enter a positive payment amount.");
       return;
     }
+    if (!paymentAccountId && !window.confirm("This will update the debt record without changing any wallet balance. Continue?")) return;
     try {
       await recordFriendPayment(
         profileId,
@@ -4009,6 +4213,7 @@ function FriendsSheet({
                   return (
                     <button type="button" key={friend.id} onClick={() => {
                       setSelectedFriendId(friend.id);
+                      setPaymentAccountId(accounts[0]?.id || "");
                       setPaymentSharedBillMemberId("");
                     }}>
                       <span style={{ background: friend.avatarColor }}>{friend.name[0]?.toUpperCase()}</span>
@@ -4069,6 +4274,7 @@ function FriendsSheet({
                   const amount = selectedBillMember && balance > 0
                     ? Math.min(balance, selectedBillMember.amount - selectedBillMember.paidAmount)
                     : Math.abs(balance);
+                  if (!paymentAccountId && !window.confirm("This will settle the debt without changing any wallet balance. Continue?")) return;
                   try {
                     await recordFriendPayment(
                       profileId,
@@ -4091,7 +4297,7 @@ function FriendsSheet({
                   <div key={entry.id}>
                     <span>{entry.type === "payment" ? "Payment" : entry.type === "adjustment" ? "Adjustment" : entry.type === "shared_bill" ? "Shared bill" : "Expense share"}</span>
                     <b>{entry.direction === "owed_to_me" ? "+" : "−"}{formatMoney(entry.amount)}</b>
-                    <small>{entry.note || entry.date}</small>
+                    <small>{entry.date === toDateString(new Date()) ? t("today") : entry.date}{entry.note ? ` Â· ${entry.note}` : ""}</small>
                   </div>
                 ))}
               </div>
@@ -4746,16 +4952,18 @@ function AddTransactionSheet({
           </button>
           {receiptFlow ? <b>{receiptStep === "choose" ? "Scan receipt" : "Review receipt"}</b> : (
             <div className="type-tabs" role="tablist">
-              {(["expense", "income", "transfer"] as TransactionType[]).map((value) => (
+              {(type === "friend_payment"
+                ? (["friend_payment"] as TransactionType[])
+                : (["expense", "income", "transfer"] as TransactionType[])).map((value) => (
                 <button
                   key={value}
                   type="button"
                   role="tab"
                   className={`type-tab-btn ${type === value ? "active" : ""}`}
                   aria-selected={type === value}
-                  onClick={() => setType(value)}
+                  onClick={() => value !== "friend_payment" && setType(value)}
                 >
-                  {value}
+                  {value === "friend_payment" ? "Friend payment" : value}
                 </button>
               ))}
             </div>

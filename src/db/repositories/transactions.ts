@@ -241,6 +241,58 @@ export async function updateTransaction(
     if (!existing) throw new Error("Transaction not found.");
     if (data.profileId && data.profileId !== profileId) throw new Error("Transaction profile cannot be changed.");
     if (existing.cancelledAt) throw new Error("Restore this transaction before editing it.");
+    if (existing.type === "friend_payment") {
+      if (data.type && data.type !== "friend_payment") {
+        throw new Error("A friend payment cannot be changed into another transaction type.");
+      }
+      if (data.friendPaymentDirection && data.friendPaymentDirection !== existing.friendPaymentDirection) {
+        throw new Error("The direction of a recorded friend payment cannot be changed.");
+      }
+      const paymentEntries = await db.friendLedger.where("transactionId").equals(id)
+        .filter((entry) => entry.type === "payment" && !entry.deletedAt).toArray();
+      if (paymentEntries.length !== 1) {
+        throw new Error("This payment is missing its matching friend balance record. Restore or repair the payment before editing it.");
+      }
+      const payment = paymentEntries[0];
+      const amount = data.amount ?? existing.amount;
+      if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("Payment amount must be positive centavos.");
+      const accountId = data.accountId ?? existing.accountId;
+      const account = await getProfileRecord(db.accounts, accountId, profileId);
+      if (!account || account.deletedAt) throw new Error("The selected account no longer exists.");
+      const friendEntries = await profileRecords(db.friendLedger, profileId)
+        .filter((entry) => entry.friendId === payment.friendId && !entry.deletedAt && entry.id !== payment.id).toArray();
+      const balanceWithoutPayment = friendEntries.reduce((balance, entry) =>
+        balance + (entry.direction === "owed_to_me" ? entry.amount : -entry.amount), 0);
+      const direction = existing.friendPaymentDirection ?? (payment.direction === "you_owe" ? "received" : "sent");
+      const outstanding = direction === "received" ? balanceWithoutPayment : -balanceWithoutPayment;
+      if (amount > outstanding) throw new Error("Payment cannot exceed the outstanding balance.");
+      if (payment.sharedBillMemberId) {
+        const member = await db.sharedBillMembers.get(payment.sharedBillMemberId);
+        const paidAmount = (member?.paidAmount ?? 0) + amount - payment.amount;
+        if (!member || paidAmount < 0 || paidAmount > member.amount) {
+          throw new Error("Payment amount must fit the shared bill participant's outstanding share.");
+        }
+        await db.sharedBillMembers.update(member.id, {
+          paidAmount,
+          status: paidAmount >= member.amount ? "paid" : paidAmount > 0 ? "partial" : "unpaid",
+          accountId,
+          updatedAt: now(),
+        });
+      }
+      const timestamp = now();
+      await db.friendLedger.update(payment.id, {
+        amount,
+        date: data.date ?? payment.date,
+        note: data.note === undefined ? payment.note : data.note,
+        accountId,
+        updatedAt: timestamp,
+      });
+      await db.transactions.update(id, {
+        ...data, type: "friend_payment", amount, accountId, categoryId: null,
+        friendPaymentDirection: direction, profileId, editedAt: timestamp, updatedAt: timestamp,
+      });
+      return;
+    }
     if ((existing.splitId || existing.sharedBillId) && data.type && data.type !== "expense") {
       throw new Error("Remove the split or shared bill before changing the transaction type.");
     }

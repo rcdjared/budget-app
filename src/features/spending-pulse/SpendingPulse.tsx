@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { formatSpendingDate } from "./periods";
 import { Kupi } from "./Kupi";
 import { useSpendingPulse } from "./useSpendingPulse";
-import type { SpendingPulsePeriod, SpendingPulseTone } from "./types";
+import type { SpendingPulseLanguage, SpendingPulsePeriod, SpendingPulseTone } from "./types";
 import "./spending-pulse.css";
 
 const PERIODS: { id: SpendingPulsePeriod; label: string }[] = [
@@ -65,6 +65,7 @@ export interface SpendingPulseProps {
   budgetCycleStartDay: number;
   weekStartsOn: number;
   tone: SpendingPulseTone;
+  language: SpendingPulseLanguage;
   reduceMotion: boolean;
 }
 
@@ -77,11 +78,10 @@ export function SpendingPulse({
   budgetCycleStartDay,
   weekStartsOn,
   tone,
+  language,
   reduceMotion,
 }: SpendingPulseProps) {
   const [seen, setSeen] = useState<SeenInsight[]>(() => readSeenInsights(profileId));
-  const [selectedText, setSelectedText] = useState<string | null>(null);
-  const [hop, setHop] = useState(0);
   const { stats, insights, now } = useSpendingPulse({
     profileId,
     accountId,
@@ -89,6 +89,7 @@ export function SpendingPulse({
     budgetCycleStartDay,
     weekStartsOn,
     tone,
+    language,
   });
   const today = useMemo(() => new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Manila",
@@ -100,8 +101,7 @@ export function SpendingPulse({
     () => insights.filter((insight) => !seen.some((item) => item.text === insight.text && now.getTime() - item.seenAt < SEEN_INSIGHT_WINDOW)),
     [insights, seen, now]
   );
-  const insight = insights.find((item) => item.text === selectedText)
-    || freshInsights[0];
+  const insight = freshInsights[0] || insights[0];
   const comparisonPeriod = period === "day"
     ? "yesterday"
     : period === "week"
@@ -121,14 +121,7 @@ export function SpendingPulse({
 
   useEffect(() => {
     setSeen(readSeenInsights(profileId));
-    setSelectedText(null);
   }, [profileId]);
-
-  useEffect(() => {
-    if (!selectedText || !insights.some((item) => item.text === selectedText)) {
-      setSelectedText(freshInsights[0]?.text || null);
-    }
-  }, [selectedText, freshInsights, insights]);
 
   useEffect(() => {
     if (!insight || seen.some((item) => item.text === insight.text && now.getTime() - item.seenAt < SEEN_INSIGHT_WINDOW)) return;
@@ -145,19 +138,6 @@ export function SpendingPulse({
 
   const selectPeriod = (nextPeriod: SpendingPulsePeriod) => {
     onPeriodChange(nextPeriod);
-    setSelectedText(null);
-  };
-
-  const showNextInsight = () => {
-    if (!insights.length) return;
-    const seenTexts = new Set(seen
-      .filter((item) => now.getTime() - item.seenAt < SEEN_INSIGHT_WINDOW)
-      .map((item) => item.text));
-    if (insight) seenTexts.add(insight.text);
-    const nextInsight = insights.find((item) => !seenTexts.has(item.text));
-    if (!nextInsight) return;
-    setSelectedText(nextInsight.text);
-    setHop((count) => count + 1);
   };
 
   const maxAmount = Math.max(1, ...stats.bars.map((bar) => bar.amount));
@@ -171,32 +151,21 @@ export function SpendingPulse({
       data-reduce-motion={reduceMotionActive}
     >
       <div className="spending-pulse__insight-row">
-        <button
-          type="button"
+        <div
+          role="group"
           className="spending-pulse__insight"
-          aria-label="Show another insight from Kupi"
-          disabled={freshInsights.length === 0}
-          onClick={showNextInsight}
+          aria-label="Kupi spending insight"
         >
-          <span className={`spending-pulse__mascot-wrap ${hop ? "is-hopping" : ""}`} key={hop}>
+          <span className="spending-pulse__mascot-wrap">
             <Kupi mood={insight?.mood ?? "calm"} size={48} />
           </span>
           <span className="spending-pulse__bubble">
             <span className="spending-pulse__speaker">Kupi</span>
             <span className="spending-pulse__message" aria-live="polite">
-              {insight?.text || "You've heard all my takes for now. Check back later."}
-            </span>
-            <span className="spending-pulse__bubble-footer">
-              <span className="spending-pulse__dots" aria-hidden="true">
-                {Array.from({ length: Math.min(3, Math.max(1, insights.length)) }, (_, index) => (
-                  <i className={index === (selectedText ? insights.findIndex((item) => item.text === selectedText) : 0) % 3 ? "" : "active"} key={index} />
-                ))}
-              </span>
-              <span>Tap for another take</span>
+              {insight?.text || (language === "fil" ? "Mag-ingat sa gastos at patuloy na magtala." : "Keep an eye on spending and keep tracking.")}
             </span>
           </span>
-          <span className="spending-pulse__hop" key={hop} aria-hidden="true" />
-        </button>
+        </div>
         {accountFilter}
       </div>
 
