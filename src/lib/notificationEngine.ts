@@ -12,6 +12,7 @@ import type {
 import type { NotificationPreferences } from "@/lib/settings";
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
 import { tForLanguage } from "@/lib/localization";
+import { dateKeyFromParts } from "@/lib/format";
 
 export interface BudgetCrossing {
   budgetId: string;
@@ -60,7 +61,7 @@ function localDateTime(date: Date, timezone: string): { date: string; time: stri
   }).formatToParts(date);
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
   return {
-    date: `${get("year")}-${get("month")}-${get("day")}`,
+    date: dateKeyFromParts(Number(get("year")), Number(get("month")), Number(get("day"))),
     time: `${get("hour")}:${get("minute")}`,
   };
 }
@@ -127,14 +128,14 @@ export function detectBudgetCrossings(
 
 function budgetCycleKey(date: string, period: Budget["period"]): string {
   const [year, month, day] = date.split("-").map(Number);
-  if (period === "daily") return date;
+  if (period === "daily") return dateKeyFromParts(year, month, day);
   if (period === "weekly") {
     const current = new Date(Date.UTC(year, month - 1, day));
     const weekday = (current.getUTCDay() + 6) % 7;
     current.setUTCDate(current.getUTCDate() - weekday);
-    return current.toISOString().slice(0, 10);
+    return dateKeyFromParts(current.getUTCFullYear(), current.getUTCMonth() + 1, current.getUTCDate());
   }
-  if (period === "biweekly") return `${year}-${String(month).padStart(2, "0")}-${day <= 15 ? "01" : "16"}`;
+  if (period === "biweekly") return dateKeyFromParts(year, month, day <= 15 ? 1 : 16);
   if (period === "annual") return String(year);
   return `${year}-${String(month).padStart(2, "0")}`;
 }

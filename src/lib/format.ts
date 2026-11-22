@@ -27,7 +27,12 @@ export function formatDateTime(date: Date | string): string {
 
 /** Format date as ISO date string (YYYY-MM-DD) for storage */
 export function toDateString(date: Date): string {
-  return format(date, "yyyy-MM-dd");
+  return dateKeyFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+/** Build a zero-padded calendar date from local year, month, and day parts. */
+export function dateKeyFromParts(year: number, month: number, day: number): string {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 /** Get the first and last day of a month */

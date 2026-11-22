@@ -2,6 +2,7 @@ import { computeAccountBalance, computeNetWorth } from "./balances";
 import { formatMoney, parseMoney } from "./money";
 import { sumLiquidAccountBalance } from "./forecast";
 import type { Account, Category, Transaction } from "./types";
+import { dateKeyFromParts } from "@/lib/format";
 
 interface LocalAssistantContext {
   accounts: Account[];
@@ -11,7 +12,7 @@ interface LocalAssistantContext {
 }
 
 function dateKey(date: Date): string {
-  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+  return dateKeyFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 function getDateRange(question: string, today: Date): { start: string; end: string; label: string } {
