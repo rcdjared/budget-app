@@ -40,7 +40,7 @@ export function validateProfileName(
   if (!name) return "required";
   if (name.length > 24) return "tooLong";
   if (profiles.some((profile) =>
-    profile.id !== excludeProfileId && profile.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()
+    profile.id !== excludeProfileId && profile.name.trim().toLowerCase() === name.toLowerCase()
   )) return "duplicate";
   return null;
 }
