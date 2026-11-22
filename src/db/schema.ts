@@ -29,6 +29,7 @@ import type {
   RecurringSkip,
   SharedBill,
   SharedBillMember,
+  InboxNotification,
 } from "@/domain/types";
 
 export class PesoPulseDB extends Dexie {
@@ -55,6 +56,7 @@ export class PesoPulseDB extends Dexie {
   recurringSkips!: EntityTable<RecurringSkip, "id">;
   sharedBills!: EntityTable<SharedBill, "id">;
   sharedBillMembers!: EntityTable<SharedBillMember, "id">;
+  inboxNotifications!: EntityTable<InboxNotification, "id">;
 
   constructor() {
     super("PesoPulseDB");
@@ -137,6 +139,33 @@ export class PesoPulseDB extends Dexie {
         if (record.cancelledAt === undefined) record.cancelledAt = null;
         if (record.editedAt === undefined) record.editedAt = null;
       });
+    });
+
+    this.version(4).stores({
+      profiles: "id, isDefault",
+      accounts: "id, profileId, type, isArchived",
+      categories: "id, profileId, type, parentId, sortOrder",
+      transactions: "id, profileId, accountId, toAccountId, categoryId, recurringId, transferId, splitId, sharedBillId, date, type, &occurrenceKey, [profileId+date], [accountId+date], [categoryId+date]",
+      budgets: "id, profileId, categoryId",
+      goals: "id, profileId",
+      debts: "id, profileId, direction",
+      recurring: "id, profileId, nextDueDate, kind",
+      holdings: "id, accountId, symbol",
+      priceCache: "symbol",
+      quickNotes: "id, profileId",
+      splitGroups: "id, profileId",
+      splitMembers: "id, splitGroupId",
+      streaks: "id, profileId",
+      attachments: "id, transactionId",
+      outbox: "id, table, recordId, status",
+      settings: "id, profileId, key",
+      friends: "id, profileId, linkedUserId, archivedAt",
+      friendLedger: "id, profileId, friendId, transactionId, sharedBillId, date, type",
+      localSplits: "id, profileId, transactionId, status",
+      recurringSkips: "id, profileId, recurringId, occurrenceDate, &occurrenceKey",
+      sharedBills: "id, profileId, transactionId, status",
+      sharedBillMembers: "id, sharedBillId, friendId, status",
+      inboxNotifications: "id, profileId, category, created_at, read_at, &[profileId+dedupe_key]",
     });
   }
 }

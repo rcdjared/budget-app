@@ -1,6 +1,7 @@
 // Transaction repository — the core ledger of all money movements.
 
 import { db } from "../schema";
+import { profileRecords } from "../profileScope";
 import type { Transaction } from "@/domain/types";
 
 function now(): string {
@@ -10,8 +11,7 @@ function now(): string {
 export async function getTransactionsByProfile(
   profileId: string
 ): Promise<Transaction[]> {
-  return db.transactions
-    .where({ profileId })
+  return profileRecords(db.transactions, profileId)
     .filter((t) => !t.deletedAt)
     .reverse()
     .sortBy("date");
@@ -381,8 +381,7 @@ export async function softDeleteTransaction(id: string): Promise<void> {
 export async function getLastTransaction(
   profileId: string
 ): Promise<Transaction | undefined> {
-  const results = await db.transactions
-    .where({ profileId })
+  const results = await profileRecords(db.transactions, profileId)
     .filter((t) => !t.deletedAt && t.type !== "transfer")
     .reverse()
     .sortBy("date");

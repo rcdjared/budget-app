@@ -1,4 +1,5 @@
 import { db } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 import type {
   Friend,
   FriendLedgerEntry,
@@ -36,8 +37,8 @@ export async function updateFriend(id: string, data: Partial<Pick<Friend, "name"
 }
 
 export async function deleteFriendIfZero(profileId: string, friendId: string): Promise<boolean> {
-  const entries = await db.friendLedger
-    .where({ profileId, friendId })
+  const entries = await profileRecords(db.friendLedger, profileId)
+    .filter((entry) => entry.friendId === friendId)
     .filter((entry) => !entry.deletedAt)
     .toArray();
   const balance = entries.reduce((sum, entry) => {
@@ -56,6 +57,7 @@ export interface CreateLocalSplitInput {
   mode: "equal" | "exact" | "percent";
   exactShares?: number[];
   percentHundredths?: number[];
+  expectedBy?: string;
 }
 
 export async function convertExpenseToLocalSplit(input: CreateLocalSplitInput): Promise<string> {
@@ -121,6 +123,7 @@ export async function convertExpenseToLocalSplit(input: CreateLocalSplitInput): 
         direction: "owed_to_me",
         amount: friendShares[index],
         date: transaction.date,
+        expectedBy: input.expectedBy || null,
         note: "Local split",
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -188,7 +191,8 @@ export async function createSharedBill(
   participantIds: string[],
   mode: "equal" | "exact" | "percent",
   exactShares: number[] = [],
-  percentHundredths: number[] = []
+  percentHundredths: number[] = [],
+  expectedBy?: string
 ): Promise<string> {
   return db.transaction("rw", db.tables, async () => {
     const transaction = await db.transactions.get(transactionId);
@@ -232,6 +236,7 @@ export async function createSharedBill(
         paidAmount: 0,
         status: "unpaid",
         accountId: null,
+        expectedBy: expectedBy || null,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
@@ -247,6 +252,7 @@ export async function createSharedBill(
           amount: shares[index],
           date: transaction.date,
           note: title.trim(),
+          expectedBy: expectedBy || null,
           createdAt: timestamp,
           updatedAt: timestamp,
         });
@@ -261,7 +267,8 @@ export async function reconfigureLocalSplit(
   friendIds: string[],
   mode: "equal" | "exact" | "percent",
   exactShares: number[] = [],
-  percentHundredths: number[] = []
+  percentHundredths: number[] = [],
+  expectedBy?: string
 ): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
     const transaction = await db.transactions.get(transactionId);
@@ -301,6 +308,7 @@ export async function reconfigureLocalSplit(
           amount: Math.abs(delta),
           date: transaction.date,
           note: "Split amount edited",
+          expectedBy: expectedBy || null,
           createdAt: timestamp,
           updatedAt: timestamp,
         });

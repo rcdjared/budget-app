@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { db } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 import { formatMoney } from "@/domain/money";
 import { toDateString } from "@/lib/format";
 import type { Account, Category, Transaction } from "@/domain/types";
@@ -35,8 +36,7 @@ export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
   // Queries
   const accounts = useLiveQuery(
     () =>
-      db.accounts
-        .where({ profileId })
+      profileRecords(db.accounts, profileId)
         .filter((a) => !a.deletedAt && !a.isArchived)
         .toArray(),
     [profileId],
@@ -44,15 +44,14 @@ export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
   );
 
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).toArray(),
+    () => profileRecords(db.categories, profileId).toArray(),
     [profileId],
     []
   );
 
   const transactions = useLiveQuery(
     () =>
-      db.transactions
-        .where({ profileId })
+      profileRecords(db.transactions, profileId)
         .filter((t) => !t.deletedAt)
         .toArray(),
     [profileId],

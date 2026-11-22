@@ -1,6 +1,7 @@
 // Account repository — CRUD for cash, bank, e-wallet, credit card, etc.
 
 import { db } from "../schema";
+import { profileRecords } from "../profileScope";
 import type { Account } from "@/domain/types";
 
 function now(): string {
@@ -10,8 +11,7 @@ function now(): string {
 export async function getAccountsByProfile(
   profileId: string
 ): Promise<Account[]> {
-  return db.accounts
-    .where({ profileId })
+  return profileRecords(db.accounts, profileId)
     .filter((a) => !a.deletedAt)
     .toArray();
 }
@@ -19,8 +19,7 @@ export async function getAccountsByProfile(
 export async function getActiveAccounts(
   profileId: string
 ): Promise<Account[]> {
-  return db.accounts
-    .where({ profileId })
+  return profileRecords(db.accounts, profileId)
     .filter((a) => !a.deletedAt && !a.isArchived)
     .toArray();
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -11,6 +11,7 @@ import {
   UserRound,
   BarChart3,
   Banknote,
+  Bell,
   ChevronRight,
   CalendarClock,
   HandCoins,
@@ -41,8 +42,15 @@ import {
   Play,
 } from "lucide-react";
 import { db } from "@/db/schema";
+import { getProfileRecord, profileRecords } from "@/db/profileScope";
 import { initializeAppData, getAccountTemplates, seedDefaultCategories, EXPENSE_CATEGORIES, INCOME_CATEGORIES, LEGACY_EXPENSE_CATEGORY_NAMES } from "@/db/seed";
-import { createProfile } from "@/db/repositories/profiles";
+import {
+  createProfile,
+  deleteProfile,
+  renameProfile,
+  setActiveProfile,
+  updateProfile,
+} from "@/db/repositories/profiles";
 import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
 import { createTransaction, createTransfer, updateTransfer, softDeleteTransaction, cancelTransaction, restoreTransaction, updateTransaction } from "@/db/repositories/transactions";
 import { cancelRecurringOccurrence, deleteRecurringOccurrence } from "@/db/repositories/historyActions";
@@ -83,7 +91,12 @@ import { FinsightsPage } from "@/components/FinsightsPage";
 import { useSheetGestures } from "@/hooks/useSheetGestures";
 import { useCollapsingNav } from "@/hooks/useCollapsingNav";
 import { KupitSettingsSheet } from "@/components/KupitSettingsSheet";
+import { NotificationsSheet } from "@/components/NotificationsSheet";
+import { insertDueNotifications } from "@/db/repositories/notifications";
+import { getProfileNotificationPreferences } from "@/db/repositories/profiles";
+import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
 import { loadAppSettings } from "@/lib/settings";
+import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
 import { t } from "@/lib/localization";
 
 type Tab = "home" | "wallet" | "plan" | "history";
@@ -130,6 +143,10 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsInitialPanel, setNotificationsInitialPanel] = useState<"inbox" | "settings">("inbox");
+  const [notificationToast, setNotificationToast] = useState("");
+  const notificationToastTimerRef = useRef<number | null>(null);
   const [authCallbackNotice, setAuthCallbackNotice] = useState("");
   const handledAuthCallback = useRef(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
@@ -140,6 +157,136 @@ function App() {
   const [recurringShortcutId, setRecurringShortcutId] = useState<string | null>(null);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const notificationTransactions = useLiveQuery(
+    () => profileId ? profileRecords(db.transactions, profileId).toArray() : [],
+    [profileId]
+  );
+  const notificationRecurring = useLiveQuery(
+    () => profileId ? profileRecords(db.recurring, profileId).toArray() : [],
+    [profileId]
+  );
+  const notificationBudgets = useLiveQuery(
+    () => profileId ? profileRecords(db.budgets, profileId).toArray() : [],
+    [profileId]
+  );
+  const notificationDebts = useLiveQuery(
+    () => profileId ? profileRecords(db.debts, profileId).toArray() : [],
+    [profileId]
+  );
+  const notificationGoals = useLiveQuery(
+    () => profileId ? profileRecords(db.goals, profileId).toArray() : [],
+    [profileId]
+  );
+  const notificationFriendLedger = useLiveQuery(
+    () => profileId ? profileRecords(db.friendLedger, profileId).toArray() : [],
+    [profileId]
+  );
+  const notificationSharedBillMembers = useLiveQuery(
+    async () => {
+      if (!profileId) return [];
+      const bills = await profileRecords(db.sharedBills, profileId).toArray();
+      const billIds = new Set(bills.map((bill) => bill.id));
+      return db.sharedBillMembers.toCollection().filter((member) => billIds.has(member.sharedBillId)).toArray();
+    },
+    [profileId]
+  );
+  const notificationDataReady = [
+    notificationTransactions,
+    notificationRecurring,
+    notificationBudgets,
+    notificationDebts,
+    notificationGoals,
+    notificationFriendLedger,
+    notificationSharedBillMembers,
+  ].every((items) => items !== undefined);
+  const notificationDataRef = useRef<NotificationData>({
+    transactions: [],
+    recurring: [],
+    budgets: [],
+    debts: [],
+    goals: [],
+    friendLedger: [],
+    sharedBillMembers: [],
+  });
+  const notificationReadyRef = useRef(false);
+  const previousBudgetSnapshotRef = useRef<BudgetSpendSnapshot[] | null>(null);
+  notificationReadyRef.current = notificationDataReady;
+  notificationDataRef.current = {
+    transactions: notificationTransactions ?? [],
+    recurring: notificationRecurring ?? [],
+    budgets: notificationBudgets ?? [],
+    debts: notificationDebts ?? [],
+    goals: notificationGoals ?? [],
+    friendLedger: notificationFriendLedger ?? [],
+    sharedBillMembers: notificationSharedBillMembers ?? [],
+  };
+
+  const evaluateNotifications = useCallback(async () => {
+    if (!profileId || !notificationReadyRef.current) return;
+    const preferences = await getProfileNotificationPreferences(profileId);
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: preferences.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const localDate = `${parts.find((part) => part.type === "year")?.value}-${parts.find((part) => part.type === "month")?.value}-${parts.find((part) => part.type === "day")?.value}`;
+    const data = notificationDataRef.current;
+    const currentSnapshot = getBudgetSpendSnapshot(data.budgets, data.transactions, localDate);
+    const budgetCrossings = previousBudgetSnapshotRef.current
+      ? detectBudgetCrossings(previousBudgetSnapshotRef.current, currentSnapshot)
+      : [];
+    previousBudgetSnapshotRef.current = currentSnapshot;
+    try {
+      await insertDueNotifications(profileId, { ...data, budgetCrossings }, preferences);
+    } catch (error) {
+      console.error("Could not evaluate due notifications:", error);
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    void evaluateNotifications();
+  }, [
+    evaluateNotifications,
+    notificationTransactions,
+    notificationRecurring,
+    notificationBudgets,
+    notificationDebts,
+    notificationGoals,
+    notificationFriendLedger,
+    notificationSharedBillMembers,
+  ]);
+
+  useEffect(() => {
+    const runWhenVisible = () => {
+      if (document.visibilityState === "visible") void evaluateNotifications();
+    };
+    const handleSettingsChanged = () => void evaluateNotifications();
+    const timer = window.setInterval(() => void evaluateNotifications(), NOTIFICATION_THRESHOLDS.evaluationIntervalMs);
+    document.addEventListener("visibilitychange", runWhenVisible);
+    window.addEventListener("kupit:settings-changed", handleSettingsChanged);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", runWhenVisible);
+      window.removeEventListener("kupit:settings-changed", handleSettingsChanged);
+    };
+  }, [evaluateNotifications]);
+
+  useEffect(() => {
+    const showToast = () => {
+      if (notificationToastTimerRef.current !== null) window.clearTimeout(notificationToastTimerRef.current);
+      setNotificationToast(t("inboxItemCreated"));
+      notificationToastTimerRef.current = window.setTimeout(() => {
+        notificationToastTimerRef.current = null;
+        setNotificationToast("");
+      }, 3500);
+    };
+    window.addEventListener("kupit:inbox-notification-created", showToast);
+    return () => {
+      window.removeEventListener("kupit:inbox-notification-created", showToast);
+      if (notificationToastTimerRef.current !== null) window.clearTimeout(notificationToastTimerRef.current);
+    };
+  }, []);
 
   const closeAddMenu = (afterClose?: () => void) => {
     if (!addMenuOpen) {
@@ -300,11 +447,7 @@ function App() {
 
   const switchProfile = async (nextProfileId: string) => {
     await seedDefaultCategories(nextProfileId);
-    await db.transaction("rw", db.profiles, async () => {
-      await db.profiles.toCollection().modify((profile) => {
-        if (!profile.deletedAt) profile.isDefault = profile.id === nextProfileId;
-      });
-    });
+    await setActiveProfile(nextProfileId);
     setProfileId(nextProfileId);
     setProfilesOpen(false);
   };
@@ -435,7 +578,7 @@ function App() {
     const hasAuthCode = callbackUrl.searchParams.has("code") || /access_token=|refresh_token=|type=(signup|magiclink)/i.test(callbackUrl.hash);
     if (!hasAuthError && !hasAuthCode) return;
     handledAuthCallback.current = true;
-    setSettingsOpen(true);
+    setProfilesOpen(true);
     if (hasAuthError) {
       setAuthCallbackNotice(callbackUrl.searchParams.get("error_description") || "The sign-in link could not be verified. Request a new link from Kupit.");
       window.history.replaceState({}, document.title, callbackUrl.pathname);
@@ -486,6 +629,10 @@ function App() {
               profileId={profileId}
               onProfiles={() => setProfilesOpen(true)}
               onSettings={() => setSettingsOpen(true)}
+              onNotifications={() => {
+                setNotificationsInitialPanel("inbox");
+                setNotificationsOpen(true);
+              }}
               onHistory={() => navigateToTab("history")}
               onOpenHelp={() => setHelpOpen(true)}
             />
@@ -594,6 +741,7 @@ function App() {
         onClose={() => setProfilesOpen(false)}
         profileId={profileId}
         onSwitchProfile={switchProfile}
+        authCallbackNotice={authCallbackNotice}
       />
 
       <KupitSettingsSheet
@@ -611,8 +759,37 @@ function App() {
           setSettingsOpen(false);
           navigateToTab("plan");
         }}
-        authCallbackNotice={authCallbackNotice}
+        onOpenNotifications={() => {
+          setSettingsOpen(false);
+          setNotificationsInitialPanel("settings");
+          setNotificationsOpen(true);
+        }}
+        onOpenProfiles={() => {
+          setSettingsOpen(false);
+          setProfilesOpen(true);
+        }}
       />
+      <NotificationsSheet
+        open={notificationsOpen}
+        initialPanel={notificationsInitialPanel}
+        profileId={profileId}
+        onClose={() => setNotificationsOpen(false)}
+        onNavigate={(route) => {
+          setNotificationsOpen(false);
+          if (route === "settings") {
+            setSettingsOpen(true);
+            return;
+          }
+          if (route === "friends") {
+            setFriendsOpen(true);
+            return;
+          }
+          if (route === "home" || route === "wallet" || route === "plan" || route === "history") navigateToTab(route);
+        }}
+      />
+      {notificationToast && (
+        <div className="notification-toast" role="status"><Bell size={17} />{notificationToast}</div>
+      )}
       {friendsOpen && <FriendsSheet profileId={profileId} onClose={() => setFriendsOpen(false)} />}
 
       <CategoryManagerSheet
@@ -722,11 +899,13 @@ function ProfilesSheet({
   onClose,
   profileId,
   onSwitchProfile,
+  authCallbackNotice,
 }: {
   open: boolean;
   onClose: () => void;
   profileId: string;
   onSwitchProfile: (id: string) => Promise<void>;
+  authCallbackNotice: string;
 }) {
   const profiles = useLiveQuery(
     () => db.profiles.filter((profile) => !profile.deletedAt).toArray(),
@@ -734,51 +913,233 @@ function ProfilesSheet({
     []
   );
   const [newName, setNewName] = useState("");
+  const [preferredName, setPreferredName] = useState("");
+  const [profileName, setProfileName] = useState("");
+  const [feedback, setFeedback] = useState(authCallbackNotice);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const activeProfile = profiles.find((profile) => profile.id === profileId);
+  const [session, setSession] = useState<Session | null>(null);
+
+  const messageForProfileError = (error: unknown, fallback: string) => {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "profile-limit") return "You can have up to four local profiles.";
+    if (code === "profile-name-required") return "Enter a profile name.";
+    if (code === "profile-name-tooLong") return "Profile names can be up to 24 characters.";
+    if (code === "profile-name-duplicate") return "That profile name is already in use.";
+    if (code === "profile-active") return "Switch to another profile before deleting this one.";
+    if (code === "profile-last") return "At least one profile must remain on this device.";
+    return code || fallback;
+  };
+
+  const switchToProfile = async (id: string) => {
+    try {
+      await onSwitchProfile(id);
+      setFeedback("");
+    } catch (error) {
+      setFeedback(messageForProfileError(error, "Could not switch profiles."));
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    setFeedback(authCallbackNotice);
+    setProfileName(activeProfile?.name || "");
+    setPreferredName(activeProfile?.preferredName || "");
+  }, [open, authCallbackNotice, activeProfile?.id, activeProfile?.name, activeProfile?.preferredName]);
+
+  useEffect(() => {
+    if (!open || !supabase) {
+      setSession(null);
+      return;
+    }
+    let active = true;
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) setFeedback(error.message);
+      setSession(data.session);
+    }).catch((error: unknown) => {
+      if (active) setFeedback(error instanceof Error ? error.message : "Could not check Google sign-in status.");
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+    });
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [open]);
 
   const addProfile = async () => {
     const name = newName.trim();
     if (!name || profiles.length >= 4) return;
-    const id = await createProfile({ name, currency: "PHP", isDefault: false });
-    await seedDefaultCategories(id);
-    setNewName("");
-    await onSwitchProfile(id);
+    try {
+      const id = await createProfile({
+        name,
+        currency: "PHP",
+        isDefault: false,
+        preferredName: null,
+        notificationPreferences: null,
+      });
+      await seedDefaultCategories(id);
+      setNewName("");
+      setFeedback("");
+      await onSwitchProfile(id);
+    } catch (error) {
+      setFeedback(messageForProfileError(error, "Could not create profile."));
+    }
+  };
+
+  const saveProfileName = async () => {
+    try {
+      await renameProfile(profileId, profileName);
+      setFeedback("");
+    } catch (error) {
+      setFeedback(messageForProfileError(error, "Could not rename profile."));
+    }
+  };
+
+  const savePreferredName = async () => {
+    try {
+      await updateProfile(profileId, { preferredName: preferredName.trim() || null });
+      setFeedback("");
+    } catch (error) {
+      setFeedback(messageForProfileError(error, "Could not save your preferred name."));
+    }
+  };
+
+  const removeProfile = async (id: string) => {
+    if (!window.confirm("Delete this profile and all of its local data? This cannot be undone.")) return;
+    try {
+      await deleteProfile(id);
+      setFeedback("");
+    } catch (error) {
+      setFeedback(messageForProfileError(error, "Could not delete profile."));
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    if (!supabase) {
+      setFeedback("Google sign-in is unavailable because Supabase is not configured.");
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) setFeedback(error.message);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not start Google sign-in.");
+    }
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) setFeedback(error.message);
+      else {
+        setSession(null);
+        setFeedback("Signed out. Your local profiles remain on this device.");
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not sign out.");
+    }
+  };
+
+  const deleteCloudAccount = async () => {
+    if (!supabase || !session || deleteConfirmation !== "DELETE") return;
+    setDeletingAccount(true);
+    try {
+      const { error } = await supabase.functions.invoke("delete-account", { method: "POST" });
+      if (error) throw error;
+      await supabase.auth.signOut();
+      setSession(null);
+      setDeleteConfirmation("");
+      setFeedback("Your cloud account was deleted. Local profiles on this device were kept.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not delete your cloud account.");
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   if (!open) return null;
   return (
-    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Profiles" onClick={onClose}>
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Profiles and sync" onClick={onClose}>
       <section className="account-sheet profiles-sheet" onClick={(event) => event.stopPropagation()}>
         <div className="sheet-grabber" />
         <header className="sheet-header">
-          <button className="sheet-close-btn" onClick={onClose} aria-label="Close profiles"><X size={18} /></button>
-          <b>Profiles</b>
+          <button className="sheet-close-btn" onClick={onClose} aria-label="Close profiles and sync"><X size={18} /></button>
+          <b>Profiles &amp; Sync</b>
           <span />
         </header>
         <div className="profiles-content">
-          <p className="eyebrow">Your spaces <span>{profiles.length}/4</span></p>
+          <p className="eyebrow">Local profiles <span>{profiles.length}/4</span></p>
           <div className="profile-options">
             {profiles.map((profile) => (
-              <button
+              <div
                 key={profile.id}
                 className={`profile-option ${profile.id === profileId ? "selected" : ""}`}
-                onClick={() => void onSwitchProfile(profile.id)}
               >
                 <span className="profile-option-icon"><UserRound size={18} /></span>
                 <span><b>{profile.name}</b><small>{profile.currency} · {profile.id === profileId ? "Current profile" : "Local profile"}</small></span>
-                {profile.id === profileId && <span className="profile-current-mark">Current</span>}
-              </button>
+                {profile.id !== profileId && (
+                  <button type="button" className="profile-action" onClick={() => void switchToProfile(profile.id)}>Switch</button>
+                )}
+                {profile.id !== profileId && profiles.length > 1 && (
+                  <button type="button" className="profile-action danger" onClick={() => void removeProfile(profile.id)}>Delete</button>
+                )}
+              </div>
             ))}
           </div>
           {profiles.length < 4 && (
             <form className="profile-create" onSubmit={(event) => { event.preventDefault(); void addProfile(); }}>
-              <label htmlFor="new-profile-name">Create a profile</label>
+              <label htmlFor="new-profile-name">Add a profile</label>
               <div>
-                <input id="new-profile-name" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="e.g. Family" maxLength={32} />
+                <input id="new-profile-name" value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="e.g. Family" maxLength={24} />
                 <button type="submit" disabled={!newName.trim()}>Add</button>
               </div>
             </form>
           )}
-          <p className="profile-privacy-note">Each profile keeps its accounts and transactions separate on this device.</p>
+          <section className="profile-edit-card">
+            <p className="eyebrow">Profile details</p>
+            <label>Profile name
+              <span><input value={profileName} maxLength={24} onChange={(event) => setProfileName(event.target.value)} /><button type="button" onClick={() => void saveProfileName()}>Save</button></span>
+            </label>
+            <label>Preferred name
+              <span><input value={preferredName} maxLength={40} placeholder="What should Kupit call you?" onChange={(event) => setPreferredName(event.target.value)} /><button type="button" onClick={() => void savePreferredName()}>Save</button></span>
+            </label>
+          </section>
+          <section className="profile-sync-card">
+            <p className="eyebrow">Google account</p>
+            {session ? (
+              <>
+                <p>Signed in as <b>{session.user.email}</b></p>
+                <button type="button" className="profile-primary-action" onClick={() => void signOut()}>Sign out</button>
+              </>
+            ) : (
+              <>
+                <p>Sign in with Google to prepare for account sync. Sync stays off in this release.</p>
+                <button type="button" className="profile-primary-action" onClick={() => void signInWithGoogle()} disabled={!supabase}>Continue with Google</button>
+              </>
+            )}
+            <div className="profile-sync-status"><span>Sync</span><b>Off · Coming soon</b></div>
+            <div className="profile-sync-status disabled"><span>Shared profiles</span><b>Coming soon</b></div>
+          </section>
+          {session && (
+            <section className="profile-delete-account">
+              <b>Delete cloud account</b>
+              <p>This permanently deletes your Kupit sign-in and cloud data. Local profiles on this device are not deleted.</p>
+              <label>Type DELETE to confirm<input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label>
+              <button type="button" disabled={deleteConfirmation !== "DELETE" || deletingAccount} onClick={() => void deleteCloudAccount()}>
+                {deletingAccount ? "Deleting…" : "Delete account"}
+              </button>
+            </section>
+          )}
+          {feedback && <p className="profile-feedback" role="status">{feedback}</p>}
+          <p className="profile-privacy-note">Each profile keeps its accounts and transactions separate on this device. Sync is not active.</p>
         </div>
       </section>
     </div>
@@ -811,19 +1172,20 @@ function HomePage({
   profileId,
   onProfiles,
   onSettings,
+  onNotifications,
   onHistory,
   onOpenHelp,
 }: {
   profileId: string;
   onProfiles: () => void;
   onSettings: () => void;
+  onNotifications: () => void;
   onHistory: () => void;
   onOpenHelp: () => void;
 }) {
   const accounts = useLiveQuery(
     () =>
-      db.accounts
-        .where({ profileId })
+      profileRecords(db.accounts, profileId)
         .filter((a) => !a.deletedAt && !a.isArchived)
         .toArray(),
     [profileId],
@@ -831,14 +1193,19 @@ function HomePage({
   );
   const transactions = useLiveQuery(
     () =>
-      db.transactions
-        .where({ profileId })
+      profileRecords(db.transactions, profileId)
         .filter((t) => !t.deletedAt)
         .reverse()
         .sortBy("date"),
     [profileId],
     []
   );
+  const unreadNotifications = useLiveQuery(
+    () => profileRecords(db.inboxNotifications, profileId).filter((item) => !item.read_at).count(),
+    [profileId],
+    0
+  );
+  const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
 
   return (
     <div className="content">
@@ -855,11 +1222,16 @@ function HomePage({
             <p className="eyebrow">
               {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
             </p>
+            {profile?.preferredName && <small className="home-preferred-greeting">Welcome, {profile.preferredName}</small>}
           </div>
         </div>
         <div className="header-buttons">
           <button className="header-chat profile-icon-button" onClick={onProfiles} aria-label="Profiles" title="Profiles">
             <UserRound size={19} />
+          </button>
+          <button className="header-chat notifications-icon-button" onClick={onNotifications} aria-label="Notifications" title="Notifications">
+            <Bell size={19} />
+            {unreadNotifications > 0 && <span className="home-notification-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
           </button>
           <button className="header-chat settings-icon-button" aria-label="Settings" onClick={onSettings}>
             <Settings2 size={20} />
@@ -895,7 +1267,7 @@ function TransactionList({
   profileId: string;
 }) {
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).toArray(),
+    () => profileRecords(db.categories, profileId).toArray(),
     [profileId],
     []
   );
@@ -921,19 +1293,22 @@ function TransactionList({
     profileId: string;
     onClose: () => void;
   }) {
-    const transaction = useLiveQuery(() => db.transactions.get(transactionId), [transactionId]);
+    const transaction = useLiveQuery(
+      () => getProfileRecord(db.transactions, transactionId, profileId),
+      [transactionId, profileId]
+    );
     const account = useLiveQuery(
-      () => transaction ? db.accounts.get(transaction.accountId) : undefined,
-      [transaction?.accountId]
+      () => transaction ? getProfileRecord(db.accounts, transaction.accountId, profileId) : undefined,
+      [transaction?.accountId, profileId]
     );
     const accounts = useLiveQuery(
-      () => db.accounts.where({ profileId }).filter((item) => !item.deletedAt && !item.isArchived).toArray(),
+      () => profileRecords(db.accounts, profileId).filter((item) => !item.deletedAt && !item.isArchived).toArray(),
       [profileId],
       []
     );
-    const categories = useLiveQuery(() => db.categories.where({ profileId }).toArray(), [profileId], []);
+    const categories = useLiveQuery(() => profileRecords(db.categories, profileId).toArray(), [profileId], []);
     const friends = useLiveQuery(
-      () => db.friends.where({ profileId }).filter((friend) => !friend.deletedAt && !friend.archivedAt).toArray(),
+      () => profileRecords(db.friends, profileId).filter((friend) => !friend.deletedAt && !friend.archivedAt).toArray(),
       [profileId],
       []
     );
@@ -949,6 +1324,7 @@ function TransactionList({
     const [exactShares, setExactShares] = useState<number[]>([]);
     const [percentShares, setPercentShares] = useState<number[]>([]);
     const [billTitle, setBillTitle] = useState("");
+    const [receivableExpectedBy, setReceivableExpectedBy] = useState("");
     const [undoVisible, setUndoVisible] = useState(false);
     const [paymentMemberId, setPaymentMemberId] = useState<string | null>(null);
     const [paymentCreditAccountId, setPaymentCreditAccountId] = useState("");
@@ -978,7 +1354,8 @@ function TransactionList({
             friendIds,
             mode,
             exactShares,
-            percentShares.map((value) => value * 100)
+            percentShares.map((value) => value * 100),
+            receivableExpectedBy || undefined
           );
         } else {
           await convertExpenseToLocalSplit({
@@ -988,6 +1365,7 @@ function TransactionList({
             mode,
             exactShares,
             percentHundredths: percentShares.map((value) => value * 100),
+            expectedBy: receivableExpectedBy || undefined,
           });
         }
         onClose();
@@ -1008,7 +1386,8 @@ function TransactionList({
           ["", ...friendIds],
           mode,
           exactShares,
-          percentShares.map((value) => value * 100)
+          percentShares.map((value) => value * 100),
+          receivableExpectedBy || undefined
         );
         onClose();
       } catch (error) {
@@ -1026,7 +1405,9 @@ function TransactionList({
           setUndoVisible(false);
           await db.transaction("rw", db.tables, async () => {
             await db.transactions.delete(transaction.id);
-            await db.friendLedger.where("transactionId").equals(transaction.id).delete();
+            await profileRecords(db.friendLedger, profileId)
+              .filter((entry) => entry.transactionId === transaction.id)
+              .delete();
             await db.localSplits.where("transactionId").equals(transaction.id).delete();
             if (transaction.sharedBillId) {
               await db.sharedBills.delete(transaction.sharedBillId);
@@ -1189,6 +1570,12 @@ function TransactionList({
                     setFriendIds((current) => [...current, friendId]);
                   }}><Plus size={17} />{t("addFriend")}</button>
                 </div>
+                {friendIds.length > 0 && (
+                  <label className="notification-expected-date">
+                    {t("expectedBy")} <span>{t("optional")}</span>
+                    <input type="date" value={receivableExpectedBy} onChange={(event) => setReceivableExpectedBy(event.target.value)} />
+                  </label>
+                )}
                 {mode !== "equal" && friendIds.length > 0 && (
                   <div className="transaction-exact-shares">
                     <label>Me ({formatMoney(mode === "exact" ? (exactShares[0] || 0) : 0)})
@@ -1344,8 +1731,7 @@ function TransactionList({
 function TransactionsPage({ profileId }: { profileId: string }) {
   const transactions = useLiveQuery(
     () =>
-      db.transactions
-        .where({ profileId })
+      profileRecords(db.transactions, profileId)
         .filter((t) => !t.deletedAt)
         .reverse()
         .sortBy("date"),
@@ -1353,12 +1739,12 @@ function TransactionsPage({ profileId }: { profileId: string }) {
     []
   );
   const accounts = useLiveQuery(
-    () => db.accounts.where({ profileId }).toArray(),
+    () => profileRecords(db.accounts, profileId).toArray(),
     [profileId],
     []
   );
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).filter((c) => !c.deletedAt).toArray(),
+    () => profileRecords(db.categories, profileId).filter((c) => !c.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -1590,17 +1976,17 @@ function AccountsPage({
   onAdd: () => void;
 }) {
   const accounts = useLiveQuery(
-    () => db.accounts.where({ profileId }).filter((a) => !a.deletedAt).toArray(),
+    () => profileRecords(db.accounts, profileId).filter((a) => !a.deletedAt).toArray(),
     [profileId],
     []
   );
   const transactions = useLiveQuery(
-    () => db.transactions.where({ profileId }).filter((t) => !t.deletedAt).toArray(),
+    () => profileRecords(db.transactions, profileId).filter((t) => !t.deletedAt).toArray(),
     [profileId],
     []
   );
   const friendEntries = useLiveQuery(
-    () => db.friendLedger.where({ profileId }).filter((entry) => !entry.deletedAt).toArray(),
+    () => profileRecords(db.friendLedger, profileId).filter((entry) => !entry.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -1748,22 +2134,22 @@ function BudgetsPage({
   onOpenFriends: () => void;
 }) {
   const budgets = useLiveQuery(
-    () => db.budgets.where({ profileId }).filter((b) => !b.deletedAt).toArray(),
+    () => profileRecords(db.budgets, profileId).filter((b) => !b.deletedAt).toArray(),
     [profileId],
     []
   );
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).filter((c) => !c.deletedAt).toArray(),
+    () => profileRecords(db.categories, profileId).filter((c) => !c.deletedAt).toArray(),
     [profileId],
     []
   );
   const goals = useLiveQuery(
-    () => db.goals.where({ profileId }).filter((g) => !g.deletedAt).toArray(),
+    () => profileRecords(db.goals, profileId).filter((g) => !g.deletedAt).toArray(),
     [profileId],
     []
   );
   const transactions = useLiveQuery(
-    () => db.transactions.where({ profileId }).filter((t) => !t.deletedAt).toArray(),
+    () => profileRecords(db.transactions, profileId).filter((t) => !t.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -2137,12 +2523,12 @@ function RecurringSheet({ onClose, focusRuleId }: { onClose: () => void; focusRu
     undefined
   );
   const accounts = useLiveQuery(
-    () => profile ? db.accounts.where({ profileId: profile.id }).filter((item) => !item.deletedAt).toArray() : [],
+    () => profile ? profileRecords(db.accounts, profile.id).filter((item) => !item.deletedAt).toArray() : [],
     [profile?.id],
     []
   );
   const recurring = useLiveQuery(
-    () => profile ? db.recurring.where({ profileId: profile.id }).filter((item) => !item.deletedAt).toArray() : [],
+    () => profile ? profileRecords(db.recurring, profile.id).filter((item) => !item.deletedAt).toArray() : [],
     [profile?.id],
     []
   );
@@ -2318,20 +2704,19 @@ function ChatLogSheet({
 }) {
   const accounts = useLiveQuery(
     () =>
-      db.accounts
-        .where({ profileId })
+      profileRecords(db.accounts, profileId)
         .filter((a) => !a.deletedAt && !a.isArchived)
         .toArray(),
     [profileId],
     []
   );
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).filter((c) => !c.deletedAt).toArray(),
+    () => profileRecords(db.categories, profileId).filter((c) => !c.deletedAt).toArray(),
     [profileId],
     []
   );
   const transactions = useLiveQuery(
-    () => db.transactions.where({ profileId }).filter((transaction) => !transaction.deletedAt).toArray(),
+    () => profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -2535,7 +2920,9 @@ function ChatLogSheet({
       });
       setConversation((current) => [...current, { role: "assistant", text: `Saved ${setupDraft.name} with an opening balance of ${formatMoney(setupDraft.amount)}.` }]);
     } else {
-      const existing = await db.budgets.where("profileId").equals(profileId).filter((budget) => !budget.deletedAt && budget.categoryId === setupDraft.category.id && budget.period === "monthly").first();
+      const existing = await profileRecords(db.budgets, profileId)
+        .filter((budget) => !budget.deletedAt && budget.categoryId === setupDraft.category.id && budget.period === "monthly")
+        .first();
       const timestamp = new Date().toISOString();
       await db.budgets.put({
         id: existing?.id || crypto.randomUUID(), profileId,
@@ -2754,6 +3141,7 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
   const [direction, setDirection] = useState<"i_owe" | "owed_to_me">("i_owe");
   const [counterparty, setCounterparty] = useState("");
   const [principal, setPrincipal] = useState("");
+  const [debtDueDate, setDebtDueDate] = useState("");
   const profile = useLiveQuery(
     () => db.profiles.filter((item) => item.isDefault && !item.deletedAt).first(),
     [],
@@ -2769,11 +3157,13 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
       direction,
       counterparty: counterparty.trim(),
       principal: parseMoney(principal),
+      dueDate: debtDueDate || null,
       createdAt: timestamp,
       updatedAt: timestamp,
     });
     setCounterparty("");
     setPrincipal("");
+    setDebtDueDate("");
   };
 
   const iOweTotal = debts
@@ -2864,6 +3254,12 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
               placeholder="0.00"
             />
           </label>
+          {direction === "i_owe" && (
+            <label>
+              {t("dueDate")} <span>{t("optional")}</span>
+              <input type="date" value={debtDueDate} onChange={(event) => setDebtDueDate(event.target.value)} />
+            </label>
+          )}
           <button className="save-button" onClick={save} disabled={!counterparty.trim() || !parseMoney(principal)}>
             {t("saveRecord")}
           </button>
@@ -3313,22 +3709,22 @@ function FriendsSheet({
   onClose: () => void;
 }) {
   const friends = useLiveQuery(
-    () => db.friends.where({ profileId }).filter((friend) => !friend.deletedAt).toArray(),
+    () => profileRecords(db.friends, profileId).filter((friend) => !friend.deletedAt).toArray(),
     [profileId],
     []
   );
   const entries = useLiveQuery(
-    () => db.friendLedger.where({ profileId }).filter((entry) => !entry.deletedAt).toArray(),
+    () => profileRecords(db.friendLedger, profileId).filter((entry) => !entry.deletedAt).toArray(),
     [profileId],
     []
   );
   const accounts = useLiveQuery(
-    () => db.accounts.where({ profileId }).filter((account) => !account.deletedAt).toArray(),
+    () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt).toArray(),
     [profileId],
     []
   );
   const sharedBills = useLiveQuery(
-    () => db.sharedBills.where({ profileId }).filter((bill) => !bill.deletedAt).toArray(),
+    () => profileRecords(db.sharedBills, profileId).filter((bill) => !bill.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -3542,8 +3938,7 @@ function AddTransactionSheet({
 }) {
   const accounts = useLiveQuery(
     () =>
-      db.accounts
-        .where({ profileId })
+      profileRecords(db.accounts, profileId)
         .filter((a) => !a.deletedAt && !a.isArchived)
         .toArray(),
     [profileId],
@@ -3551,12 +3946,12 @@ function AddTransactionSheet({
   );
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId], undefined);
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).filter((c) => !c.deletedAt).toArray(),
+    () => profileRecords(db.categories, profileId).filter((c) => !c.deletedAt).toArray(),
     [profileId],
     []
   );
   const ledgerTransactions = useLiveQuery(
-    () => db.transactions.where({ profileId }).filter((transaction) => !transaction.deletedAt).toArray(),
+    () => profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -3634,7 +4029,7 @@ function AddTransactionSheet({
 
   useEffect(() => {
     if (!open || !editTransactionId) return;
-    void db.transactions.get(editTransactionId).then((transaction) => {
+    void getProfileRecord(db.transactions, editTransactionId, profileId).then((transaction) => {
       if (!transaction || transaction.type !== "transfer") return;
       setType("transfer");
       setAmount((transaction.amount / 100).toFixed(2));
@@ -3649,13 +4044,13 @@ function AddTransactionSheet({
       setDate(transaction.date);
       setNote(transaction.note || "");
     });
-  }, [open, editTransactionId]);
+  }, [open, editTransactionId, profileId]);
 
   useEffect(() => {
     if (!open) return;
     const id = editingTransactionId || duplicatingTransactionId;
     if (!id) return;
-    void db.transactions.get(id).then((transaction) => {
+    void getProfileRecord(db.transactions, id, profileId).then((transaction) => {
       if (!transaction || transaction.type === "transfer") return;
       setType(transaction.type);
       setAmount((transaction.amount / 100).toFixed(2));
@@ -3665,7 +4060,7 @@ function AddTransactionSheet({
       setDate(duplicatingTransactionId ? toDateString(new Date()) : transaction.date);
       setRepeatEnabled(false);
     });
-  }, [open, editingTransactionId, duplicatingTransactionId]);
+  }, [open, editingTransactionId, duplicatingTransactionId, profileId]);
 
   useEffect(() => {
     if (!open || receiptStep !== "details") return;
@@ -3978,7 +4373,7 @@ function AddTransactionSheet({
         .first()
         .then((item) => item?.id || null);
     } else if (editingTransactionId) {
-      const existing = await db.transactions.get(editingTransactionId);
+      const existing = await getProfileRecord(db.transactions, editingTransactionId, profileId);
       if (existing?.splitId && existing.amount !== cents) {
         const friendIds = (await db.friendLedger
           .where("transactionId")

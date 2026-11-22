@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { X, Plus, Edit2, Trash2, Check, FolderPlus, Sparkles } from "lucide-react";
 import { db } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 import {
   createCategory,
   updateCategory,
@@ -45,8 +46,7 @@ export function CategoryManagerSheet({
 
   const categories = useLiveQuery(
     () =>
-      db.categories
-        .where({ profileId })
+      profileRecords(db.categories, profileId)
         .filter((c) => !c.deletedAt)
         .sortBy("sortOrder"),
     [profileId],

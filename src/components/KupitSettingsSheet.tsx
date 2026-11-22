@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Banknote,
+  Bell,
   ChevronRight,
   CircleDollarSign,
   Cloud,
@@ -33,10 +34,11 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import type { Session } from "@supabase/supabase-js";
 import { db } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 import { exportJsonBackup, exportTransactionsCsv, importJsonBackup } from "@/lib/backup";
-import { syncLocalData } from "@/sync/sync";
-import { cloudSyncAvailable, supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { loadAppSettings, saveAppSettings, type AppSettings, type ThemePreference } from "@/lib/settings";
+import { t } from "@/lib/localization";
 
 interface KupitSettingsSheetProps {
   open: boolean;
@@ -46,7 +48,8 @@ interface KupitSettingsSheetProps {
   onThemeChange: (theme: ThemePreference) => void;
   onOpenCategories: () => void;
   onOpenPlan: () => void;
-  authCallbackNotice: string;
+  onOpenNotifications: () => void;
+  onOpenProfiles: () => void;
 }
 
 const ACCENT_COLORS = [
@@ -117,7 +120,8 @@ export function KupitSettingsSheet({
   onThemeChange,
   onOpenCategories,
   onOpenPlan,
-  authCallbackNotice,
+  onOpenNotifications,
+  onOpenProfiles,
 }: KupitSettingsSheetProps) {
   const [settings, setSettings] = useState<AppSettings>(() => loadAppSettings());
   const [search, setSearch] = useState("");
@@ -128,13 +132,10 @@ export function KupitSettingsSheet({
   const [statementOpen, setStatementOpen] = useState(false);
   const [statementMonth, setStatementMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [session, setSession] = useState<Session | null>(null);
-  const [authChecking, setAuthChecking] = useState(false);
-  const [cloudMessage, setCloudMessage] = useState(authCallbackNotice);
-  const [cloudBusy, setCloudBusy] = useState(false);
   const customColorRef = useRef<HTMLInputElement>(null);
 
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
-  const transactions = useLiveQuery(() => db.transactions.toArray(), [], []);
+  const transactions = useLiveQuery(() => profileRecords(db.transactions, profileId).toArray(), [profileId], []);
 
   const updateSettings = (patch: Partial<AppSettings>) => {
     setSettings((current) => {
@@ -168,14 +169,11 @@ export function KupitSettingsSheet({
   useEffect(() => {
     if (!supabase || !open) return;
     let active = true;
-    setAuthChecking(true);
     supabase.auth.getSession().then(({ data }) => {
       if (active) setSession(data.session);
-      setAuthChecking(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
-      setAuthChecking(false);
     });
     return () => {
       active = false;
@@ -220,19 +218,6 @@ export function KupitSettingsSheet({
     if (!supabase) return;
     await supabase.auth.signOut();
     setSession(null);
-  };
-
-  const syncCloud = async () => {
-    if (!supabase || !session) return;
-    setCloudBusy(true);
-    try {
-      await syncLocalData(supabase, session.user.id);
-      setCloudMessage("Your budget is up to date.");
-    } catch (error) {
-      setCloudMessage(error instanceof Error ? error.message : "Cloud backup failed.");
-    } finally {
-      setCloudBusy(false);
-    }
   };
 
   const resetData = async () => {
@@ -307,7 +292,7 @@ export function KupitSettingsSheet({
     !search.trim() || titles.some((title) => title.toLowerCase().includes(search.trim().toLowerCase()));
 
   const searchableContent =
-    "profile account signed in local Google language English Filipino choose how app talks home sections reorder preferences net worth decimal budget cycle haptics quick actions security biometric Face ID fingerprint appearance system light dark AMOLED app color currency PHP Peso quick OS shortcuts wallet tap to pay shake undo help use guide statement PDF income expenses net income backup cloud import CSV export restore local backup about Kupit version updates what's new feedback community privacy third-party trademarks reset all data";
+    "profile account signed in local Google language English Filipino choose how app talks home sections reorder preferences net worth decimal budget cycle haptics quick actions security biometric Face ID fingerprint notifications alerts reminders inbox appearance system light dark AMOLED app color currency PHP Peso quick OS shortcuts wallet tap to pay shake undo help use guide statement PDF income expenses net income backup cloud import CSV export restore local backup about Kupit version updates what's new feedback community privacy third-party trademarks reset all data";
   const showEmptyState = Boolean(search.trim()) && !searchableContent.toLowerCase().includes(search.trim().toLowerCase());
 
   return (
@@ -326,9 +311,9 @@ export function KupitSettingsSheet({
             <Section label="Account">
               <Row
                 icon={<UserRound size={19} />}
-                title="Profile"
+                title="Profiles & Sync"
                 description={session?.user.email ? `Signed in · ${session.user.email}` : `${profile?.name || "Kupit user"} · Local profile`}
-                onClick={() => setDetail("account")}
+                onClick={onOpenProfiles}
               />
             </Section>
           )}
@@ -364,6 +349,17 @@ export function KupitSettingsSheet({
                 title="Biometric unlock"
                 description="Require Face ID or fingerprint when opening the app and whenever you come back"
                 trailing={<Toggle checked={settings.biometricUnlock} onChange={enableBiometric} label="Biometric unlock" />}
+              />
+            </Section>
+          )}
+
+          {hasVisibleSection(["notifications", "alerts", "reminders", "inbox"]) && (
+            <Section label={t("notifications")}>
+              <Row
+                icon={<Bell size={19} />}
+                title={t("notifications")}
+                description={t("manageNotifications")}
+                onClick={onOpenNotifications}
               />
             </Section>
           )}
@@ -472,8 +468,9 @@ export function KupitSettingsSheet({
               <Row
                 icon={<Cloud size={19} />}
                 title="Cloud backup"
-                description={!settings.cloudBackup ? "Backup is off" : authChecking ? "Checking backup status" : session ? "Connected · stored in your private account" : "Sign-in required"}
-                trailing={<Toggle checked={settings.cloudBackup} onChange={(checked) => { updateSettings({ cloudBackup: checked }); if (checked) void syncCloud(); }} label="Cloud backup" />}
+                description="Sync is off for now. Cloud backup is coming soon."
+                disabled
+                trailing={<span className="kupit-coming">Coming soon</span>}
               />
               <Row icon={<Upload size={19} />} title="Import from other apps" description="Import transactions from a CSV file" onClick={() => setDetail("statement")} disabled />
               <div className="kupit-statement">
@@ -597,7 +594,7 @@ export function KupitSettingsSheet({
               )}
               {detail === "help" && <p>Kupit keeps your accounts, transactions, budgets, and reports in one place. Use the + button to log income or an expense, open Wallet to manage accounts, and open Plan to set spending limits.</p>}
               {detail === "statement" && <p>The other-app CSV import is not available yet. You can export transactions to CSV or restore a Kupit JSON backup from the Backup section.</p>}
-              {detail === "privacy" && <p>Kupit stores your budget data in IndexedDB on this device. If you choose cloud backup and sign in, your account data can be synced through Supabase. Local backups are created only when you export or restore them. Kupit does not sell your personal budget data.</p>}
+              {detail === "privacy" && <p>Kupit stores your budget data in IndexedDB on this device. Google sign-in is optional and does not turn on data sync; cloud sync is currently off. Local backup files are created only when you export them. Kupit does not sell your personal budget data.</p>}
               {detail === "whats-new" && <p><b>Version 0.0.1</b><br />The Settings page now includes theme, app color, language, currency, privacy, local backups, and data reset controls.</p>}
             </div>
           </section>

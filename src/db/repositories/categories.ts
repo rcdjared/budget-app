@@ -1,6 +1,7 @@
 // Category repository
 
 import { db } from "../schema";
+import { profileRecords } from "../profileScope";
 import type { Category } from "@/domain/types";
 
 function now(): string {
@@ -10,8 +11,7 @@ function now(): string {
 export async function getCategoriesByProfile(
   profileId: string
 ): Promise<Category[]> {
-  return db.categories
-    .where({ profileId })
+  return profileRecords(db.categories, profileId)
     .filter((c) => !c.deletedAt)
     .sortBy("sortOrder");
 }
@@ -19,8 +19,7 @@ export async function getCategoriesByProfile(
 export async function getExpenseCategories(
   profileId: string
 ): Promise<Category[]> {
-  return db.categories
-    .where({ profileId })
+  return profileRecords(db.categories, profileId)
     .filter((c) => !c.deletedAt && c.type === "expense")
     .sortBy("sortOrder");
 }
@@ -28,8 +27,7 @@ export async function getExpenseCategories(
 export async function getIncomeCategories(
   profileId: string
 ): Promise<Category[]> {
-  return db.categories
-    .where({ profileId })
+  return profileRecords(db.categories, profileId)
     .filter((c) => !c.deletedAt && c.type === "income")
     .sortBy("sortOrder");
 }
@@ -39,8 +37,7 @@ export async function getParentCategories(
   profileId: string,
   type?: "expense" | "income"
 ): Promise<Category[]> {
-  return db.categories
-    .where({ profileId })
+  return profileRecords(db.categories, profileId)
     .filter((c) => {
       if (c.deletedAt) return false;
       if (c.parentId) return false;
