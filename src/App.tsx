@@ -658,6 +658,7 @@ function App() {
                 navigateToTab("history");
               }}
               onOpenHelp={() => setHelpOpen(true)}
+              onAddAccount={() => setAccountOpen(true)}
               onAddTransaction={(type) => {
                 setFormInitialType(type);
                 setReceiptFlowOpen(false);
@@ -1287,6 +1288,7 @@ function HomePage({
   onNotifications,
   onHistory,
   onOpenHelp,
+  onAddAccount,
   onAddTransaction,
   onOpenTransaction,
   onOpenDebt,
@@ -1301,6 +1303,7 @@ function HomePage({
   onNotifications: () => void;
   onHistory: (filters?: { accountId?: string; categoryId?: string; startDate?: string; endDate?: string }) => void;
   onOpenHelp: () => void;
+  onAddAccount: () => void;
   onAddTransaction: (type: "expense" | "income") => void;
   onOpenTransaction: (transactionId: string) => void;
   onOpenDebt: () => void;
@@ -1371,6 +1374,7 @@ function HomePage({
       <FinsightsPage
         profileId={profileId}
         onOpenHelp={onOpenHelp}
+        onAddAccount={onAddAccount}
         onAddTransaction={onAddTransaction}
         onHistory={onHistory}
         onPlan={onPlan}
