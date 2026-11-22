@@ -21,6 +21,7 @@ export interface AppSettings {
   biometricUnlock: boolean;
   cloudBackup: boolean;
   homeSections: string[];
+  homeSectionOrder: string[];
   quickActions: string[];
   includeFriendReceivables: boolean;
   notifications: NotificationPreferences;
@@ -54,7 +55,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shakeToUndo: false,
   biometricUnlock: false,
   cloudBackup: false,
-  homeSections: ["net-worth", "budgets", "recent", "insights"],
+  homeSections: ["netBalance", "totals", "insight", "trend", "categories", "budgets", "upcoming", "recent"],
+  homeSectionOrder: ["netBalance", "totals", "insight", "trend", "categories", "budgets", "upcoming", "recent"],
   quickActions: ["expense", "income", "transfer", "scan"],
   includeFriendReceivables: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,

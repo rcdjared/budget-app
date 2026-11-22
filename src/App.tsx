@@ -68,7 +68,7 @@ import {
 import { createRecurringRule, processDueRecurringTransactions } from "@/db/repositories/recurring";
 import { computeAccountBalance, computeNetWorth } from "@/domain/balances";
 import { formatMoney, parseMoney } from "@/domain/money";
-import { formatRelativeDate, getCurrentMonthRange, toDateString } from "@/lib/format";
+import { formatRelativeDate, getBudgetCycleRange, getCurrentMonthRange, toDateString } from "@/lib/format";
 import { ensureDailySnapshot, exportJsonBackup, exportTransactionsCsv, importJsonBackup } from "@/lib/backup";
 import { canAffordAmount, generateForecast, sumLiquidAccountBalance } from "@/domain/forecast";
 import { normalizeLearningKey, parseMultipleTransactions } from "@/domain/parser";
@@ -97,7 +97,7 @@ import { getProfileNotificationPreferences } from "@/db/repositories/profiles";
 import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
 import { loadAppSettings } from "@/lib/settings";
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
-import { t } from "@/lib/localization";
+import { t, tForLanguage } from "@/lib/localization";
 
 type Tab = "home" | "wallet" | "plan" | "history";
 type ThemePreference = "system" | "light" | "dark" | "amoled";
@@ -120,6 +120,7 @@ function categoryFilterKey(category: Pick<Category, "type" | "name">): string {
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [homeTransactionDetailId, setHomeTransactionDetailId] = useState<string | null>(null);
   const profileSwitchSequence = useRef(0);
   const [tab, setTab] = useState<Tab>("home");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -608,6 +609,17 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const vibrateSupportedAction = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest("button")) return;
+      const settings = loadAppSettings();
+      if (settings.haptics && navigator.vibrate) navigator.vibrate(8);
+    };
+    document.addEventListener("pointerdown", vibrateSupportedAction);
+    return () => document.removeEventListener("pointerdown", vibrateSupportedAction);
+  }, []);
+
   if (!profileId) {
     return (
       <main className="grid h-dvh place-items-center bg-background">
@@ -637,8 +649,22 @@ function App() {
                 setNotificationsInitialPanel("inbox");
                 setNotificationsOpen(true);
               }}
-              onHistory={() => navigateToTab("history")}
+              onHistory={(filters) => {
+                if (filters) window.dispatchEvent(new CustomEvent("kupit:history-filter", { detail: filters }));
+                navigateToTab("history");
+              }}
               onOpenHelp={() => setHelpOpen(true)}
+              onAddTransaction={(type) => {
+                setFormInitialType(type);
+                setReceiptFlowOpen(false);
+                setAddOpen(true);
+              }}
+              onOpenTransaction={(transactionId) => setHomeTransactionDetailId(transactionId)}
+              onOpenDebt={() => navigateToTab("plan")}
+              onOpenRecurring={() => navigateToTab("plan")}
+              onOpenFriends={() => navigateToTab("plan")}
+              onOpenBudget={() => navigateToTab("plan")}
+              onPlan={() => navigateToTab("plan")}
             />
           )}
           {tab === "wallet" && (
@@ -654,6 +680,14 @@ function App() {
           {tab === "history" && <TransactionsPage profileId={profileId} />}
         </div>
       </div>
+
+      {homeTransactionDetailId && (
+        <HomeTransactionDetailSheet
+          transactionId={homeTransactionDetailId}
+          profileId={profileId}
+          onClose={() => setHomeTransactionDetailId(null)}
+        />
+      )}
 
       {/* Primary 5-Tab Navigation Bar */}
       <nav
@@ -1015,7 +1049,8 @@ function ProfilesSheet({
   const removeProfile = async (id: string) => {
     if (!window.confirm("Delete this profile and all of its local data? This cannot be undone.")) return;
     try {
-      await deleteProfile(id);
+      const fallbackProfileId = await deleteProfile(id);
+      if (fallbackProfileId) await onSwitchProfile(fallbackProfileId);
       setFeedback("");
     } catch (error) {
       setFeedback(messageForProfileError(error, "Could not delete profile."));
@@ -1092,7 +1127,7 @@ function ProfilesSheet({
                 {profile.id !== profileId && (
                   <button type="button" className="profile-action" onClick={() => void switchToProfile(profile.id)}>Switch</button>
                 )}
-                {profile.id !== profileId && profiles.length > 1 && (
+                {profiles.length > 1 && (
                   <button type="button" className="profile-action danger" onClick={() => void removeProfile(profile.id)}>Delete</button>
                 )}
               </div>
@@ -1172,6 +1207,75 @@ function TabButton({
   );
 }
 
+function HomeTransactionDetailSheet({
+  transactionId,
+  profileId,
+  onClose,
+}: {
+  transactionId: string;
+  profileId: string;
+  onClose: () => void;
+}) {
+  const transaction = useLiveQuery(
+    () => getProfileRecord(db.transactions, transactionId, profileId),
+    [transactionId, profileId]
+  );
+  const account = useLiveQuery(
+    () => transaction ? getProfileRecord(db.accounts, transaction.accountId, profileId) : undefined,
+    [transaction?.accountId, profileId]
+  );
+  const category = useLiveQuery(
+    () => transaction?.categoryId ? getProfileRecord(db.categories, transaction.categoryId, profileId) : undefined,
+    [transaction?.categoryId, profileId]
+  );
+  if (!transaction) return null;
+  const signedAmount = transaction.type === "income"
+    ? transaction.amount
+    : transaction.type === "expense"
+      ? -(transaction.personalShareAmount ?? transaction.amount)
+      : 0;
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Transaction details" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="account-sheet transaction-detail-sheet">
+        <header className="sheet-header">
+          <button type="button" onClick={onClose} aria-label={t("close")}><X size={20} /></button>
+          <b>{category?.name || (transaction.type === "income" ? t("income") : transaction.type === "expense" ? t("expense") : "Transfer")}</b>
+          <span />
+        </header>
+        <div className="transaction-detail-content">
+          <div className={`transaction-detail-amount ${transaction.cancelledAt ? "cancelled" : ""}`}>
+            <small>{account?.name || t("account")} · {formatRelativeDate(transaction.date)}</small>
+            <strong className={signedAmount >= 0 ? "income" : signedAmount < 0 ? "expense" : ""}>
+              {signedAmount >= 0 && transaction.type !== "transfer" ? "+" : signedAmount < 0 ? "-" : ""}
+              {formatMoney(Math.abs(signedAmount))}
+            </strong>
+          </div>
+          {transaction.note && <p className="transaction-detail-note">{transaction.note}</p>}
+          <div className="transaction-detail-actions">
+            <button type="button" onClick={() => {
+              if (transaction.type === "transfer") window.dispatchEvent(new CustomEvent("kupit:edit-transfer", { detail: transaction.id }));
+              else window.dispatchEvent(new CustomEvent("kupit:edit-transaction", { detail: transaction.id }));
+              onClose();
+            }}><Edit2 size={16} />{t("edit")}</button>
+            <button type="button" onClick={() => {
+              window.dispatchEvent(new CustomEvent("kupit:duplicate-transaction", { detail: transaction.id }));
+              onClose();
+            }}><ReceiptText size={16} />{t("duplicate")}</button>
+            <button type="button" onClick={() => {
+              void (transaction.cancelledAt
+                ? restoreTransaction(transaction.id, profileId)
+                : cancelTransaction(transaction.id, profileId));
+            }}>{transaction.cancelledAt ? <RefreshCw size={16} /> : <Pause size={16} />}{transaction.cancelledAt ? t("restore") : t("cancel")}</button>
+            <button type="button" className="danger" onClick={() => {
+              if (window.confirm("Delete this transaction?")) void softDeleteTransaction(transaction.id, profileId).then(onClose);
+            }}><Trash2 size={16} />{t("delete")}</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function HomePage({
   profileId,
   onProfiles,
@@ -1179,13 +1283,27 @@ function HomePage({
   onNotifications,
   onHistory,
   onOpenHelp,
+  onAddTransaction,
+  onOpenTransaction,
+  onOpenDebt,
+  onOpenRecurring,
+  onOpenFriends,
+  onOpenBudget,
+  onPlan,
 }: {
   profileId: string;
   onProfiles: () => void;
   onSettings: () => void;
   onNotifications: () => void;
-  onHistory: () => void;
+  onHistory: (filters?: { accountId?: string; categoryId?: string; startDate?: string; endDate?: string }) => void;
   onOpenHelp: () => void;
+  onAddTransaction: (type: "expense" | "income") => void;
+  onOpenTransaction: (transactionId: string) => void;
+  onOpenDebt: () => void;
+  onOpenRecurring: () => void;
+  onOpenFriends: () => void;
+  onOpenBudget: () => void;
+  onPlan: () => void;
 }) {
   const accounts = useLiveQuery(
     () =>
@@ -1210,29 +1328,49 @@ function HomePage({
     0
   );
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
+  const profiles = useLiveQuery(
+    () => db.profiles.filter((item) => !item.deletedAt).toArray(),
+    [],
+    []
+  );
+  const homeSettings = useLiveQuery(
+    () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
+    [profileId]
+  );
+  let homeSectionSettings = loadAppSettings();
+  if (homeSettings?.value) {
+    try {
+      homeSectionSettings = { ...homeSectionSettings, ...JSON.parse(homeSettings.value) };
+    } catch {
+      // Keep defaults for malformed settings.
+    }
+  }
 
   return (
     <div className="content">
-      {/* Brand Header with Official Kupit Logo */}
       <header className="page-header home-header">
-        <div className="brand-header-left">
-          <img
-            src="/icons/kupit-logo.svg"
-            alt="Kupit Logo"
-            className="brand-header-logo"
-          />
-          <div>
-            <span className="brand-header-title">Kupit</span>
-            <p className="eyebrow">
-              {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-            </p>
-            {profile?.preferredName && <small className="home-preferred-greeting">Welcome, {profile.preferredName}</small>}
-          </div>
-        </div>
+        {(() => {
+          const hour = new Date().getHours();
+          const language = loadAppSettings().language;
+          const greeting = hour < 12
+            ? tForLanguage("goodMorning", language)
+            : hour < 18
+              ? tForLanguage("goodAfternoon", language)
+              : tForLanguage("goodEvening", language);
+          const name = profile?.preferredName?.trim();
+          return (
+            <button
+              type="button"
+              className="home-greeting"
+              onClick={onProfiles}
+              aria-label={`${tForLanguage("switchProfile", language)}, current: ${profile?.name || "Profile"}`}
+            >
+              <b>{name ? `${greeting}, ${name}` : greeting}</b>
+              {profiles.length > 1 && <small>{profile?.name || ""}</small>}
+            </button>
+          );
+        })()}
         <div className="header-buttons">
-          <button className="header-chat profile-icon-button" onClick={onProfiles} aria-label="Profiles" title="Profiles">
-            <UserRound size={19} />
-          </button>
           <button className="header-chat notifications-icon-button" onClick={onNotifications} aria-label="Notifications" title="Notifications">
             <Bell size={19} />
             {unreadNotifications > 0 && <span className="home-notification-badge">{unreadNotifications > 99 ? "99+" : unreadNotifications}</span>}
@@ -1243,20 +1381,18 @@ function HomePage({
         </div>
       </header>
 
-      <FinsightsPage profileId={profileId} onOpenHelp={onOpenHelp} />
-
-      {/* Recent Transactions */}
-      <section className="section">
-        <div className="section-heading">
-          <h2>Recent transactions</h2>
-          <button onClick={onHistory}>See all</button>
-        </div>
-        <TransactionList
-          transactions={transactions.slice(0, 5)}
-          accounts={accounts}
-          profileId={profileId}
-        />
-      </section>
+      <FinsightsPage
+        profileId={profileId}
+        onOpenHelp={onOpenHelp}
+        onAddTransaction={onAddTransaction}
+        onHistory={onHistory}
+        onPlan={onPlan}
+        onOpenTransaction={onOpenTransaction}
+        onOpenDebt={onOpenDebt}
+        onOpenRecurring={onOpenRecurring}
+        onOpenFriends={onOpenFriends}
+        onOpenBudget={onOpenBudget}
+      />
     </div>
   );
 }
@@ -1760,6 +1896,26 @@ function TransactionsPage({ profileId }: { profileId: string }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  useEffect(() => {
+    const applyFilters = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        accountId?: string;
+        categoryId?: string;
+        startDate?: string;
+        endDate?: string;
+      }>).detail;
+      setAccountId(detail.accountId || "");
+      setCategoryId(detail.categoryId || "");
+      if (detail.startDate && detail.endDate) {
+        setStartDate(detail.startDate);
+        setEndDate(detail.endDate);
+        setTimeFilter("custom");
+      }
+    };
+    window.addEventListener("kupit:history-filter", applyFilters);
+    return () => window.removeEventListener("kupit:history-filter", applyFilters);
+  }, []);
+
   const historyCategoryOptions = useMemo(() => {
     const unique = new Map<string, Category>();
     for (const category of categories) {
@@ -1994,17 +2150,32 @@ function AccountsPage({
     [profileId],
     []
   );
+  const netWorthSetting = useLiveQuery(
+    () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
+    [profileId]
+  );
+  let netWorthAccountIds: string[] = [];
+  if (netWorthSetting?.value) {
+    try {
+      netWorthAccountIds = JSON.parse(netWorthSetting.value).netWorthAccountIds || [];
+    } catch {
+      netWorthAccountIds = [];
+    }
+  }
+  const includedAccounts = netWorthAccountIds.length
+    ? accounts.filter((account) => netWorthAccountIds.includes(account.id))
+    : accounts;
   const balances = useMemo(
     () =>
       new Map(
-        accounts.map((account) => [
+        includedAccounts.map((account) => [
           account.id,
           computeAccountBalance(account.id, account.openingBalance, transactions),
         ])
       ),
-    [accounts, transactions]
+    [includedAccounts, transactions]
   );
-  const baseNet = computeNetWorth(accounts, balances);
+  const baseNet = computeNetWorth(includedAccounts, balances);
   const friendReceivables = loadAppSettings().includeFriendReceivables
     ? friendEntries.reduce((sum, entry) => {
         if (entry.type === "shared_bill") return sum;
@@ -2162,7 +2333,7 @@ function BudgetsPage({
   const [goalOpen, setGoalOpen] = useState(false);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [debtsOpen, setDebtsOpen] = useState(false);
-  const { start, end } = getCurrentMonthRange();
+  const { start, end } = getBudgetCycleRange(loadAppSettings().budgetCycleStartDay);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("kupit:plan-panel", {
@@ -3637,7 +3808,7 @@ function SettingsSheet({
                     setBackupError("");
                     if (file) {
                       try {
-                        await importJsonBackup(file);
+                        await importJsonBackup(file, profileId);
                         setBackupMessage(session
                           ? `Backup imported. Sync now to upload it to your account.`
                           : `Backup imported. Sign in and sync to upload it to your account.`);

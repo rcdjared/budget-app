@@ -35,10 +35,12 @@ import { useLiveQuery } from "dexie-react-hooks";
 import type { Session } from "@supabase/supabase-js";
 import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
-import { exportJsonBackup, exportTransactionsCsv, importJsonBackup } from "@/lib/backup";
+import { updateProfile } from "@/db/repositories/profiles";
+import { exportJsonBackup, exportTransactionsCsv, importJsonBackup, importTransactionsCsv } from "@/lib/backup";
 import { supabase } from "@/lib/supabase";
 import { loadAppSettings, saveAppSettings, type AppSettings, type ThemePreference } from "@/lib/settings";
 import { t } from "@/lib/localization";
+import { ACCENT_PRESETS, contrastingForeground } from "@/lib/themeContrast";
 
 interface KupitSettingsSheetProps {
   open: boolean;
@@ -52,18 +54,7 @@ interface KupitSettingsSheetProps {
   onOpenProfiles: () => void;
 }
 
-const ACCENT_COLORS = [
-  { name: "Kupit Green", value: "#019B51" },
-  { name: "Emerald", value: "#10B981" },
-  { name: "Blue", value: "#2563EB" },
-  { name: "Indigo", value: "#6366F1" },
-  { name: "Purple", value: "#9333EA" },
-  { name: "Pink", value: "#DB2777" },
-  { name: "Red", value: "#DC2626" },
-  { name: "Orange", value: "#EA580C" },
-  { name: "Amber", value: "#D97706" },
-  { name: "Teal", value: "#0F766E" },
-];
+const ACCENT_COLORS = ACCENT_PRESETS.map(([name, value]) => ({ name, value }));
 
 const CURRENCIES = [
   ["PHP", "Philippine Peso", "₱"],
@@ -135,7 +126,29 @@ export function KupitSettingsSheet({
   const customColorRef = useRef<HTMLInputElement>(null);
 
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
+  const profileSetting = useLiveQuery(
+    () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
+    [profileId]
+  );
   const transactions = useLiveQuery(() => profileRecords(db.transactions, profileId).toArray(), [profileId], []);
+  const netWorthAccounts = useLiveQuery(
+    () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+
+  useEffect(() => {
+    if (profileSetting?.value) {
+      try {
+        const saved = JSON.parse(profileSetting.value) as Partial<AppSettings>;
+        setSettings({ ...loadAppSettings(), ...saved });
+        return;
+      } catch {
+        // Fall back to the profile-independent default for malformed saved settings.
+      }
+    }
+    setSettings(loadAppSettings());
+  }, [profileId, profileSetting?.value]);
 
   const updateSettings = (patch: Partial<AppSettings>) => {
     setSettings((current) => {
@@ -163,6 +176,7 @@ export function KupitSettingsSheet({
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--primary", settings.accentColor);
+    root.style.setProperty("--primary-foreground", contrastingForeground(settings.accentColor));
     root.style.setProperty("--ring", settings.accentColor);
   }, [settings.accentColor]);
 
@@ -182,37 +196,6 @@ export function KupitSettingsSheet({
   }, [open]);
 
   const chooseAccent = (value: string, name: string) => updateSettings({ accentColor: value, accentName: name });
-
-  const enableBiometric = async () => {
-    if (settings.biometricUnlock) {
-      updateSettings({ biometricUnlock: false });
-      return;
-    }
-    if (!window.isSecureContext || !navigator.credentials) {
-      window.alert("Biometric unlock is unavailable in this browser. Kupit can enable it in an installed PWA build.");
-      return;
-    }
-    try {
-      const challenge = crypto.getRandomValues(new Uint8Array(32));
-      await navigator.credentials.create({
-        publicKey: {
-          challenge,
-          rp: { name: "Kupit" },
-          user: {
-            id: crypto.getRandomValues(new Uint8Array(16)),
-            name: profile?.name || "kupit-user",
-            displayName: profile?.name || "Kupit User",
-          },
-          pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-          authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
-          timeout: 60_000,
-        },
-      });
-      updateSettings({ biometricUnlock: true });
-    } catch {
-      window.alert("Biometric verification was cancelled or could not be completed.");
-    }
-  };
 
   const signOut = async () => {
     if (!supabase) return;
@@ -332,7 +315,7 @@ export function KupitSettingsSheet({
 
           {hasVisibleSection(["home", "sections", "reorder"]) && (
             <Section label="Home">
-              <Row icon={<Home size={19} />} title="Home sections" description="Show, hide, and reorder the sections on your Home screen" onClick={() => setDetail("home")} />
+              <Row icon={<Home size={19} />} title="Home sections" description="Choose which sections appear on Home" onClick={() => setDetail("home")} />
             </Section>
           )}
 
@@ -347,8 +330,9 @@ export function KupitSettingsSheet({
               <Row
                 icon={<Fingerprint size={19} />}
                 title="Biometric unlock"
-                description="Require Face ID or fingerprint when opening the app and whenever you come back"
-                trailing={<Toggle checked={settings.biometricUnlock} onChange={enableBiometric} label="Biometric unlock" />}
+                description="App lock with Face ID or fingerprint"
+                disabled
+                trailing={<span className="kupit-coming">Coming soon</span>}
               />
             </Section>
           )}
@@ -411,7 +395,7 @@ export function KupitSettingsSheet({
 
           {hasVisibleSection(["currency", "PHP", "Peso", "currency"]) && (
             <Section label="Currency">
-              <Row icon={<CircleDollarSign size={19} />} title="Currency" description={`${settings.currency} - ${CURRENCIES.find(([code]) => code === settings.currency)?.[2] || "symbol"}`} onClick={() => setDetail("currency")} />
+              <Row icon={<CircleDollarSign size={19} />} title="Currency" description={`${profile?.currency || settings.currency} - ${CURRENCIES.find(([code]) => code === (profile?.currency || settings.currency))?.[1] || "Profile currency"}`} onClick={() => setDetail("currency")} />
             </Section>
           )}
 
@@ -423,7 +407,8 @@ export function KupitSettingsSheet({
                 icon={<RefreshCw size={19} />}
                 title="Shake to undo"
                 description="Shake after adding an expense or income to undo it briefly"
-                trailing={<Toggle checked={settings.shakeToUndo} onChange={(checked) => updateSettings({ shakeToUndo: checked })} label="Shake to undo" />}
+                disabled
+                trailing={<span className="kupit-coming">Coming soon</span>}
               />
             </Section>
           )}
@@ -472,7 +457,25 @@ export function KupitSettingsSheet({
                 disabled
                 trailing={<span className="kupit-coming">Coming soon</span>}
               />
-              <Row icon={<Upload size={19} />} title="Import from other apps" description="Import transactions from a CSV file" onClick={() => setDetail("statement")} disabled />
+              <div className="kupit-statement">
+                <label className="kupit-settings-row kupit-accordion-trigger">
+                  <span className="kupit-settings-squircle"><Upload size={19} /></span>
+                  <span className="kupit-settings-row-copy"><b>Import from a Kupit CSV</b><small>Import exported transactions into this profile</small></span>
+                  <ChevronRight size={18} className="kupit-settings-chevron" />
+                  <input type="file" accept=".csv,text/csv" onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const imported = await importTransactionsCsv(file, profileId);
+                      window.alert(`${imported} transactions imported.`);
+                    } catch (error) {
+                      window.alert(error instanceof Error ? error.message : "Could not import the CSV.");
+                    } finally {
+                      event.target.value = "";
+                    }
+                  }} />
+                </label>
+              </div>
               <div className="kupit-statement">
                 <button type="button" className="kupit-settings-row kupit-accordion-trigger" onClick={() => setBackupOpen((value) => !value)}>
                   <span className="kupit-settings-squircle"><FileJson size={19} /></span>
@@ -489,7 +492,7 @@ export function KupitSettingsSheet({
                         if (!file) return;
                         if (!window.confirm("Restore this backup? Existing matching records may be overwritten.")) return;
                         try {
-                          await importJsonBackup(file);
+                          await importJsonBackup(file, profileId);
                           window.alert("Backup restored.");
                         } catch (error) {
                           window.alert(error instanceof Error ? error.message : "Could not restore the backup.");
@@ -510,10 +513,10 @@ export function KupitSettingsSheet({
                 <p>Simple, private budgeting for everyday decisions.</p>
                 <small>Made by <b>Jared Dionela</b></small>
               </div>
-              <Row icon={<RefreshCw size={19} />} title="Check for updates" description="You're using the latest available version" trailing={<RefreshCw size={16} />} />
+              <Row icon={<RefreshCw size={19} />} title="Check for updates" description="Automatic update checks" disabled trailing={<span className="kupit-coming">Coming soon</span>} />
               <Row icon={<BadgeCheck size={19} />} title="What's new" description="Release notes and recent improvements" onClick={() => setDetail("whats-new")} />
-              <Row icon={<HelpCircle size={19} />} title="Send feedback" description="Share an idea or report a problem" onClick={() => setDetail("help")} />
-              <Row icon={<Globe2 size={19} />} title="Community" description="Visit the Kupit community" trailing={<ArrowUpRight size={16} />} disabled />
+              <Row icon={<HelpCircle size={19} />} title="Send feedback" description="Share an idea or report a problem" disabled trailing={<span className="kupit-coming">Coming soon</span>} />
+              <Row icon={<Globe2 size={19} />} title="Community" description="Visit the Kupit community" trailing={<span className="kupit-coming">Coming soon</span>} disabled />
               <Row icon={<ShieldCheck size={19} />} title="Privacy notice" description="How Kupit stores and handles data" onClick={() => setDetail("privacy")} />
               <Row icon={<ExternalLink size={19} />} title="Third-party trademarks" description="Names and trademarks belong to their respective owners" onClick={() => setDetail("privacy")} />
             </Section>
@@ -556,7 +559,7 @@ export function KupitSettingsSheet({
                 <>
                   <div className="kupit-detail-profile"><span>{(profile?.name || "Kupit")[0]?.toUpperCase()}</span><div><b>{profile?.name || "Kupit User"}</b><small>{session?.user.email || "Local profile"}</small></div></div>
                   {session ? <button type="button" className="kupit-primary-button" onClick={signOut}>Sign out</button> : <small className="kupit-muted">This profile is stored locally on this device.</small>}
-                  <button type="button" className="kupit-danger-link" onClick={() => setConfirmReset(true)}>Delete account data</button>
+                  <button type="button" className="kupit-primary-button" onClick={onOpenProfiles}>Manage profiles and sync</button>
                 </>
               )}
               {detail === "currency" && (
@@ -564,8 +567,16 @@ export function KupitSettingsSheet({
                   <label className="kupit-currency-search"><Search size={16} /><input value={currencySearch} onChange={(event) => setCurrencySearch(event.target.value)} placeholder="Search currency" /></label>
                   <div className="kupit-currency-list">
                     {CURRENCIES.filter(([code, name]) => `${code} ${name}`.toLowerCase().includes(currencySearch.trim().toLowerCase())).map(([code, name, symbol]) => (
-                      <button type="button" key={code} className={settings.currency === code ? "selected" : ""} onClick={() => { updateSettings({ currency: code }); setDetail(null); }}>
-                        <span>{symbol}</span><div><b>{code}</b><small>{name}</small></div>{settings.currency === code && <BadgeCheck size={18} />}
+                      <button type="button" key={code} className={(profile?.currency || settings.currency) === code ? "selected" : ""} onClick={async () => {
+                        try {
+                          await updateProfile(profileId, { currency: code });
+                          updateSettings({ currency: code });
+                          setDetail(null);
+                        } catch (error) {
+                          window.alert(error instanceof Error ? error.message : "Could not update the profile currency.");
+                        }
+                      }}>
+                        <span>{symbol}</span><div><b>{code}</b><small>{name}</small></div>{(profile?.currency || settings.currency) === code && <BadgeCheck size={18} />}
                       </button>
                     ))}
                   </div>
@@ -573,23 +584,69 @@ export function KupitSettingsSheet({
               )}
               {detail === "preferences" && (
                 <div className="kupit-preference-list">
-                  <Row icon={<ShieldCheck size={18} />} title="Net worth accounts" description="Choose accounts included in net worth" onClick={() => setDetail(null)} disabled />
+                  <div className="kupit-simple-options">
+                    <p className="eyebrow">Net worth accounts</p>
+                    {(netWorthAccounts || []).map((account) => {
+                      const selected = settings.netWorthAccountIds.length === 0 || settings.netWorthAccountIds.includes(account.id);
+                      return (
+                        <Row
+                          key={account.id}
+                          icon={<WalletCards size={18} />}
+                          title={account.name}
+                          description={account.type.replace("_", " ")}
+                          trailing={<Toggle checked={selected} onChange={(checked) => {
+                            const current = settings.netWorthAccountIds.length ? settings.netWorthAccountIds : (netWorthAccounts || []).map((item) => item.id);
+                            const next = checked ? [...current.filter((id) => id !== account.id), account.id] : current.filter((id) => id !== account.id);
+                            updateSettings({ netWorthAccountIds: next });
+                          }} label={`Include ${account.name} in net worth`} />}
+                        />
+                      );
+                    })}
+                  </div>
                   <Row icon={<CircleDollarSign size={18} />} title="Decimal display" description="Show cents on money values" trailing={<Toggle checked={settings.showDecimals} onChange={(checked) => updateSettings({ showDecimals: checked })} label="Show decimals" />} />
                   <label className="kupit-budget-cycle">Budget cycle starts on <input type="number" min={1} max={31} value={settings.budgetCycleStartDay} onChange={(event) => updateSettings({ budgetCycleStartDay: Math.max(1, Math.min(31, Number(event.target.value))) })} /></label>
-                  <Row icon={<Smartphone size={18} />} title="Haptics" description="Use device vibration for supported actions" trailing={<Toggle checked={settings.haptics} onChange={(checked) => updateSettings({ haptics: checked })} label="Haptics" />} />
+                  <Row icon={<Smartphone size={18} />} title="Haptics" description="Use device vibration for supported actions" trailing={<Toggle checked={settings.haptics} onChange={(checked) => {
+                    updateSettings({ haptics: checked });
+                    if (checked && navigator.vibrate) navigator.vibrate(20);
+                  }} label="Haptics" />} />
                   <Row icon={<CircleDollarSign size={18} />} title="Include money friends owe me" description="Add local friend receivables to net worth" trailing={<Toggle checked={settings.includeFriendReceivables} onChange={(checked) => updateSettings({ includeFriendReceivables: checked })} label="Include friend receivables" />} />
                 </div>
               )}
               {detail === "home" && (
                 <div className="kupit-simple-options">
                   {[
-                    ["net-worth", "Net worth"],
+                    ["netBalance", "Net balance"],
+                    ["totals", "Totals"],
+                    ["insight", "Insight"],
+                    ["trend", "Trend"],
+                    ["categories", "Categories"],
                     ["budgets", "Budgets"],
-                    ["recent", "Recent transactions"],
-                    ["insights", "Insights"],
+                    ["upcoming", "Upcoming"],
+                    ["recent", "Recent"],
                   ].map(([id, label]) => (
                     <Row key={id} icon={<LayoutGrid size={18} />} title={label} description={settings.homeSections.includes(id) ? "Visible on Home" : "Hidden from Home"} trailing={<Toggle checked={settings.homeSections.includes(id)} onChange={(checked) => updateSettings({ homeSections: checked ? [...settings.homeSections, id] : settings.homeSections.filter((item) => item !== id) })} label={label} />} />
                   ))}
+                  <p className="eyebrow">Section order</p>
+                  {settings.homeSectionOrder.map((sectionId, index) => {
+                    const label = sectionId.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
+                    return (
+                      <div className="kupit-section-order-row" key={sectionId}>
+                        <b>{label}</b>
+                        <span>
+                          <button type="button" disabled={index === 0} onClick={() => {
+                            const next = [...settings.homeSectionOrder];
+                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                            updateSettings({ homeSectionOrder: next });
+                          }} aria-label={`Move ${label} up`}>Up</button>
+                          <button type="button" disabled={index === settings.homeSectionOrder.length - 1} onClick={() => {
+                            const next = [...settings.homeSectionOrder];
+                            [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                            updateSettings({ homeSectionOrder: next });
+                          }} aria-label={`Move ${label} down`}>Down</button>
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {detail === "help" && <p>Kupit keeps your accounts, transactions, budgets, and reports in one place. Use the + button to log income or an expense, open Wallet to manage accounts, and open Plan to set spending limits.</p>}

@@ -54,6 +54,23 @@ export function getCurrentMonthRange(): { start: string; end: string } {
   return getMonthRange(now.getFullYear(), now.getMonth());
 }
 
+export function getBudgetCycleRange(cycleStartDay: number, date = new Date()) {
+  const startDay = Math.max(1, Math.min(31, cycleStartDay));
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  if (date.getDate() >= startDay) {
+    start.setDate(startDay);
+  } else {
+    start.setMonth(start.getMonth() - 1);
+    const lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    start.setDate(Math.min(startDay, lastDay));
+  }
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), 0).getDate();
+  end.setDate(Math.min(startDay - 1, lastDay));
+  return { start: toDateString(start), end: toDateString(end) };
+}
+
 /** Re-export formatMoney from domain/money */
 export { formatMoney, formatAmount } from "@/domain/money";
 
