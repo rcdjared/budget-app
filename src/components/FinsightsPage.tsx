@@ -601,6 +601,11 @@ export function FinsightsPage({
     }
     if (sectionId === "recent") {
       const rows = (recentTransactions as Transaction[]).slice(0, 5);
+      const recentDateFormatter = new Intl.DateTimeFormat(language === "fil" ? "fil-PH" : "en-PH", {
+        timeZone: "Asia/Manila",
+        month: "short",
+        day: "numeric",
+      });
       return (
         <section className="home-section-card" key={sectionId}>
           <div className="home-section-heading">
@@ -616,17 +621,30 @@ export function FinsightsPage({
                 const account = accounts.find((item) => item.id === tx.accountId);
                 const relativeTime = tx.date === toDateString(now)
                   ? tForLanguage("today", language)
-                  : tx.date;
+                  : recentDateFormatter.format(new Date(`${tx.date.slice(0, 10)}T12:00:00+08:00`));
                 const signedAmount = tx.type === "income" ? tx.amount : tx.type === "expense" ? -(tx.personalShareAmount ?? tx.amount) : 0;
+                const transactionType = tx.type === "transfer"
+                  ? "Transfer"
+                  : tForLanguage(tx.type, language);
+                const details = [
+                  tx.note ? category?.name : undefined,
+                  account?.name || tForLanguage("account", language),
+                  relativeTime,
+                ].filter(Boolean);
                 return (
                   <button type="button" className="home-recent-row" key={tx.id} onClick={() => onOpenTransaction(tx.id)}>
-                    <CategoryIcon icon={category?.icon} color={category?.color} size={18} />
-                    <span><b>{tx.note || category?.name || tForLanguage("other", language)}</b><small>{account?.name || tForLanguage("account", language)} · {relativeTime}</small></span>
-                    {tx.type !== "transfer" && (
-                      <strong className={signedAmount >= 0 ? "income" : "expense"}>
-                        {signedAmount >= 0 ? "+" : "-"}{formatProfileMoney(Math.abs(signedAmount))}
-                      </strong>
-                    )}
+                    <span className="home-recent-icon">
+                      <CategoryIcon icon={category?.icon} color={category?.color} size={19} />
+                    </span>
+                    <span className="home-recent-copy">
+                      <b>{tx.note || category?.name || transactionType}</b>
+                      <small>{details.join(" · ")}</small>
+                    </span>
+                    <strong className={`home-recent-amount ${tx.type === "transfer" ? "transfer" : signedAmount >= 0 ? "income" : "expense"}`}>
+                      {tx.type === "transfer"
+                        ? formatProfileMoney(tx.amount)
+                        : `${signedAmount >= 0 ? "+" : "-"}${formatProfileMoney(Math.abs(signedAmount))}`}
+                    </strong>
                   </button>
                 );
               })}
