@@ -23,7 +23,12 @@ export function distributePercentSplit(
   totalCentavos: number,
   percentHundredths: number[]
 ): number[] {
-  if (!percentHundredths.length) return [];
+  if (!Number.isInteger(totalCentavos) || totalCentavos < 0) throw new Error("Total must be integer centavos.");
+  if (!percentHundredths.length || percentHundredths.some((percent) =>
+    !Number.isInteger(percent) || percent < 0 || percent > 10_000
+  )) {
+    throw new Error("Percent shares must be whole percentages between 0 and 100%.");
+  }
   const totalPercent = percentHundredths.reduce((sum, value) => sum + value, 0);
   if (totalPercent !== 10_000) throw new Error("Percent shares must add up to 100%.");
   let allocated = 0;

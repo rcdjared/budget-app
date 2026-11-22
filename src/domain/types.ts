@@ -72,6 +72,7 @@ export interface Category extends BaseRecord {
 
 /** A single money event */
 export type TransactionType = "expense" | "income" | "transfer" | "friend_payment";
+export type FriendPaymentDirection = "received" | "sent";
 
 export interface Transaction extends BaseRecord {
   profileId: string;
@@ -93,6 +94,7 @@ export interface Transaction extends BaseRecord {
   externalToName?: string | null;
   transferFee?: number;
   transferTime?: string | null;
+  friendPaymentDirection?: FriendPaymentDirection;
   feeTransactionId?: string | null;
   debtId?: string | null;
   splitGroupId?: string | null;
@@ -127,6 +129,8 @@ export interface FriendLedgerEntry extends BaseRecord {
   friendId: string;
   transactionId?: string | null;
   sharedBillId?: string | null;
+  sharedBillMemberId?: string | null;
+  reversesEntryId?: string | null;
   type: FriendLedgerEntryType;
   direction: FriendLedgerDirection;
   amount: number;
@@ -140,6 +144,7 @@ export interface LocalSplit extends BaseRecord {
   profileId: string;
   transactionId: string;
   mode: "equal" | "exact" | "percent";
+  friendIds?: string[];
   status: "active" | "cancelled";
 }
 

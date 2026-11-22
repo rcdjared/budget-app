@@ -51,5 +51,5 @@ export function sumCategoryExpenses(
       tx.date >= startDate &&
       tx.date <= endDate
     )
-    .reduce((sum, tx) => sum + tx.amount, 0);
+    .reduce((sum, tx) => sum + (tx.personalShareAmount ?? tx.amount), 0);
 }

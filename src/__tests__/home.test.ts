@@ -106,6 +106,39 @@ describe("Home insights", () => {
       locale: "en",
     })).toEqual([]);
   });
+
+  it("uses a clear rolling seven-day comparison in category insights", () => {
+    const categories: Category[] = [{
+      id: "food",
+      profileId: "profile-1",
+      name: "Food",
+      parentId: null,
+      type: "expense",
+      icon: "utensils",
+      color: "#DC2626",
+      sortOrder: 0,
+      createdAt: "2026-11-01T00:00:00.000Z",
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    }];
+    const candidates = computeInsights({
+      transactions: [
+        transaction("1", "food", 3_000, "2026-11-20"),
+        transaction("2", "food", 3_000, "2026-11-21"),
+        transaction("3", "food", 3_000, "2026-11-22"),
+      ],
+      previousTransactions: [
+        transaction("4", "food", 6_000, "2026-11-13"),
+        transaction("5", "food", 6_000, "2026-11-14"),
+      ],
+      budgets: [],
+      categories,
+      period: "sevenDays",
+      now: new Date("2026-11-23T12:00:00+08:00"),
+      locale: "en",
+    });
+
+    expect(candidates[0].text).toContain("the previous 7 days");
+  });
 });
 
 describe("Home period ranges", () => {

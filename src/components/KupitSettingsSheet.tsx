@@ -605,10 +605,30 @@ export function KupitSettingsSheet({
                   </div>
                   <Row icon={<CircleDollarSign size={18} />} title="Decimal display" description="Show cents on money values" trailing={<Toggle checked={settings.showDecimals} onChange={(checked) => updateSettings({ showDecimals: checked })} label="Show decimals" />} />
                   <label className="kupit-budget-cycle">Budget cycle starts on <input type="number" min={1} max={31} value={settings.budgetCycleStartDay} onChange={(event) => updateSettings({ budgetCycleStartDay: Math.max(1, Math.min(31, Number(event.target.value))) })} /></label>
+                  <label className="kupit-budget-cycle">Week starts on
+                    <select value={settings.weekStartsOn} onChange={(event) => updateSettings({ weekStartsOn: Number(event.target.value) })}>
+                      {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => (
+                        <option value={index} key={day}>{day}</option>
+                      ))}
+                    </select>
+                  </label>
                   <Row icon={<Smartphone size={18} />} title="Haptics" description="Use device vibration for supported actions" trailing={<Toggle checked={settings.haptics} onChange={(checked) => {
                     updateSettings({ haptics: checked });
                     if (checked && navigator.vibrate) navigator.vibrate(20);
                   }} label="Haptics" />} />
+                  <Row icon={<Smartphone size={18} />} title="Reduce Motion & Effects" description="Turn off widget animations and transitions" trailing={<Toggle checked={settings.reduceMotion} onChange={(checked) => updateSettings({ reduceMotion: checked })} label="Reduce Motion & Effects" />} />
+                  <label className="kupit-budget-cycle">Spending Pulse tone
+                    <select value={settings.spendingPulseTone} onChange={(event) => {
+                      const tone = event.target.value;
+                      if (tone === "gentle" || tone === "playful" || tone === "roast") {
+                        updateSettings({ spendingPulseTone: tone });
+                      }
+                    }}>
+                      <option value="gentle">Gentle</option>
+                      <option value="playful">Playful</option>
+                      <option value="roast">Roast me</option>
+                    </select>
+                  </label>
                   <Row icon={<CircleDollarSign size={18} />} title="Include money friends owe me" description="Add local friend receivables to net worth" trailing={<Toggle checked={settings.includeFriendReceivables} onChange={(checked) => updateSettings({ includeFriendReceivables: checked })} label="Include friend receivables" />} />
                 </div>
               )}

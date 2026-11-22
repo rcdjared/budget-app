@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-  Calendar,
-  ChevronDown,
   CircleDollarSign,
+  ChevronDown,
   Clock3,
   Landmark,
   ReceiptText,
@@ -16,8 +15,10 @@ import {
 import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
 import { formatMoney } from "@/domain/money";
+import { sortTransactionsNewestFirst } from "@/domain/history";
 import { computeInsights } from "@/domain/homeInsights";
-import { getHomePeriodRange, type HomePeriod } from "@/domain/homePeriod";
+import { addDateDays, getSpendingPulseRange } from "@/features/spending-pulse/periods";
+import type { SpendingPulsePeriod } from "@/features/spending-pulse/types";
 import { getBudgetSpendSnapshot } from "@/lib/notificationEngine";
 import { loadAppSettings } from "@/lib/settings";
 import { tForLanguage } from "@/lib/localization";
@@ -32,6 +33,7 @@ import type {
   Transaction,
 } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
+import { SpendingPulse } from "@/features/spending-pulse/SpendingPulse";
 
 interface FinsightsPageProps {
   profileId: string;
@@ -85,19 +87,24 @@ export function FinsightsPage({
 }: FinsightsPageProps) {
   const language = loadAppSettings().language;
   const [selectedAccountId, setSelectedAccountId] = useState("all");
-  const [period, setPeriod] = useState<HomePeriod>(() =>
-    (localStorage.getItem(`kupit-home-period-${profileId}`) as HomePeriod) || "month"
-  );
-  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [period, setPeriod] = useState<SpendingPulsePeriod>("day");
   const [activeTab, setActiveTab] = useState<"expense" | "income">("expense");
-  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
-  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     setSelectedAccountId("all");
-    setPeriod((localStorage.getItem(`kupit-home-period-${profileId}`) as HomePeriod) || "month");
-    setCurrentDate(new Date());
+    setPeriod("day");
   }, [profileId]);
+
+  useEffect(() => {
+    const refresh = () => setNow(new Date());
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
 
   const accounts = useLiveQuery(
     () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt && !account.isArchived).toArray(),
@@ -127,11 +134,25 @@ export function FinsightsPage({
   const hiddenSections = new Set(sectionSettings.homeSections);
   const sectionOrder = (sectionSettings.homeSectionOrder || DEFAULT_SECTION_ORDER) as SectionId[];
 
-  const now = new Date();
-  const range = useMemo(
-    () => getHomePeriodRange(period, currentDate, language === "fil" ? "fil-PH" : "en-US", now),
-    [period, currentDate, language]
+  const today = useMemo(() => new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now), [now]);
+  const pulseRange = useMemo(
+    () => getSpendingPulseRange(period, now, {
+      budgetCycleStartDay: sectionSettings.budgetCycleStartDay,
+      weekStartsOn: sectionSettings.weekStartsOn,
+    }),
+    [period, now, sectionSettings.budgetCycleStartDay, sectionSettings.weekStartsOn]
   );
+  const range = useMemo(() => ({
+    start: pulseRange.start,
+    end: today < pulseRange.end ? today : pulseRange.end,
+    comparableStart: pulseRange.previousStart,
+    comparableEnd: pulseRange.previousEnd,
+  }), [pulseRange, today]);
 
   const filteredTxs = useLiveQuery(
     () => {
@@ -203,8 +224,10 @@ export function FinsightsPage({
     () => hiddenSections.has("recent")
       ? profileRecords(db.transactions, profileId)
         .filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt && matchesAccount(transaction, selectedAccountId))
-        .reverse()
-        .sortBy("date")
+        .toArray()
+        .then((transactions) =>
+          sortTransactionsNewestFirst(transactions)
+        )
       : Promise.resolve([] as Transaction[]),
     [profileId, selectedAccountId, hiddenSections.has("recent")],
     [] as Transaction[]
@@ -235,8 +258,8 @@ export function FinsightsPage({
     : period === "week"
       ? tForLanguage("vsLastWeek", language)
       : period === "month"
-        ? tForLanguage("vsLastMonth", language)
-        : tForLanguage("vsLastYear", language);
+        ? tForLanguage("vsLastBudgetCycle", language)
+        : tForLanguage("vsLast7Days", language);
 
   const categoryBreakdown = useMemo(() => {
     const totals = new Map<string, number>();
@@ -276,58 +299,50 @@ export function FinsightsPage({
       }
       return segments.map(({ label, amount }) => ({ label, amount }));
     }
-    if (period === "week") {
-      const start = new Date(`${range.start}T00:00:00`);
-      return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label, index) => {
-        const date = new Date(start);
-        date.setDate(start.getDate() + index);
-        const key = toDateString(date);
+    if (period === "week" || period === "sevenDays") {
+      return Array.from({ length: 7 }, (_, index) => {
+        const date = addDateDays(range.start, index);
+        const label = new Intl.DateTimeFormat(language === "fil" ? "fil-PH" : "en-PH", {
+          timeZone: "UTC",
+          weekday: "short",
+        }).format(new Date(`${date}T12:00:00Z`));
         return {
           label,
-          amount: filteredTxs.filter((tx) => tx.type === activeTab && tx.date === key)
+          amount: filteredTxs.filter((tx) => tx.type === activeTab && tx.date.slice(0, 10) === date)
             .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0),
         };
       });
     }
     if (period === "month") {
-      const lastDay = Number(range.end.slice(-2));
-      return [
-        ["W1", 1, 7],
-        ["W2", 8, 14],
-        ["W3", 15, 21],
-        ["W4", 22, lastDay],
-      ].map(([label, startDay, endDay]) => ({
-        label: String(label),
-        amount: filteredTxs.filter((tx) => tx.type === activeTab)
-          .filter((tx) => {
-            const day = Number(tx.date.slice(-2));
-            return day >= Number(startDay) && day <= Number(endDay);
-          })
-          .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0),
-      }));
+      const bars: { label: string; amount: number }[] = [];
+      for (let index = 0; ; index++) {
+        const start = addDateDays(range.start, index * 7);
+        if (start > range.end) break;
+        const end = addDateDays(start, 6);
+        const lastDate = end < range.end ? end : range.end;
+        bars.push({
+          label: `W${index + 1}`,
+          amount: filteredTxs.filter((tx) => tx.type === activeTab)
+            .filter((tx) => tx.date.slice(0, 10) >= start && tx.date.slice(0, 10) <= lastDate)
+            .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0),
+        });
+      }
+      return bars;
     }
-    const year = currentDate.getFullYear();
-    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((label, index) => {
-      const prefix = `${year}-${String(index + 1).padStart(2, "0")}`;
-      return {
-        label,
-        amount: filteredTxs.filter((tx) => tx.type === activeTab && tx.date.startsWith(prefix))
-          .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0),
-      };
-    });
-  }, [period, range.start, range.end, filteredTxs, activeTab, currentDate]);
+    return [];
+  }, [period, range.start, range.end, filteredTxs, activeTab, language]);
 
   const maxTrendAmount = Math.max(...trendBars.map((bar) => bar.amount), 10000);
 
   const insightCandidates = useMemo(() => computeInsights({
     transactions: filteredTxs,
     previousTransactions: previousTxs,
-    budgets,
+    budgets: selectedAccountId === "all" ? budgets : [],
     categories,
     period,
     now,
     locale: language,
-  }), [filteredTxs, previousTxs, budgets, categories, period, language]);
+  }), [filteredTxs, previousTxs, budgets, categories, period, now, language, selectedAccountId]);
 
   const budgetSnapshots = useMemo(
     () => getBudgetSpendSnapshot(budgets, budgetTransactions, toDateString(now))
@@ -388,22 +403,6 @@ export function FinsightsPage({
     return items.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
   }, [recurring, debts, friendLedger, selectedAccountId, hiddenSections, now, language]);
 
-  const navigatePeriod = (direction: -1 | 1) => {
-    setCurrentDate((date) => {
-      const next = new Date(date);
-      if (period === "day") next.setDate(next.getDate() + direction);
-      else if (period === "week") next.setDate(next.getDate() + 7 * direction);
-      else if (period === "month") next.setMonth(next.getMonth() + direction);
-      else next.setFullYear(next.getFullYear() + direction);
-      return next;
-    });
-  };
-
-  const setHomePeriod = (next: HomePeriod) => {
-    setPeriod(next);
-    localStorage.setItem(`kupit-home-period-${profileId}`, next);
-  };
-
   const openHistory = (categoryId?: string) => {
     const category = categoryId ? categories.find((item) => item.id === categoryId) : undefined;
     const categoryFilter = category ? `${category.type}:${category.name.trim().toLowerCase()}` : undefined;
@@ -413,13 +412,6 @@ export function FinsightsPage({
       startDate: range.start,
       endDate: range.end,
     });
-  };
-
-  const periodLabels: Record<HomePeriod, string> = {
-    day: tForLanguage("day", language),
-    week: tForLanguage("week", language),
-    month: tForLanguage("month", language),
-    year: tForLanguage("year", language),
   };
 
   const netBalanceClass = net > 0 ? "positive" : net < 0 ? "negative" : "neutral";
@@ -649,45 +641,37 @@ export function FinsightsPage({
   const selectedAccountName = selectedAccountId === "all"
     ? tForLanguage("allAccounts", language)
     : accounts.find((account) => account.id === selectedAccountId)?.name || tForLanguage("account", language);
+  const accountFilter = (
+    <label className="spending-pulse__account-filter">
+      <Wallet size={15} aria-hidden="true" />
+      <select
+        value={selectedAccountId}
+        onChange={(event) => setSelectedAccountId(event.target.value)}
+        aria-label={tForLanguage("account", language)}
+        title={selectedAccountName}
+      >
+        <option value="all">{tForLanguage("allAccounts", language)}</option>
+        {accounts.map((account) => (
+          <option value={account.id} key={account.id}>{account.name}</option>
+        ))}
+      </select>
+      <ChevronDown size={14} aria-hidden="true" />
+    </label>
+  );
 
   return (
     <div className="home-dashboard">
-      <div className="finsights-filter-row" aria-label="Home filters">
-        <div className="filter-pill-wrapper">
-          <button type="button" className="filter-pill-btn" onClick={() => { setAccountDropdownOpen((open) => !open); setPeriodDropdownOpen(false); }} aria-label={`${tForLanguage("account", language)}: ${selectedAccountName}`}>
-            <span className="filter-pill-icon"><Wallet size={16} /></span>
-            <span className="filter-pill-text"><small>{tForLanguage("account", language)}</small><b>{selectedAccountName}</b></span>
-            <ChevronDown size={16} />
-          </button>
-          {accountDropdownOpen && (
-            <div className="filter-dropdown-menu">
-              <button type="button" className={selectedAccountId === "all" ? "active" : ""} onClick={() => { setSelectedAccountId("all"); setAccountDropdownOpen(false); }}>{tForLanguage("allAccounts", language)}</button>
-              {accounts.map((account) => (
-                <button type="button" key={account.id} className={selectedAccountId === account.id ? "active" : ""} onClick={() => { setSelectedAccountId(account.id); setAccountDropdownOpen(false); }}>{account.name}</button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="filter-pill-wrapper">
-          <button type="button" className="filter-pill-btn" onClick={() => { setPeriodDropdownOpen((open) => !open); setAccountDropdownOpen(false); }} aria-label={`${tForLanguage("period", language)}: ${periodLabels[period]}`}>
-            <span className="filter-pill-icon"><Calendar size={16} /></span>
-            <span className="filter-pill-text"><small>{tForLanguage("period", language)}</small><b>{periodLabels[period]}</b></span>
-            <ChevronDown size={16} />
-          </button>
-          {periodDropdownOpen && (
-            <div className="filter-dropdown-menu">
-              {(["day", "week", "month", "year"] as HomePeriod[]).map((option) => (
-                <button type="button" key={option} className={period === option ? "active" : ""} onClick={() => { setHomePeriod(option); setPeriodDropdownOpen(false); }}>{periodLabels[option]}</button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="home-period-nav">
-        <button type="button" onClick={() => navigatePeriod(-1)} aria-label="Previous period">‹</button>
-        <b>{range.label}</b>
-        <button type="button" onClick={() => navigatePeriod(1)} aria-label="Next period">›</button>
-      </div>
+      <SpendingPulse
+        profileId={profileId}
+        accountId={selectedAccountId}
+        accountFilter={accountFilter}
+        period={period}
+        onPeriodChange={setPeriod}
+        budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
+        weekStartsOn={sectionSettings.weekStartsOn}
+        tone={sectionSettings.spendingPulseTone}
+        reduceMotion={sectionSettings.reduceMotion}
+      />
       <div className="home-section-list">
         {sectionOrder.map(renderSection)}
       </div>

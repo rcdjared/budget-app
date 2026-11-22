@@ -143,16 +143,25 @@ export async function updateProfileNotificationPreferences(
   return next;
 }
 
-export async function deleteProfile(id: string): Promise<void> {
+export async function deleteProfile(id: string): Promise<string | null> {
+  let fallbackProfileId: string | null = null;
+  const sessionProfileId = sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY);
+  const deviceProfileId = localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
+  const profile = await db.profiles.get(id);
+  if (!profile || profile.deletedAt) throw new Error("profile-not-found");
+  const isActiveProfile = sessionProfileId === id
+    || (!sessionProfileId && deviceProfileId === id)
+    || (!sessionProfileId && !deviceProfileId && profile.isDefault);
+
   await withoutOutbox(() => db.transaction("rw", db.tables, async () => {
     const profiles = await getAllProfiles();
     if (profiles.length <= 1) throw new Error("profile-last");
-    const profile = await db.profiles.get(id);
-    if (!profile || profile.deletedAt) throw new Error("profile-not-found");
-    if (profile.isDefault || sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY) === id
-      || (!sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY)
-        && localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY) === id)) {
-      throw new Error("profile-active");
+    if (isActiveProfile) {
+      fallbackProfileId = profiles.find((candidate) => candidate.id !== id)?.id || null;
+      if (!fallbackProfileId) throw new Error("profile-last");
+      await db.profiles.toCollection().modify((candidate) => {
+        if (!candidate.deletedAt) candidate.isDefault = candidate.id === fallbackProfileId;
+      });
     }
 
     const recordIds = new Set<string>([id]);
@@ -199,7 +208,12 @@ export async function deleteProfile(id: string): Promise<void> {
     }).delete();
     await db.profiles.delete(id);
   }));
+  if (fallbackProfileId) {
+    sessionStorage.setItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY, fallbackProfileId);
+    localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, fallbackProfileId);
+  }
   localStorage.removeItem(`kupit-assistant-learning-${id}`);
+  return fallbackProfileId;
 }
 
 async function findLegacyProfileId(): Promise<string | undefined> {

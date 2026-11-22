@@ -5,6 +5,7 @@ export type { NotificationPreferences } from "@/domain/types";
 
 export type ThemePreference = "system" | "light" | "dark" | "amoled";
 export type LanguagePreference = "en" | "fil";
+export type SpendingPulseTone = "gentle" | "playful" | "roast";
 
 export interface AppSettings {
   schemaVersion: 3;
@@ -16,6 +17,9 @@ export interface AppSettings {
   showDecimals: boolean;
   haptics: boolean;
   budgetCycleStartDay: number;
+  weekStartsOn: number;
+  reduceMotion: boolean;
+  spendingPulseTone: SpendingPulseTone;
   netWorthAccountIds: string[];
   shakeToUndo: boolean;
   biometricUnlock: boolean;
@@ -51,6 +55,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showDecimals: true,
   haptics: true,
   budgetCycleStartDay: 1,
+  weekStartsOn: 0,
+  reduceMotion: false,
+  spendingPulseTone: "playful",
   netWorthAccountIds: [],
   shakeToUndo: false,
   biometricUnlock: false,

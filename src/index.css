@@ -289,55 +289,11 @@ button {
   padding-top: env(safe-area-inset-top);
 }
 
-.home-greeting {
-  min-height: 44px;
-  max-width: calc(100% - 112px);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  border: 0;
-  background: transparent;
-  color: var(--foreground);
-  padding: 4px 0;
-  text-align: left;
-}
-
-.home-greeting b {
-  font-size: 16px;
-  line-height: 1.2;
-}
-
-.home-greeting small {
-  margin-top: 2px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-
 .home-dashboard {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-height: 240px;
-}
-
-.home-period-nav {
-  min-height: 44px;
-  display: grid;
-  grid-template-columns: 44px 1fr 44px;
-  align-items: center;
-  text-align: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-}
-
-.home-period-nav button {
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--foreground);
-  font-size: 22px;
 }
 
 .home-section-list {
@@ -1093,8 +1049,8 @@ button {
   letter-spacing: -0.01em;
 }
 
-.positive { color: #019B51; }
-.negative { color: #dc604c; }
+.positive { color: var(--income); }
+.negative { color: var(--expense); }
 
 /* History Filters */
 .history-search-bar {
@@ -1245,103 +1201,6 @@ button {
   border: 1px solid var(--border);
 }
 
-.finsights-filter-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.filter-pill-wrapper {
-  position: relative;
-}
-
-.filter-pill-btn {
-  width: 100%;
-  min-height: 54px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 8px 12px;
-  text-align: left;
-}
-
-.filter-pill-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--secondary);
-  color: var(--primary);
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-
-.filter-pill-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.filter-pill-sub {
-  color: var(--muted-foreground);
-  font-size: 10.5px;
-  font-weight: 600;
-}
-
-.filter-pill-val {
-  font-size: 13px;
-  font-weight: 750;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pill-arrow {
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-
-.filter-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.filter-dropdown-item {
-  width: 100%;
-  min-height: 40px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 650;
-  text-align: left;
-  color: var(--foreground);
-}
-
-.filter-dropdown-item.active {
-  background: var(--secondary);
-  color: var(--primary);
-}
-
 .acc-color-dot {
   width: 8px;
   height: 8px;
@@ -1404,20 +1263,16 @@ button {
   letter-spacing: -0.03em;
 }
 
-.text-emerald { color: #019B51; }
-.text-rose { color: #f43f5e; }
+.text-emerald { color: var(--income); }
+.text-rose { color: var(--expense); }
 
 .finsights-tab-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  background: #e2e8f0;
+  background: var(--muted);
   border-radius: 999px;
   padding: 4px;
-}
-
-.dark .finsights-tab-switch {
-  background: #1e293b;
 }
 
 .tab-switch-pill {
@@ -1433,15 +1288,15 @@ button {
 }
 
 .tab-switch-pill.active-expense {
-  background: #de5448;
-  color: white;
-  box-shadow: 0 4px 12px rgba(222, 84, 72, 0.35);
+  background: var(--expense);
+  color: var(--expense-foreground);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--expense) 32%, transparent);
 }
 
 .tab-switch-pill.active-income {
-  background: #019B51;
-  color: white;
-  box-shadow: 0 4px 12px rgba(1, 155, 81, 0.35);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 32%, transparent);
 }
 
 .finsights-total-card {
@@ -1454,27 +1309,15 @@ button {
 }
 
 .finsights-total-card.expense-tint {
-  background: #fee2e2;
-  border-color: #fecaca;
-  color: #991b1b;
-}
-
-.dark .finsights-total-card.expense-tint {
-  background: #451a1a;
-  border-color: #7f1d1d;
-  color: #fca5a5;
+  background: color-mix(in srgb, var(--expense) 13%, var(--card));
+  border-color: color-mix(in srgb, var(--expense) 30%, var(--border));
+  color: var(--expense);
 }
 
 .finsights-total-card.income-tint {
-  background: #dcfce7;
-  border-color: #bbf7d0;
-  color: #14532d;
-}
-
-.dark .finsights-total-card.income-tint {
-  background: #143525;
-  border-color: #166534;
-  color: #86efac;
+  background: color-mix(in srgb, var(--income) 13%, var(--card));
+  border-color: color-mix(in srgb, var(--income) 30%, var(--border));
+  color: var(--income);
 }
 
 .total-card-head {
@@ -1520,8 +1363,8 @@ button {
   gap: 2px;
 }
 
-.comparison-badge.badge-down { color: #019B51; }
-.comparison-badge.badge-up { color: #ef4444; }
+.comparison-badge.badge-down { color: var(--positive-change); }
+.comparison-badge.badge-up { color: var(--negative-change); }
 .comparison-badge.badge-neutral { color: var(--muted-foreground); }
 
 .comp-subtext {
@@ -2367,8 +2210,8 @@ button {
 
 .add-menu-icon.transfer { color: #8b7cf6; background: rgb(139 124 246 / 15%); }
 .add-menu-icon.scan { color: #e6a23c; background: rgb(230 162 60 / 16%); }
-.add-menu-icon.income { color: var(--primary); }
-.add-menu-icon.expense { color: var(--expense, #e5605a); background: rgb(229 96 90 / 15%); }
+.add-menu-icon.income { color: var(--income); background: color-mix(in srgb, var(--income) 15%, transparent); }
+.add-menu-icon.expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 15%, transparent); }
 
 .add-menu-copy {
   flex: 1;
@@ -5208,6 +5051,17 @@ button {
   width: 70px;
 }
 
+.kupit-budget-cycle select {
+  width: 100%;
+  min-width: 70px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 0 10px;
+  color: var(--foreground);
+  background: var(--background);
+}
+
 /* ==========================================================================
    iOS 26 INSET GROUPED SETTINGS STYLES
    ========================================================================== */
@@ -6127,8 +5981,8 @@ button {
   --card-foreground: #F2F5F4;
   --popover: #151B19;
   --popover-foreground: #F2F5F4;
-  --primary: #4F9A5B;
-  --primary-foreground: #ffffff;
+  --primary: #6FCF97;
+  --primary-foreground: #0A0E0D;
   --secondary: #1B2321;
   --secondary-foreground: #F2F5F4;
   --muted: #1B2321;
@@ -6137,18 +5991,19 @@ button {
   --accent-foreground: #F2F5F4;
   --border: #29332F;
   --input: #29332F;
-  --ring: #4F9A5B;
-  --chart-1: #4F9A5B;
+  --ring: #6FCF97;
+  --chart-1: #6FCF97;
   --sidebar: #151B19;
   --sidebar-foreground: #F2F5F4;
-  --sidebar-primary: #4F9A5B;
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary: #6FCF97;
+  --sidebar-primary-foreground: #0A0E0D;
   --sidebar-accent: #1B2321;
   --sidebar-accent-foreground: #F2F5F4;
   --sidebar-border: #29332F;
-  --sidebar-ring: #4F9A5B;
+  --sidebar-ring: #6FCF97;
   --income: #6FCF97;
   --expense: #F08078;
+  --expense-foreground: #24100E;
   --warning: #F2C94C;
   --positive-change: #6FCF97;
   --negative-change: #F08078;
@@ -6162,7 +6017,7 @@ button {
   --card-foreground: oklch(0.145 0.015 155);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0.015 155);
-  --primary: #019B51;
+  --primary: #087A45;
   --primary-foreground: #ffffff;
   --secondary: oklch(0.96 0.02 150);
   --secondary-foreground: oklch(0.22 0.04 150);
@@ -6172,16 +6027,23 @@ button {
   --accent-foreground: oklch(0.22 0.04 150);
   --border: oklch(0.91 0.01 150);
   --input: oklch(0.91 0.01 150);
-  --ring: #019B51;
-  --chart-1: #019B51;
+  --ring: #087A45;
+  --chart-1: #087A45;
   --sidebar: oklch(0.985 0.003 150);
   --sidebar-foreground: oklch(0.145 0.015 155);
-  --sidebar-primary: #019B51;
+  --sidebar-primary: #087A45;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: oklch(0.96 0.02 150);
   --sidebar-accent-foreground: oklch(0.22 0.04 150);
   --sidebar-border: oklch(0.91 0.01 150);
-  --sidebar-ring: #019B51;
+  --sidebar-ring: #087A45;
+  --income: #16794A;
+  --expense: #B42318;
+  --expense-foreground: #ffffff;
+  --warning: #854D0E;
+  --positive-change: #16794A;
+  --negative-change: #B42318;
+  --neutral-change: #5F6B66;
 }
 
 .amoled {

@@ -21,7 +21,7 @@ export function computeInsights({
   transactions: Transaction[];
   budgets: Budget[];
   categories: Category[];
-  period: "day" | "week" | "month" | "year";
+  period: "day" | "week" | "month" | "year" | "sevenDays";
   previousTransactions: Transaction[];
   now: Date;
   locale: "en" | "fil";
@@ -30,6 +30,11 @@ export function computeInsights({
   if (inPeriod.length < HOME_INSIGHT_THRESHOLDS.minimumTransactions) return [];
 
   const candidates: InsightCandidate[] = [];
+  const comparisonPeriod = period === "sevenDays"
+    ? locale === "fil" ? "nakaraang 7 araw" : "the previous 7 days"
+    : period === "month"
+      ? locale === "fil" ? "nakaraang siklo ng badyet" : "the previous budget cycle"
+      : locale === "fil" ? `nakaraang ${period}` : `last ${period}`;
   const budgetText = (name: string, percent: number) =>
     locale === "fil"
       ? `Naabot ng ${name} ang ${percent}% ng budget.`
@@ -83,8 +88,8 @@ export function computeInsights({
       candidates.push({
         priority: 2,
         text: locale === "fil"
-          ? `${percent}% ${direction} ang gastos sa ${name} kaysa sa nakaraang ${period}.`
-          : `You've spent ${percent}% ${direction} on ${name} than last ${period}.`,
+          ? `${percent}% ${direction} ang gastos sa ${name} kaysa sa ${comparisonPeriod}.`
+          : `You've spent ${percent}% ${direction} on ${name} than ${comparisonPeriod}.`,
         kind: "category",
         categoryId,
       });

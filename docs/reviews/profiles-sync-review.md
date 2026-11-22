@@ -63,3 +63,23 @@
 - No shared-group ownership representation/check appears in the inspected deletion function or cloud schema. The app's “shared bills” are local data, so whether “shared group owner” applies to this phase is **Unverified**.
 - Whether notification scheduling always loads the active profile's preference record requires a full runtime path trace; profile preference storage and migration were inspected, but the scheduler's startup wiring was not independently exercised.
 - Date behavior across real browser timezones was not executed. Existing recurrence math uses UTC date parts, while forecast constructs the resulting date at local midnight (`src/domain/forecast.ts:20`); the requested timezone matrix remains to be run in Part 2.
+
+## Part 2 — Fix status
+
+- **R-01 — Fixed** — Commit `64a5da7`. Scoped debt/recurring views and backup exports to the active profile; profile repository lookups and mutations now require and enforce a profile ID. No dedicated IndexedDB isolation test was added because this suite has no repository-level IndexedDB setup. Final full suite passed.
+- **R-02 — Fixed** — Commit `1553f78`. Active selection is stored per tab, with device storage retained as the new-tab default; stale rapid-switch requests are ignored. No automated multi-tab test setup exists. Manual verification remains on the checklist below.
+- **R-03 — Fixed** — Commit `554ed06`. Corrected the invalid fixture (the expected Nov 20 recurrence was anchored to Nov 1) and normalized non-padded dates before comparison. Added month-end, leap-year, year-rollover, and non-padded-input tests. Forecast and notification tests passed under both `TZ=UTC` and `TZ=Asia/Manila`.
+- **R-04 — Not fixed** — The current flow still blocks deleting the active profile. The safe automatic-switch behavior would exceed the allowed small, low-risk Medium fix scope; leave this as a follow-up decision.
+- **R-05 — Fixed** — Commit `068c6ef`. Replaced locale-dependent lowercasing with deterministic `toLowerCase()`. Existing profile validation tests passed.
+
+### Final verification
+
+- `pnpm test`: 7 files passed, 39 tests passed. The only baseline failure was R-03; no failures remain.
+- `pnpm build`: passed. Vite still reports the large-chunk warning.
+- Account deletion was not executed, type-checked with Deno, or deployed; the runtime behavior remains unverified.
+
+### Manual checklist
+
+- Deploy the Edge Function and test typed account deletion after both an old and a fresh sign-in.
+- Open two tabs with different active profiles and verify their records remain isolated.
+- Switch profiles quickly and verify the last requested profile remains selected.

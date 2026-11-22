@@ -22,11 +22,18 @@ export function formatMoney(
   centavos: number,
   currency: string = "PHP"
 ): string {
+  let showDecimals = true;
+  try {
+    showDecimals = JSON.parse(localStorage.getItem("kupit-app-settings") || "{}").showDecimals !== false;
+  } catch {
+    showDecimals = true;
+  }
+  const fractionDigits = showDecimals ? 2 : 0;
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(fromCentavos(centavos));
 }
 

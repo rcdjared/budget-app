@@ -56,7 +56,7 @@ export function computeAccountBalance(
         break;
       case "friend_payment":
         if (tx.accountId === accountId) {
-          balance += tx.amount;
+          balance += tx.friendPaymentDirection === "sent" ? -tx.amount : tx.amount;
         }
         break;
     }

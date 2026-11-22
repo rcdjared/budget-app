@@ -64,9 +64,13 @@ import {
   markSharedBillMemberPaid,
   recordFriendPayment,
   deleteFriendIfZero,
+  removeSharedBill,
+  updateSharedBillAmount,
 } from "@/db/repositories/localFinance";
 import { createRecurringRule, processDueRecurringTransactions } from "@/db/repositories/recurring";
 import { computeAccountBalance, computeNetWorth } from "@/domain/balances";
+import { computeFriendBalance } from "@/domain/friendLedger";
+import { sortTransactionsNewestFirst } from "@/domain/history";
 import { formatMoney, parseMoney } from "@/domain/money";
 import { formatRelativeDate, getBudgetCycleRange, getCurrentMonthRange, toDateString } from "@/lib/format";
 import { ensureDailySnapshot, exportJsonBackup, exportTransactionsCsv, importJsonBackup } from "@/lib/backup";
@@ -1317,8 +1321,8 @@ function HomePage({
     () =>
       profileRecords(db.transactions, profileId)
         .filter((t) => !t.deletedAt)
-        .reverse()
-        .sortBy("date"),
+        .toArray()
+        .then(sortTransactionsNewestFirst),
     [profileId],
     []
   );
@@ -1328,11 +1332,6 @@ function HomePage({
     0
   );
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
-  const profiles = useLiveQuery(
-    () => db.profiles.filter((item) => !item.deletedAt).toArray(),
-    [],
-    []
-  );
   const homeSettings = useLiveQuery(
     () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
     [profileId]
@@ -1349,27 +1348,15 @@ function HomePage({
   return (
     <div className="content">
       <header className="page-header home-header">
-        {(() => {
-          const hour = new Date().getHours();
-          const language = loadAppSettings().language;
-          const greeting = hour < 12
-            ? tForLanguage("goodMorning", language)
-            : hour < 18
-              ? tForLanguage("goodAfternoon", language)
-              : tForLanguage("goodEvening", language);
-          const name = profile?.preferredName?.trim();
-          return (
-            <button
-              type="button"
-              className="home-greeting"
-              onClick={onProfiles}
-              aria-label={`${tForLanguage("switchProfile", language)}, current: ${profile?.name || "Profile"}`}
-            >
-              <b>{name ? `${greeting}, ${name}` : greeting}</b>
-              {profiles.length > 1 && <small>{profile?.name || ""}</small>}
-            </button>
-          );
-        })()}
+        <button
+          type="button"
+          className="header-chat"
+          onClick={onProfiles}
+          aria-label={`Switch profile: ${profile?.name || "Profile"}`}
+          title={profile?.name || "Switch profile"}
+        >
+          <UserRound size={19} />
+        </button>
         <div className="header-buttons">
           <button className="header-chat notifications-icon-button" onClick={onNotifications} aria-label="Notifications" title="Notifications">
             <Bell size={19} />
@@ -1488,8 +1475,13 @@ function TransactionList({
     const saveSplit = async () => {
       if (!friendIds.length) return;
       try {
+        if (transaction.sharedBillId) {
+          if (!window.confirm("Switch from this shared bill to a friend split? The bill shares will be reversed.")) return;
+          await removeSharedBill(profileId, transaction.id);
+        }
         if (transaction.splitId) {
           await reconfigureLocalSplit(
+            profileId,
             transaction.id,
             friendIds,
             mode,
@@ -1518,7 +1510,11 @@ function TransactionList({
       if (!friendIds.length) return;
       try {
         if (transaction.splitId && !window.confirm("Switch from a local split to a shared bill? The split balances will be reversed.")) return;
-        if (transaction.splitId) await removeLocalSplit(transaction.id);
+        if (transaction.splitId) await removeLocalSplit(profileId, transaction.id);
+        if (transaction.sharedBillId) {
+          if (!window.confirm("Replace this shared bill with the new participant shares?")) return;
+          await removeSharedBill(profileId, transaction.id);
+        }
         await createSharedBill(
           profileId,
           transaction.id,
@@ -1549,9 +1545,13 @@ function TransactionList({
               .filter((entry) => entry.transactionId === transaction.id)
               .delete();
             await db.localSplits.where("transactionId").equals(transaction.id).delete();
-            if (transaction.sharedBillId) {
-              await db.sharedBills.delete(transaction.sharedBillId);
-              await db.sharedBillMembers.where("sharedBillId").equals(transaction.sharedBillId).delete();
+            const relatedBills = await profileRecords(db.sharedBills, profileId)
+              .filter((bill) => bill.transactionId === transaction.id)
+              .toArray();
+            for (const bill of relatedBills) {
+              await db.friendLedger.where("sharedBillId").equals(bill.id).delete();
+              await db.sharedBillMembers.where("sharedBillId").equals(bill.id).delete();
+              await db.sharedBills.delete(bill.id);
             }
             const fees = await db.transactions.filter((item) => item.transferId === transaction.id).toArray();
             for (const fee of fees) await db.transactions.delete(fee.id);
@@ -1631,7 +1631,7 @@ function TransactionList({
                     {(sharedMembers || []).map((member) => (
                       <div key={member.id}>
                         <span><b>{member.name}</b><small>{member.status} · {formatMoney(member.paidAmount)} / {formatMoney(member.amount)}</small></span>
-                        {member.status !== "paid" && <button type="button" onClick={() => {
+                        {!member.isMe && member.status !== "paid" && <button type="button" onClick={() => {
                           setPaymentCreditAccountId("");
                           setPaymentMemberId(member.id);
                         }}>Mark paid</button>}
@@ -1652,7 +1652,7 @@ function TransactionList({
                   <div className="shared-payment-overlay" role="dialog" aria-modal="true" aria-label="Record shared bill payment">
                     <section className="shared-payment-dialog">
                       <h3>Mark portion paid</h3>
-                      <p>This updates the bill’s payment status only. Optionally, record the received amount in one of your accounts.</p>
+                      <p>This records a repayment against the participant’s share. Optionally, add the amount to one of your accounts.</p>
                       <label>
                         Credit account <span>Optional</span>
                         <select value={paymentCreditAccountId} onChange={(event) => setPaymentCreditAccountId(event.target.value)}>
@@ -1667,6 +1667,7 @@ function TransactionList({
                           if (!member) return;
                           try {
                             await markSharedBillMemberPaid(
+                              profileId,
                               transaction.sharedBillId!,
                               member.id,
                               member.amount - member.paidAmount,
@@ -1779,11 +1780,14 @@ function TransactionList({
           ? accounts.find((a) => a.id === tx.toAccountId)
           : null;
         const category = categories.find((c) => c.id === tx.categoryId);
-        const positive = tx.type === "income" || tx.type === "friend_payment";
+        const positive = tx.type === "income"
+          || (tx.type === "friend_payment" && tx.friendPaymentDirection !== "sent");
         const transfer = tx.type === "transfer";
 
         const primaryTitle = transfer
           ? `Transfer`
+          : tx.type === "friend_payment"
+          ? tx.friendPaymentDirection === "sent" ? "Payment to friend" : "Friend repayment"
           : category?.name || (positive ? "Income" : "Expense");
 
         const accountLabel =
@@ -1873,8 +1877,8 @@ function TransactionsPage({ profileId }: { profileId: string }) {
     () =>
       profileRecords(db.transactions, profileId)
         .filter((t) => !t.deletedAt)
-        .reverse()
-        .sortBy("date"),
+        .toArray()
+        .then(sortTransactionsNewestFirst),
     [profileId],
     []
   );
@@ -1953,7 +1957,7 @@ function TransactionsPage({ profileId }: { profileId: string }) {
     return { filterStart: "", filterEnd: "" };
   }, [timeFilter, startDate, endDate]);
 
-  const filtered = transactions.filter((tx) => {
+  const filtered = sortTransactionsNewestFirst(transactions.filter((tx) => {
     const account = accounts.find((item) => item.id === tx.accountId);
     const category = categories.find((item) => item.id === tx.categoryId);
     const haystack = `${tx.note || ""} ${account?.name || ""} ${category?.name || ""}`.toLowerCase();
@@ -1963,7 +1967,7 @@ function TransactionsPage({ profileId }: { profileId: string }) {
     if (filterStart && tx.date < filterStart) return false;
     if (filterEnd && tx.date > filterEnd) return false;
     return true;
-  });
+  }));
 
   const isFiltered = Boolean(search || accountId || categoryId || timeFilter !== "all");
 
@@ -2082,7 +2086,9 @@ function TransactionsPage({ profileId }: { profileId: string }) {
       )}
 
       {Object.keys(grouped).length ? (
-        Object.entries(grouped).map(([date, items]) => {
+        Object.entries(grouped)
+          .sort(([firstDate], [secondDate]) => secondDate.localeCompare(firstDate))
+          .map(([date, items]) => {
           const net = items.reduce(
             (sum, tx) =>
               sum +
@@ -2177,10 +2183,7 @@ function AccountsPage({
   );
   const baseNet = computeNetWorth(includedAccounts, balances);
   const friendReceivables = loadAppSettings().includeFriendReceivables
-    ? friendEntries.reduce((sum, entry) => {
-        if (entry.type === "shared_bill") return sum;
-        return sum + (entry.direction === "owed_to_me" ? entry.amount : -entry.amount);
-      }, 0)
+    ? computeFriendBalance(friendEntries)
     : 0;
   const net = {
     ...baseNet,
@@ -2192,10 +2195,9 @@ function AccountsPage({
     { label: "Investments", types: ["investment"] },
     { label: "Credit cards & loans", types: ["credit_card", "loan"] },
   ];
-  const recentIncome = transactions
-    .filter((transaction) => transaction.type === "income")
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 5);
+  const recentIncome = sortTransactionsNewestFirst(
+    transactions.filter((transaction) => transaction.type === "income")
+  ).slice(0, 5);
 
   return (
     <div className="content">
@@ -3901,26 +3903,39 @@ function FriendsSheet({
     [profileId],
     []
   );
+  const sharedBillMembers = useLiveQuery(
+    async () => {
+      const bills = await profileRecords(db.sharedBills, profileId)
+        .filter((bill) => !bill.deletedAt && bill.status === "active")
+        .toArray();
+      const billIds = new Set(bills.map((bill) => bill.id));
+      return db.sharedBillMembers.toCollection()
+        .filter((member) => billIds.has(member.sharedBillId))
+        .toArray();
+    },
+    [profileId],
+    []
+  );
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentAccountId, setPaymentAccountId] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
+  const [paymentSharedBillMemberId, setPaymentSharedBillMemberId] = useState("");
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [newFriendName, setNewFriendName] = useState("");
   const [newFriendPhone, setNewFriendPhone] = useState("");
   const [newFriendNote, setNewFriendNote] = useState("");
   const [newFriendColor, setNewFriendColor] = useState("#019B51");
 
-  const friendBalance = (friendId: string) => (entries || [])
-    .filter((entry) => entry.friendId === friendId)
-    .filter((entry) => entry.type !== "shared_bill")
-    .reduce((sum, entry) => sum + (entry.direction === "owed_to_me" ? entry.amount : -entry.amount), 0);
+  const friendBalance = (friendId: string) => computeFriendBalance(entries || [], friendId);
 
   const total = friends.reduce((sum, friend) => sum + friendBalance(friend.id), 0);
   const selectedFriend = friends.find((friend) => friend.id === selectedFriendId);
   const ledger = (entries || [])
     .filter((entry) => entry.friendId === selectedFriendId)
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const selectedBillMember = (sharedBillMembers || [])
+    .find((member) => member.id === paymentSharedBillMemberId);
 
   const addFriend = async () => {
     if (!newFriendName.trim()) return;
@@ -3940,6 +3955,11 @@ function FriendsSheet({
 
   const recordPayment = async () => {
     if (!selectedFriend) return;
+    const balance = friendBalance(selectedFriend.id);
+    if (!balance) {
+      window.alert("This friend is already settled.");
+      return;
+    }
     const cents = Math.round(Number(paymentAmount || 0) * 100);
     if (!Number.isInteger(cents) || cents <= 0) {
       window.alert("Enter a positive payment amount.");
@@ -3952,10 +3972,13 @@ function FriendsSheet({
         cents,
         toDateString(new Date()),
         paymentNote,
-        paymentAccountId || undefined
+        paymentAccountId || undefined,
+        balance > 0 ? "received" : "sent",
+        paymentSharedBillMemberId || undefined
       );
       setPaymentAmount("");
       setPaymentNote("");
+      setPaymentSharedBillMemberId("");
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "Could not record the payment.");
     }
@@ -3980,7 +4003,10 @@ function FriendsSheet({
                 {friends.filter((friend) => !friend.archivedAt).map((friend) => {
                   const balance = friendBalance(friend.id);
                   return (
-                    <button type="button" key={friend.id} onClick={() => setSelectedFriendId(friend.id)}>
+                    <button type="button" key={friend.id} onClick={() => {
+                      setSelectedFriendId(friend.id);
+                      setPaymentSharedBillMemberId("");
+                    }}>
                       <span style={{ background: friend.avatarColor }}>{friend.name[0]?.toUpperCase()}</span>
                       <div><b>{friend.name}</b><small>{balance === 0 ? "Settled" : balance > 0 ? "Owes you" : "You owe"}</small></div>
                       <strong className={balance > 0 ? "positive" : balance < 0 ? "negative" : ""}>{formatMoney(Math.abs(balance))}</strong>
@@ -3992,10 +4018,13 @@ function FriendsSheet({
               </div>
               <div className="friends-recent-bills">
                 <h3>Shared bills</h3>
-                {sharedBills.map((bill) => {
-                  const tx = bill.transactionId ? undefined : undefined;
-                  return <div key={bill.id}><b>{bill.title}</b><small>Tracking only</small></div>;
-                })}
+              {sharedBills.filter((bill) => bill.status === "active").map((bill) => {
+                const members = (sharedBillMembers || []).filter((member) => member.sharedBillId === bill.id);
+                const outstanding = members
+                  .filter((member) => !member.isMe)
+                  .reduce((sum, member) => sum + member.amount - member.paidAmount, 0);
+                return <div key={bill.id}><b>{bill.title}</b><small>{outstanding ? `${formatMoney(outstanding)} outstanding` : "Settled"}</small></div>;
+              })}
               </div>
             </>
           ) : (
@@ -4007,15 +4036,51 @@ function FriendsSheet({
                 <strong>{formatMoney(Math.abs(friendBalance(selectedFriend.id)))}</strong>
               </div>
               <div className="friend-payment-form">
+                <small>{friendBalance(selectedFriend.id) > 0 ? "They owe you — record a received payment." : friendBalance(selectedFriend.id) < 0 ? "You owe them — record a payment you made." : "This balance is settled."}</small>
                 <label>Amount<input inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="0.00" /></label>
-                <label>Credit account<select value={paymentAccountId} onChange={(event) => setPaymentAccountId(event.target.value)}><option value="">None</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+                {friendBalance(selectedFriend.id) > 0 && (sharedBillMembers || []).some((member) =>
+                  member.friendId === selectedFriend.id && member.amount > member.paidAmount
+                ) && (
+                  <label>Apply to bill <span>Optional</span>
+                    <select value={paymentSharedBillMemberId} onChange={(event) => setPaymentSharedBillMemberId(event.target.value)}>
+                      <option value="">General friend balance</option>
+                      {(sharedBillMembers || [])
+                        .filter((member) => member.friendId === selectedFriend.id && member.amount > member.paidAmount)
+                        .map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {sharedBills.find((bill) => bill.id === member.sharedBillId)?.title || member.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                <label>{friendBalance(selectedFriend.id) < 0 ? "Debit account" : "Credit account"}<select value={paymentAccountId} onChange={(event) => setPaymentAccountId(event.target.value)}><option value="">None — tracking only</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
                 <label>Note<input value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} /></label>
-                <button type="button" onClick={recordPayment}>Record payment</button>
-                <button type="button" onClick={async () => {
+                <button type="button" onClick={recordPayment} disabled={!friendBalance(selectedFriend.id)}>
+                  {friendBalance(selectedFriend.id) > 0 ? "Record received payment" : "Record sent payment"}
+                </button>
+                <button type="button" disabled={!friendBalance(selectedFriend.id)} onClick={async () => {
                   const balance = friendBalance(selectedFriend.id);
-                  if (balance <= 0) { window.alert("This friend is already settled."); return; }
-                  await recordFriendPayment(profileId, selectedFriend.id, balance, toDateString(new Date()), "Settled up", paymentAccountId || undefined);
-                }}>Settle up</button>
+                  if (!balance) return;
+                  const amount = selectedBillMember && balance > 0
+                    ? Math.min(balance, selectedBillMember.amount - selectedBillMember.paidAmount)
+                    : Math.abs(balance);
+                  try {
+                    await recordFriendPayment(
+                      profileId,
+                      selectedFriend.id,
+                      amount,
+                      toDateString(new Date()),
+                      "Settled up",
+                      paymentAccountId || undefined,
+                      balance > 0 ? "received" : "sent",
+                      selectedBillMember?.id
+                    );
+                    setPaymentSharedBillMemberId("");
+                  } catch (error) {
+                    window.alert(error instanceof Error ? error.message : "Could not settle this balance.");
+                  }
+                }}>{selectedBillMember ? "Settle bill portion" : "Settle full balance"}</button>
               </div>
               <div className="friend-ledger-timeline">
                 {ledger.map((entry) => (
@@ -4029,10 +4094,10 @@ function FriendsSheet({
               <div className="friend-ledger-actions">
                 <button type="button" onClick={async () => {
                   const name = window.prompt("Rename friend", selectedFriend.name);
-                  if (name?.trim()) await updateFriend(selectedFriend.id, { name: name.trim() });
+                  if (name?.trim()) await updateFriend(profileId, selectedFriend.id, { name: name.trim() });
                 }}>Rename</button>
                 <button type="button" onClick={async () => {
-                  await updateFriend(selectedFriend.id, { archivedAt: selectedFriend.archivedAt ? null : new Date().toISOString() });
+                  await updateFriend(profileId, selectedFriend.id, { archivedAt: selectedFriend.archivedAt ? null : new Date().toISOString() });
                   setSelectedFriendId(null);
                 }}>{selectedFriend.archivedAt ? "Restore" : "Archive"}</button>
                 <button type="button" className="danger" onClick={async () => {
@@ -4547,34 +4612,50 @@ function AddTransactionSheet({
         .then((item) => item?.id || null);
     } else if (editingTransactionId) {
       const existing = await getProfileRecord(db.transactions, editingTransactionId, profileId);
-      if (existing?.splitId && existing.amount !== cents) {
-        const friendIds = (await db.friendLedger
-          .where("transactionId")
-          .equals(editingTransactionId)
-          .filter((entry) => entry.type === "expense_share" && !entry.deletedAt)
-          .toArray())
-          .map((entry) => entry.friendId)
-          .filter((friendId, index, list) => list.indexOf(friendId) === index);
-        if (friendIds.length && window.confirm("The split amount changed. Re-split the new total now?")) {
-          await reconfigureLocalSplit(editingTransactionId, friendIds, "equal");
-        }
+      if ((existing?.splitId || existing?.sharedBillId) && type !== "expense") {
+        window.alert("Remove the split or shared bill before changing the transaction type.");
+        return;
       }
+      try {
+        if (existing?.splitId && existing.amount !== cents) {
+          const localSplit = await getProfileRecord(db.localSplits, existing.splitId, profileId);
+          const friendIds = localSplit?.friendIds ?? (await db.friendLedger
+              .where("transactionId")
+              .equals(editingTransactionId)
+              .filter((entry) => entry.type === "expense_share" && !entry.deletedAt)
+              .toArray())
+              .map((entry) => entry.friendId)
+              .filter((friendId, index, list) => list.indexOf(friendId) === index);
+          if (!friendIds.length) {
+            window.alert("This split has no active friend shares to redistribute.");
+            return;
+          }
+          if (!window.confirm("The split amount changed. Re-split the new total evenly among its participants?")) return;
+          await reconfigureLocalSplit(profileId, editingTransactionId, friendIds, "equal", [], [], undefined, cents);
+        }
+        if (existing?.sharedBillId && existing.amount !== cents) {
+          await updateSharedBillAmount(profileId, editingTransactionId, cents);
+        }
         await updateTransaction(editingTransactionId, profileId, {
-        type,
-        amount: cents,
-        accountId,
-        categoryId: categoryId || null,
-        date,
-        note: note.trim() || null,
-      });
-      if (existing?.recurringId && recurringEditScope === "future") {
-        await db.recurring.update(existing.recurringId, {
+          type,
           amount: cents,
           accountId,
           categoryId: categoryId || null,
           note: note.trim() || null,
-          updatedAt: new Date().toISOString(),
+          date,
         });
+        if (existing?.recurringId && recurringEditScope === "future") {
+          await db.recurring.update(existing.recurringId, {
+            amount: cents,
+            accountId,
+            categoryId: categoryId || null,
+            note: note.trim() || null,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not update this transaction.");
+        return;
       }
       transactionId = editingTransactionId;
       onClose();
