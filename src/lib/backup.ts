@@ -65,8 +65,8 @@ export async function importJsonBackup(file: File): Promise<number> {
       for (const value of rows) {
         if (!value || typeof value !== "object" || typeof (value as { id?: unknown }).id !== "string") continue;
         const original = value as Record<string, unknown>;
-        const record = { ...original, updatedAt: importedAt };
-        const existing = await db.table(table).get(record.id as string);
+        const record = { ...original, id: String(original.id), updatedAt: importedAt };
+        const existing = await db.table(table).get(record.id);
         await db.table(table).put(record);
         await db.outbox.add({
           id: crypto.randomUUID(),

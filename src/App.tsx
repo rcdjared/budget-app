@@ -70,6 +70,7 @@ import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
 import { FinsightsPage } from "@/components/FinsightsPage";
 import { useSheetGestures } from "@/hooks/useSheetGestures";
 import { useCollapsingNav } from "@/hooks/useCollapsingNav";
+import { KupitSettingsSheet } from "@/components/KupitSettingsSheet";
 
 type Tab = "home" | "wallet" | "plan" | "history";
 type ThemePreference = "system" | "light" | "dark" | "amoled";
@@ -518,9 +519,10 @@ function App() {
         onSwitchProfile={switchProfile}
       />
 
-      <SettingsSheet
+      <KupitSettingsSheet
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        profileId={profileId}
         themePreference={themePreference}
         onThemeChange={setThemePreference}
         onOpenCategories={() => {

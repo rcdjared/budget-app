@@ -3483,6 +3483,755 @@ button {
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
+.kupit-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 24%);
+}
+
+.kupit-settings-page {
+  position: relative;
+  width: min(100%, 620px);
+  height: 100dvh;
+  max-height: 94dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 26px 26px 0 0;
+  background: var(--background);
+  box-shadow: 0 -18px 55px rgb(0 0 0 / 22%);
+}
+
+.kupit-settings-header {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--background) 94%, var(--card));
+}
+
+.kupit-settings-header h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.kupit-settings-back,
+.kupit-settings-header-spacer {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+}
+
+.kupit-settings-back {
+  display: grid;
+  place-items: center;
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.kupit-settings-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px calc(92px + env(safe-area-inset-bottom));
+}
+
+.kupit-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 15px;
+}
+
+.kupit-settings-section h2 {
+  margin: 0;
+  padding-left: 12px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kupit-settings-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--card);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 4%);
+}
+
+.kupit-settings-row {
+  width: 100%;
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  padding: 10px 14px;
+  color: var(--foreground);
+  background: transparent;
+  text-align: left;
+}
+
+.kupit-settings-card > .kupit-settings-row:last-child,
+.kupit-settings-row:last-child {
+  border-bottom: 0;
+}
+
+.kupit-settings-row:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.kupit-settings-squircle {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 13%, var(--card));
+}
+
+.kupit-settings-row-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.kupit-settings-row-copy b {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.kupit-settings-row-copy small {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.kupit-settings-chevron {
+  flex: none;
+  color: var(--muted-foreground);
+  transition: transform 180ms ease;
+}
+
+.kupit-settings-chevron.open {
+  transform: rotate(90deg);
+}
+
+.kupit-coming {
+  flex: none;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.kupit-settings-search {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 2;
+  width: min(calc(100% - 32px), 300px);
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--card) 94%, transparent);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 24%);
+  backdrop-filter: blur(16px);
+}
+
+.kupit-settings-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: var(--foreground);
+  background: transparent;
+  font-size: 14px;
+}
+
+.kupit-settings-search button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.kupit-settings-language {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.kupit-settings-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 13px;
+  padding: 3px;
+  background: var(--muted);
+}
+
+.kupit-settings-segment button {
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted-foreground);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.kupit-settings-segment button.selected {
+  color: var(--foreground);
+  background: var(--card);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+}
+
+.kupit-settings-language small {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+
+.kupit-toggle {
+  width: 46px;
+  height: 28px;
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px;
+  background: var(--muted);
+  transition: background 180ms ease;
+}
+
+.kupit-toggle span {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 18%);
+  transition: transform 180ms ease;
+}
+
+.kupit-toggle.on {
+  background: var(--primary);
+}
+
+.kupit-toggle.on span {
+  transform: translateX(18px);
+}
+
+.kupit-appearance {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.kupit-appearance-previews {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.kupit-theme-preview {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  color: var(--muted-foreground);
+  background: transparent;
+  text-align: center;
+}
+
+.theme-screen {
+  height: 82px;
+  display: grid;
+  place-items: center;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: #f2f4f3;
+}
+
+.theme-screen > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 12%, white);
+}
+
+.theme-dark { background: #171b19; }
+.theme-dark > span { background: #262b28; }
+.theme-amoled { background: #000; }
+.theme-amoled > span { background: #111; }
+.theme-system {
+  background: linear-gradient(135deg, #f2f4f3 0 50%, #171b19 50%);
+}
+
+.kupit-theme-preview.selected .theme-screen {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.kupit-theme-preview b {
+  overflow: hidden;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+}
+
+.kupit-appearance-helper {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.kupit-color-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.kupit-color-heading span {
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+
+.kupit-color-grid {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 7px;
+}
+
+.kupit-color-swatch,
+.kupit-custom-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  position: relative;
+}
+
+.kupit-color-swatch.selected {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+.kupit-custom-swatch {
+  display: grid;
+  place-items: center;
+  color: var(--foreground);
+  background: conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.kupit-custom-swatch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.kupit-help-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+.kupit-help-copy {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.kupit-help-copy > div {
+  display: grid;
+  gap: 3px;
+}
+
+.kupit-help-copy b { font-size: 14px; }
+.kupit-help-copy small { color: var(--muted-foreground); font-size: 11.5px; line-height: 1.35; }
+
+.kupit-help-card button,
+.kupit-primary-button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--primary-foreground);
+  background: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.kupit-statement,
+.kupit-statement-content {
+  width: 100%;
+}
+
+.kupit-statement-content {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.kupit-statement-content label,
+.kupit-budget-cycle {
+  display: grid;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.kupit-statement-content input,
+.kupit-budget-cycle input {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 0 10px;
+  color: var(--foreground);
+  background: var(--background);
+}
+
+.kupit-statement-totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.kupit-statement-totals span {
+  display: grid;
+  gap: 3px;
+  border-radius: 11px;
+  padding: 9px;
+  background: var(--muted);
+  text-align: center;
+}
+
+.kupit-statement-totals small { color: var(--muted-foreground); font-size: 9.5px; }
+.kupit-statement-totals b { font-size: 11.5px; }
+
+.kupit-backup-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.kupit-backup-actions button,
+.kupit-backup-actions label {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--foreground);
+  background: var(--background);
+  font-size: 10.5px;
+  font-weight: 750;
+  text-align: center;
+  cursor: pointer;
+}
+
+.kupit-backup-actions input { display: none; }
+
+.kupit-about-card {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.kupit-about-card img {
+  grid-row: 1 / 3;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.kupit-about-card > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.kupit-about-card > div b { font-size: 16px; }
+.kupit-about-card > div span {
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.kupit-about-card p,
+.kupit-about-card small {
+  grid-column: 1 / -1;
+  margin: 5px 0 0;
+}
+
+.kupit-about-card p { color: var(--muted-foreground); font-size: 12px; }
+.kupit-about-card small { color: var(--muted-foreground); font-size: 10.5px; }
+
+.kupit-reset-button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid color-mix(in oklch, var(--destructive) 25%, var(--border));
+  border-radius: 16px;
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 7%, var(--card));
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.kupit-reset-button.confirm {
+  background: color-mix(in oklch, var(--destructive) 16%, var(--card));
+}
+
+.kupit-settings-empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  border: 1px dashed var(--border);
+  border-radius: 22px;
+  color: var(--muted-foreground);
+  background: var(--card);
+  text-align: center;
+}
+
+.kupit-settings-empty b {
+  color: var(--foreground);
+  font-size: 14px;
+}
+
+.kupit-settings-empty small {
+  font-size: 11.5px;
+}
+
+.kupit-settings-footer {
+  padding: 12px 0 20px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.kupit-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 61;
+  display: grid;
+  align-items: end;
+  background: rgb(0 0 0 / 35%);
+}
+
+.kupit-detail-sheet {
+  width: min(100%, 620px);
+  max-height: 78dvh;
+  justify-self: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 26px 26px 0 0;
+  background: var(--card);
+  box-shadow: 0 -18px 55px rgb(0 0 0 / 28%);
+}
+
+.kupit-detail-sheet header {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 7px 10px;
+  text-align: center;
+}
+
+.kupit-detail-sheet header button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.kupit-detail-content {
+  max-height: calc(78dvh - 58px);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.kupit-detail-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.kupit-detail-profile > span {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: var(--primary);
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.kupit-detail-profile > div {
+  display: grid;
+  gap: 3px;
+}
+
+.kupit-detail-profile small,
+.kupit-muted {
+  color: var(--muted-foreground);
+}
+
+.kupit-danger-link {
+  margin-top: 16px;
+  border: 0;
+  color: var(--destructive);
+  background: transparent;
+  font-weight: 800;
+}
+
+.kupit-currency-search {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0 11px;
+  color: var(--muted-foreground);
+  background: var(--background);
+}
+
+.kupit-currency-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: var(--foreground);
+  background: transparent;
+}
+
+.kupit-currency-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.kupit-currency-list button {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 42px 1fr 20px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 7px 10px;
+  color: var(--foreground);
+  background: var(--background);
+  text-align: left;
+}
+
+.kupit-currency-list button.selected {
+  border-color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 8%, var(--card));
+}
+
+.kupit-currency-list button > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  font-weight: 900;
+}
+
+.kupit-currency-list button div {
+  display: grid;
+  gap: 2px;
+}
+
+.kupit-currency-list button small { color: var(--muted-foreground); }
+
+.kupit-preference-list,
+.kupit-simple-options {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--background);
+}
+
+.kupit-budget-cycle {
+  display: grid;
+  grid-template-columns: 1fr 70px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.kupit-budget-cycle input {
+  width: 70px;
+}
+
 /* ==========================================================================
    iOS 26 INSET GROUPED SETTINGS STYLES
    ========================================================================== */
