@@ -44,7 +44,19 @@ import { db } from "@/db/schema";
 import { initializeAppData, getAccountTemplates, seedDefaultCategories, EXPENSE_CATEGORIES, INCOME_CATEGORIES, LEGACY_EXPENSE_CATEGORY_NAMES } from "@/db/seed";
 import { createProfile } from "@/db/repositories/profiles";
 import { createAccount, softDeleteAccount } from "@/db/repositories/accounts";
-import { createTransaction, createTransfer, updateTransfer, softDeleteTransaction } from "@/db/repositories/transactions";
+import { createTransaction, createTransfer, updateTransfer, softDeleteTransaction, cancelTransaction, restoreTransaction, updateTransaction } from "@/db/repositories/transactions";
+import { cancelRecurringOccurrence, deleteRecurringOccurrence } from "@/db/repositories/historyActions";
+import {
+  createFriend,
+  updateFriend,
+  convertExpenseToLocalSplit,
+  reconfigureLocalSplit,
+  removeLocalSplit,
+  createSharedBill,
+  markSharedBillMemberPaid,
+  recordFriendPayment,
+  deleteFriendIfZero,
+} from "@/db/repositories/localFinance";
 import { createRecurringRule, processDueRecurringTransactions } from "@/db/repositories/recurring";
 import { computeAccountBalance, computeNetWorth } from "@/domain/balances";
 import { formatMoney, parseMoney } from "@/domain/money";
@@ -63,7 +75,7 @@ import {
   percentCentavos,
   type CalculatorOperator,
 } from "@/domain/calculator";
-import type { Account, AccountType, Category, CategoryType, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
+import type { Account, AccountType, Category, CategoryType, Friend, FriendLedgerEntry, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { AccountLogo } from "@/components/AccountLogo";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
@@ -71,6 +83,8 @@ import { FinsightsPage } from "@/components/FinsightsPage";
 import { useSheetGestures } from "@/hooks/useSheetGestures";
 import { useCollapsingNav } from "@/hooks/useCollapsingNav";
 import { KupitSettingsSheet } from "@/components/KupitSettingsSheet";
+import { loadAppSettings } from "@/lib/settings";
+import { t } from "@/lib/localization";
 
 type Tab = "home" | "wallet" | "plan" | "history";
 type ThemePreference = "system" | "light" | "dark" | "amoled";
@@ -104,6 +118,9 @@ function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [receiptFlowOpen, setReceiptFlowOpen] = useState(false);
   const [editingTransferId, setEditingTransferId] = useState<string | null>(null);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  const [duplicatingTransactionId, setDuplicatingTransactionId] = useState<string | null>(null);
+  const [recurringEditScope, setRecurringEditScope] = useState<"occurrence" | "future">("occurrence");
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [addMenuClosing, setAddMenuClosing] = useState(false);
   const addMenuCloseTimer = useRef<number | null>(null);
@@ -121,6 +138,8 @@ function App() {
   const categoryPicker = useRef<((categoryId: string) => void) | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [recurringShortcutId, setRecurringShortcutId] = useState<string | null>(null);
+  const [planPanelOpen, setPlanPanelOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   const closeAddMenu = (afterClose?: () => void) => {
     if (!addMenuOpen) {
@@ -195,7 +214,21 @@ function App() {
     if (!drag || !nav || drag.pointerId !== event.pointerId) return;
     navDragRef.current = null;
     if (!drag.didDrag) {
-      if (Math.abs(event.clientX - drag.startX) > 8 || Math.abs(event.clientY - drag.startY) > 8) {
+      const deltaX = Math.abs(event.clientX - drag.startX);
+      const deltaY = Math.abs(event.clientY - drag.startY);
+      const tappedCollapsedHome =
+        navCollapsed &&
+        event.target instanceof Element &&
+        Boolean(event.target.closest(".nav-item:first-child")) &&
+        deltaX < 22 &&
+        deltaY < 22;
+      if (tappedCollapsedHome) {
+        setNavCollapsed(false);
+        suppressNavClickRef.current = true;
+        window.setTimeout(() => { suppressNavClickRef.current = false; }, 500);
+        return;
+      }
+      if (deltaX > 8 || deltaY > 8) {
         suppressNavClickRef.current = true;
         window.setTimeout(() => { suppressNavClickRef.current = false; }, 500);
       }
@@ -356,6 +389,46 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const handlePlanPanel = (event: Event) => {
+      const custom = event as CustomEvent<boolean>;
+      setPlanPanelOpen(Boolean(custom.detail));
+    };
+    window.addEventListener("kupit:plan-panel", handlePlanPanel);
+    return () => window.removeEventListener("kupit:plan-panel", handlePlanPanel);
+  }, []);
+
+  useEffect(() => {
+    const editTransaction = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      setEditingTransactionId(custom.detail);
+      setEditingTransferId(null);
+      setDuplicatingTransactionId(null);
+      setFormInitialType("expense");
+      setAddOpen(true);
+    };
+    const duplicateTransaction = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      setDuplicatingTransactionId(custom.detail);
+      setEditingTransactionId(null);
+      setEditingTransferId(null);
+      setFormInitialType("expense");
+      setAddOpen(true);
+    };
+    const recurringEditScopeEvent = (event: Event) => {
+      const custom = event as CustomEvent<"occurrence" | "future">;
+      setRecurringEditScope(custom.detail);
+    };
+    window.addEventListener("kupit:edit-transaction", editTransaction);
+    window.addEventListener("kupit:duplicate-transaction", duplicateTransaction);
+    window.addEventListener("kupit:recurring-edit-scope", recurringEditScopeEvent);
+    return () => {
+      window.removeEventListener("kupit:edit-transaction", editTransaction);
+      window.removeEventListener("kupit:duplicate-transaction", duplicateTransaction);
+      window.removeEventListener("kupit:recurring-edit-scope", recurringEditScopeEvent);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!supabase || handledAuthCallback.current) return;
     const callbackUrl = new URL(window.location.href);
     const hasAuthError = callbackUrl.searchParams.has("error") || callbackUrl.searchParams.has("error_description");
@@ -424,6 +497,7 @@ function App() {
             <BudgetsPage
               profileId={profileId}
               onOpenCategories={() => setCategoryManagerOpen(true)}
+              onOpenFriends={() => setFriendsOpen(true)}
             />
           )}
           {tab === "history" && <TransactionsPage profileId={profileId} />}
@@ -433,7 +507,7 @@ function App() {
       {/* Primary 5-Tab Navigation Bar */}
       <nav
         ref={navRef}
-        className={`bottom-nav ${navCollapsed ? "collapsed" : ""} ${navEntering ? "nav-entering" : ""} ${navDragging ? "dragging" : ""}`}
+        className={`bottom-nav ${navCollapsed ? "collapsed" : ""} ${navEntering ? "nav-entering" : ""} ${navDragging ? "dragging" : ""} ${planPanelOpen ? "hidden-by-panel" : ""}`}
         data-active-tab={addMenuOpen ? "add" : tab}
         aria-label="Primary navigation"
         onPointerDown={handleNavPointerDown}
@@ -483,11 +557,14 @@ function App() {
       {/* Sheets and Overlays */}
       <AddTransactionSheet
         open={addOpen}
-        onClose={() => { setAddOpen(false); setReceiptFlowOpen(false); setEditingTransferId(null); }}
+        onClose={() => { setAddOpen(false); setReceiptFlowOpen(false); setEditingTransferId(null); setEditingTransactionId(null); setDuplicatingTransactionId(null); }}
         profileId={profileId}
         initialType={formInitialType}
         receiptFlow={receiptFlowOpen}
         editTransactionId={editingTransferId || undefined}
+        editingTransactionId={editingTransactionId || undefined}
+        duplicatingTransactionId={duplicatingTransactionId || undefined}
+        recurringEditScope={recurringEditScope}
         onOpenCategoryManager={(categoryType, onSelect) => {
           categoryPicker.current = (categoryId) => {
             onSelect(categoryId);
@@ -536,6 +613,7 @@ function App() {
         }}
         authCallbackNotice={authCallbackNotice}
       />
+      {friendsOpen && <FriendsSheet profileId={profileId} onClose={() => setFriendsOpen(false)} />}
 
       <CategoryManagerSheet
         open={categoryManagerOpen}
@@ -821,6 +899,8 @@ function TransactionList({
     [profileId],
     []
   );
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const longPressTimer = useRef<number | null>(null);
 
   if (!transactions.length) {
     return (
@@ -828,6 +908,338 @@ function TransactionList({
         <ReceiptText size={28} />
         <p>No transactions yet</p>
         <small>Add your first one with the + button.</small>
+      </div>
+    );
+  }
+
+  function HistoryTransactionDetail({
+    transactionId,
+    profileId,
+    onClose,
+  }: {
+    transactionId: string;
+    profileId: string;
+    onClose: () => void;
+  }) {
+    const transaction = useLiveQuery(() => db.transactions.get(transactionId), [transactionId]);
+    const account = useLiveQuery(
+      () => transaction ? db.accounts.get(transaction.accountId) : undefined,
+      [transaction?.accountId]
+    );
+    const accounts = useLiveQuery(
+      () => db.accounts.where({ profileId }).filter((item) => !item.deletedAt && !item.isArchived).toArray(),
+      [profileId],
+      []
+    );
+    const categories = useLiveQuery(() => db.categories.where({ profileId }).toArray(), [profileId], []);
+    const friends = useLiveQuery(
+      () => db.friends.where({ profileId }).filter((friend) => !friend.deletedAt && !friend.archivedAt).toArray(),
+      [profileId],
+      []
+    );
+    const sharedMembers = useLiveQuery(
+      () => transaction?.sharedBillId
+        ? db.sharedBillMembers.where({ sharedBillId: transaction.sharedBillId }).toArray()
+        : [],
+      [transaction?.sharedBillId]
+    );
+    const [flow, setFlow] = useState<"actions" | "split" | "shared">("actions");
+    const [friendIds, setFriendIds] = useState<string[]>([]);
+    const [mode, setMode] = useState<"equal" | "exact" | "percent">("equal");
+    const [exactShares, setExactShares] = useState<number[]>([]);
+    const [percentShares, setPercentShares] = useState<number[]>([]);
+    const [billTitle, setBillTitle] = useState("");
+    const [undoVisible, setUndoVisible] = useState(false);
+    const [paymentMemberId, setPaymentMemberId] = useState<string | null>(null);
+    const [paymentCreditAccountId, setPaymentCreditAccountId] = useState("");
+    const deleteTimerRef = useRef<number | null>(null);
+
+    if (!transaction) return null;
+    const category = categories.find((item) => item.id === transaction.categoryId);
+    const canSplit = transaction.type === "expense" && !transaction.cancelledAt && !transaction.deletedAt;
+
+    const participantCount = friendIds.length + 1;
+    const remaining = flow === "split"
+      ? transaction.amount - exactShares.reduce((sum, value) => sum + value, 0)
+      : transaction.amount;
+
+    const toggleFriend = (friendId: string) => {
+      setFriendIds((current) => current.includes(friendId)
+        ? current.filter((id) => id !== friendId)
+        : [...current, friendId]);
+    };
+
+    const saveSplit = async () => {
+      if (!friendIds.length) return;
+      try {
+        if (transaction.splitId) {
+          await reconfigureLocalSplit(
+            transaction.id,
+            friendIds,
+            mode,
+            exactShares,
+            percentShares.map((value) => value * 100)
+          );
+        } else {
+          await convertExpenseToLocalSplit({
+            profileId,
+            transactionId: transaction.id,
+            friendIds,
+            mode,
+            exactShares,
+            percentHundredths: percentShares.map((value) => value * 100),
+          });
+        }
+        onClose();
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not save this split.");
+      }
+    };
+
+    const saveSharedBill = async () => {
+      if (!friendIds.length) return;
+      try {
+        if (transaction.splitId && !window.confirm("Switch from a local split to a shared bill? The split balances will be reversed.")) return;
+        if (transaction.splitId) await removeLocalSplit(transaction.id);
+        await createSharedBill(
+          profileId,
+          transaction.id,
+          billTitle.trim() || category?.name || "Shared bill",
+          ["", ...friendIds],
+          mode,
+          exactShares,
+          percentShares.map((value) => value * 100)
+        );
+        onClose();
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not create this shared bill.");
+      }
+    };
+
+    const deleteTransaction = async () => {
+      if (!window.confirm("Delete this record? You can undo for about 6 seconds.")) return;
+      try {
+        if (transaction.recurringId) await deleteRecurringOccurrence(transaction.id);
+        else await softDeleteTransaction(transaction.id);
+        setUndoVisible(true);
+        deleteTimerRef.current = window.setTimeout(async () => {
+          setUndoVisible(false);
+          await db.transaction("rw", db.tables, async () => {
+            await db.transactions.delete(transaction.id);
+            await db.friendLedger.where("transactionId").equals(transaction.id).delete();
+            await db.localSplits.where("transactionId").equals(transaction.id).delete();
+            if (transaction.sharedBillId) {
+              await db.sharedBills.delete(transaction.sharedBillId);
+              await db.sharedBillMembers.where("sharedBillId").equals(transaction.sharedBillId).delete();
+            }
+            const fees = await db.transactions.filter((item) => item.transferId === transaction.id).toArray();
+            for (const fee of fees) await db.transactions.delete(fee.id);
+          });
+          onClose();
+        }, 6000);
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not delete this record.");
+      }
+    };
+
+    const cancelOrRestore = async () => {
+      try {
+        if (transaction.cancelledAt) {
+          await restoreTransaction(transaction.id);
+        } else {
+          const reason = window.prompt("Optional cancellation reason")?.trim();
+          if (transaction.recurringId) await cancelRecurringOccurrence(transaction.id, reason || undefined);
+          else await cancelTransaction(transaction.id, reason || undefined);
+        }
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : "Could not update this record.");
+      }
+    };
+
+    return (
+      <div className="sheet-backdrop transaction-detail-backdrop" role="dialog" aria-modal="true" aria-label="Transaction details" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+        <section className="account-sheet transaction-detail-sheet">
+          <div className="sheet-grabber" />
+          <header className="sheet-header">
+            <button type="button" onClick={onClose} aria-label="Close"><X size={20} /></button>
+            <b>{category?.name || (transaction.type === "income" ? "Income" : transaction.type === "transfer" ? "Transfer" : "Expense")}</b>
+            <span />
+          </header>
+          <div className="transaction-detail-content">
+            {flow === "actions" ? (
+              <>
+                <div className={`transaction-detail-amount ${transaction.cancelledAt ? "cancelled" : ""}`}>
+                  <small>{account?.name || "Account"} · {formatRelativeDate(transaction.date)}</small>
+                  <strong>{transaction.type === "expense" ? "−" : transaction.type === "income" ? "+" : ""}{formatMoney(transaction.amount)}</strong>
+                  {transaction.cancelledAt && <span className="history-cancelled-badge">{t("cancelled")}</span>}
+                </div>
+                {transaction.note && <p className="transaction-detail-note">{transaction.note}</p>}
+                <div className="transaction-detail-actions">
+                  <button type="button" onClick={() => {
+                    if (transaction.type === "transfer") window.dispatchEvent(new CustomEvent("kupit:edit-transfer", { detail: transaction.id }));
+                    else {
+                      if (transaction.recurringId) {
+                        const scope = window.prompt("Edit recurring expense:\n1 = This occurrence only\n2 = This and future", "1");
+                        window.dispatchEvent(new CustomEvent("kupit:recurring-edit-scope", { detail: scope === "2" ? "future" : "occurrence" }));
+                      } else {
+                        window.dispatchEvent(new CustomEvent("kupit:recurring-edit-scope", { detail: "occurrence" }));
+                      }
+                      window.dispatchEvent(new CustomEvent("kupit:edit-transaction", { detail: transaction.id }));
+                    }
+                    onClose();
+                  }}><Edit2 size={16} />{t("edit")}</button>
+                  <button type="button" onClick={() => {
+                    window.dispatchEvent(new CustomEvent("kupit:duplicate-transaction", { detail: transaction.id }));
+                    onClose();
+                  }}><ReceiptText size={16} />{t("duplicate")}</button>
+                  <button type="button" onClick={cancelOrRestore}>
+                    {transaction.cancelledAt ? <RefreshCw size={16} /> : <Pause size={16} />}
+                    {transaction.cancelledAt ? t("restore") : t("cancel")}
+                  </button>
+                  <button type="button" className="danger" onClick={deleteTransaction}><Trash2 size={16} />{t("delete")}</button>
+                </div>
+                {canSplit && (
+                  <div className="transaction-detail-split-actions">
+                    <button type="button" onClick={() => { setFlow("split"); setFriendIds(transaction.splitId ? [] : []); }}><WalletCards size={17} />{t("splitWithFriends")}</button>
+                    <button type="button" onClick={() => { setFlow("shared"); setBillTitle(category?.name || "Shared bill"); }}><HandCoins size={17} />{t("makeSharedBill")}</button>
+                  </div>
+                )}
+                {transaction.sharedBillId && (
+                  <div className="shared-bill-members">
+                    <p><b>{(sharedMembers || []).filter((member) => member.status === "paid").length} of {(sharedMembers || []).length} paid</b></p>
+                    {(sharedMembers || []).map((member) => (
+                      <div key={member.id}>
+                        <span><b>{member.name}</b><small>{member.status} · {formatMoney(member.paidAmount)} / {formatMoney(member.amount)}</small></span>
+                        {member.status !== "paid" && <button type="button" onClick={() => {
+                          setPaymentCreditAccountId("");
+                          setPaymentMemberId(member.id);
+                        }}>Mark paid</button>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {undoVisible && (
+                  <button type="button" className="undo-toast visible" onClick={async () => {
+                    if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
+                    deleteTimerRef.current = null;
+                    await restoreTransaction(transaction.id);
+                    setUndoVisible(false);
+                    onClose();
+                  }}>Deleted · Undo</button>
+                )}
+                {paymentMemberId && transaction.sharedBillId && (
+                  <div className="shared-payment-overlay" role="dialog" aria-modal="true" aria-label="Record shared bill payment">
+                    <section className="shared-payment-dialog">
+                      <h3>Mark portion paid</h3>
+                      <p>This updates the bill’s payment status only. Optionally, record the received amount in one of your accounts.</p>
+                      <label>
+                        Credit account <span>Optional</span>
+                        <select value={paymentCreditAccountId} onChange={(event) => setPaymentCreditAccountId(event.target.value)}>
+                          <option value="">Tracking only — don’t change account balance</option>
+                          {accounts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                        </select>
+                      </label>
+                      <div className="shared-payment-actions">
+                        <button type="button" onClick={() => setPaymentMemberId(null)}>Back</button>
+                        <button type="button" className="save-button" onClick={async () => {
+                          const member = (sharedMembers || []).find((item) => item.id === paymentMemberId);
+                          if (!member) return;
+                          try {
+                            await markSharedBillMemberPaid(
+                              transaction.sharedBillId!,
+                              member.id,
+                              member.amount - member.paidAmount,
+                              paymentCreditAccountId || undefined
+                            );
+                            setPaymentMemberId(null);
+                          } catch (error) {
+                            window.alert(error instanceof Error ? error.message : "Could not update the bill payment.");
+                          }
+                        }}>Mark paid</button>
+                      </div>
+                    </section>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="transaction-split-flow">
+                <h3>{flow === "split" ? t("splitWithFriends") : t("makeSharedBill")}</h3>
+                {flow === "shared" && (
+                  <label className="transaction-split-title">Title<input value={billTitle} onChange={(event) => setBillTitle(event.target.value)} /></label>
+                )}
+                <div className="transaction-split-mode">
+                  {(["equal", "exact", "percent"] as const).map((value) => (
+                    <button type="button" key={value} className={mode === value ? "selected" : ""} onClick={() => setMode(value)}>
+                      {value === "equal" ? t("equal") : value === "exact" ? t("exact") : t("percent")}
+                    </button>
+                  ))}
+                </div>
+                <div className="transaction-friend-picker">
+                  {friends.map((friend) => (
+                    <button type="button" key={friend.id} className={friendIds.includes(friend.id) ? "selected" : ""} onClick={() => toggleFriend(friend.id)}>
+                      <span style={{ background: friend.avatarColor }}>{friend.name[0]?.toUpperCase()}</span>
+                      <b>{friend.name}</b>
+                      {friendIds.includes(friend.id) && <CheckCircle2 size={17} />}
+                    </button>
+                  ))}
+                  <button type="button" onClick={async () => {
+                    const name = window.prompt("Friend name");
+                    if (!name?.trim()) return;
+                    const friendId = await createFriend(profileId, { name, avatarColor: "#019B51" });
+                    setFriendIds((current) => [...current, friendId]);
+                  }}><Plus size={17} />{t("addFriend")}</button>
+                </div>
+                {mode !== "equal" && friendIds.length > 0 && (
+                  <div className="transaction-exact-shares">
+                    <label>Me ({formatMoney(mode === "exact" ? (exactShares[0] || 0) : 0)})
+                      {mode === "exact" && <input type="number" min={0} value={(exactShares[0] || 0) / 100} onChange={(event) => {
+                        const next = [...exactShares];
+                        next[0] = Math.round(Number(event.target.value || 0) * 100);
+                        setExactShares(next);
+                      }} />}
+                      {mode === "percent" && <input type="number" min={0} max={100} value={percentShares[0] || 0} onChange={(event) => {
+                        const next = [...percentShares];
+                        next[0] = Number(event.target.value || 0);
+                        setPercentShares(next);
+                      }} />}
+                    </label>
+                    {friendIds.map((friendId, index) => {
+                      const friend = friends.find((item) => item.id === friendId);
+                      return (
+                        <label key={friendId}>{friend?.name}
+                          {mode === "exact" && <input type="number" min={0} value={(exactShares[index + 1] || 0) / 100} onChange={(event) => {
+                            const next = [...exactShares];
+                            next[index + 1] = Math.round(Number(event.target.value || 0) * 100);
+                            setExactShares(next);
+                          }} />}
+                          {mode === "percent" && <input type="number" min={0} max={100} value={percentShares[index + 1] || 0} onChange={(event) => {
+                            const next = [...percentShares];
+                            next[index + 1] = Number(event.target.value || 0);
+                            setPercentShares(next);
+                          }} />}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                {mode === "equal" && friendIds.length > 0 && (
+                  <p className="transaction-split-remaining">{t("remaining")}: <b>{formatMoney(transaction.amount % participantCount === 0 ? 0 : transaction.amount % participantCount)}</b></p>
+                )}
+                {mode === "exact" && <p className="transaction-split-remaining">{t("remaining")}: <b>{formatMoney(remaining)}</b></p>}
+                {mode === "percent" && <p className="transaction-split-remaining">Total: <b>{percentShares.reduce((sum, value) => sum + value, 0)}%</b></p>}
+                <div className="transaction-split-footer">
+                  <button type="button" onClick={() => setFlow("actions")}>Back</button>
+                  <button
+                    type="button"
+                    className="save-button"
+                    disabled={friendIds.length === 0 || (mode === "exact" && remaining !== 0) || (mode === "percent" && percentShares.reduce((sum, value) => sum + value, 0) !== 100)}
+                    onClick={flow === "split" ? saveSplit : saveSharedBill}
+                  >{t("save")}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     );
   }
@@ -840,7 +1252,7 @@ function TransactionList({
           ? accounts.find((a) => a.id === tx.toAccountId)
           : null;
         const category = categories.find((c) => c.id === tx.categoryId);
-        const positive = tx.type === "income";
+        const positive = tx.type === "income" || tx.type === "friend_payment";
         const transfer = tx.type === "transfer";
 
         const primaryTitle = transfer
@@ -857,7 +1269,22 @@ function TransactionList({
             : account?.name || "Account";
 
         return (
-          <article className="transaction-row" key={tx.id}>
+          <article
+            className={`transaction-row ${tx.cancelledAt ? "cancelled" : ""}`}
+            key={tx.id}
+            onClick={() => setDetailId(tx.id)}
+            onContextMenu={(event) => { event.preventDefault(); setDetailId(tx.id); }}
+            onPointerDown={(event) => {
+              if (event.pointerType === "mouse") return;
+              longPressTimer.current = window.setTimeout(() => setDetailId(tx.id), 600);
+            }}
+            onPointerUp={() => {
+              if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+            }}
+            onPointerLeave={() => {
+              if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+            }}
+          >
             {transfer ? (
               <span className="transaction-icon transfer">
                 <ArrowLeftRight size={18} />
@@ -872,6 +1299,10 @@ function TransactionList({
             <div className="transaction-main">
               <div className="transaction-title-row">
                 <b>{primaryTitle}</b>
+                {tx.editedAt && <span className="history-edited-badge">Edited</span>}
+                {tx.cancelledAt && <span className="history-cancelled-badge">Cancelled</span>}
+                {tx.splitId && <span className="history-split-badge">Split · your share {formatMoney(tx.personalShareAmount || 0)}</span>}
+                {tx.sharedBillId && <span className="history-split-badge">Shared bill</span>}
                 {tx.recurringId && (
                   <button
                     type="button"
@@ -899,6 +1330,13 @@ function TransactionList({
           </article>
         );
       })}
+      {detailId && (
+        <HistoryTransactionDetail
+          transactionId={detailId}
+          profileId={profileId}
+          onClose={() => setDetailId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1102,7 +1540,9 @@ function TransactionsPage({ profileId }: { profileId: string }) {
           const net = items.reduce(
             (sum, tx) =>
               sum +
-              (tx.type === "income" ? tx.amount : tx.type === "expense" ? -tx.amount : 0),
+              (tx.cancelledAt ? 0 :
+                tx.type === "income" ? tx.amount :
+                tx.type === "expense" ? -(tx.personalShareAmount ?? tx.amount) : 0),
             0
           );
           return (
@@ -1159,6 +1599,11 @@ function AccountsPage({
     [profileId],
     []
   );
+  const friendEntries = useLiveQuery(
+    () => db.friendLedger.where({ profileId }).filter((entry) => !entry.deletedAt).toArray(),
+    [profileId],
+    []
+  );
   const balances = useMemo(
     () =>
       new Map(
@@ -1169,7 +1614,18 @@ function AccountsPage({
       ),
     [accounts, transactions]
   );
-  const net = computeNetWorth(accounts, balances);
+  const baseNet = computeNetWorth(accounts, balances);
+  const friendReceivables = loadAppSettings().includeFriendReceivables
+    ? friendEntries.reduce((sum, entry) => {
+        if (entry.type === "shared_bill") return sum;
+        return sum + (entry.direction === "owed_to_me" ? entry.amount : -entry.amount);
+      }, 0)
+    : 0;
+  const net = {
+    ...baseNet,
+    assets: baseNet.assets + Math.max(0, friendReceivables),
+    netWorth: baseNet.netWorth + friendReceivables,
+  };
   const groups: { label: string; types: Account["type"][] }[] = [
     { label: "Cash & banks", types: ["cash", "bank", "ewallet"] },
     { label: "Investments", types: ["investment"] },
@@ -1285,9 +1741,11 @@ function AccountsPage({
 function BudgetsPage({
   profileId,
   onOpenCategories,
+  onOpenFriends,
 }: {
   profileId: string;
   onOpenCategories: () => void;
+  onOpenFriends: () => void;
 }) {
   const budgets = useLiveQuery(
     () => db.budgets.where({ profileId }).filter((b) => !b.deletedAt).toArray(),
@@ -1315,6 +1773,15 @@ function BudgetsPage({
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [debtsOpen, setDebtsOpen] = useState(false);
   const { start, end } = getCurrentMonthRange();
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("kupit:plan-panel", {
+      detail: budgetOpen || goalOpen || recurringOpen || debtsOpen,
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("kupit:plan-panel", { detail: false }));
+    };
+  }, [budgetOpen, goalOpen, recurringOpen, debtsOpen]);
 
   return (
     <div className="content">
@@ -1357,7 +1824,8 @@ function BudgetsPage({
                   (tx) => tx.type === "expense" && tx.date >= start && tx.date <= end
                 )
                 .filter((tx) => tx.categoryId === budget.categoryId)
-                .reduce((sum, tx) => sum + tx.amount, 0);
+                .filter((tx) => !tx.cancelledAt)
+                .reduce((sum, tx) => sum + (tx.personalShareAmount ?? tx.amount), 0);
               const percent =
                 budget.amount > 0
                   ? Math.min(100, Math.round((spent / budget.amount) * 100))
@@ -1444,6 +1912,16 @@ function BudgetsPage({
       </section>
 
       <section className="plan-tools">
+        <button onClick={onOpenFriends}>
+          <span>
+            <UserRound size={18} />
+          </span>
+          <div>
+            <b>Friends</b>
+            <small>Local shared balances</small>
+          </div>
+          <ChevronRight size={18} />
+        </button>
         <button onClick={() => setRecurringOpen(true)}>
           <span>
             <CalendarClock size={18} />
@@ -2188,7 +2666,7 @@ function ChatLogSheet({
                     <input value={draft.note} onChange={(event) => updateDraft(index, { note: event.target.value })} placeholder="Merchant or note" />
                   </label>
                   <label>Type
-                    <select value={draft.type} onChange={(event) => updateDraft(index, { type: event.target.value as TransactionType, categoryHint: null })}>
+                    <select value={draft.type} onChange={(event) => updateDraft(index, { type: event.target.value as "expense" | "income" | "transfer", categoryHint: null })}>
                       <option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option>
                     </select>
                   </label>
@@ -2298,6 +2776,13 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
     setPrincipal("");
   };
 
+  const iOweTotal = debts
+    .filter((debt) => debt.direction === "i_owe")
+    .reduce((sum, debt) => sum + debt.principal, 0);
+  const owedToMeTotal = debts
+    .filter((debt) => debt.direction === "owed_to_me")
+    .reduce((sum, debt) => sum + debt.principal, 0);
+
   return (
     <div
       className="sheet-backdrop"
@@ -2305,49 +2790,73 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
       aria-modal="true"
       aria-label="Debts and receivables"
     >
-      <section className="account-sheet">
+      <section className="account-sheet debts-sheet">
         <header className="sheet-header">
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <b>Debts & receivables</b>
+          <b>{t("debtsAndReceivables")}</b>
           <span />
         </header>
-        <div className="debts-list">
-          {debts.map((debt) => (
-            <article key={debt.id}>
-              <span>
-                <b>{debt.counterparty}</b>
-                <small>{debt.direction === "i_owe" ? "I owe" : "Owed to me"}</small>
-              </span>
-              <strong>{formatMoney(debt.principal)}</strong>
-            </article>
-          ))}
-          {!debts.length && <p className="muted">No debts or receivables yet.</p>}
+        <div className="debts-content">
+          <div className="debts-summary">
+            <div>
+              <small>{t("iOwe")}</small>
+              <strong>{formatMoney(iOweTotal)}</strong>
+            </div>
+            <div>
+              <small>{t("owedToMe")}</small>
+              <strong>{formatMoney(owedToMeTotal)}</strong>
+            </div>
+          </div>
+          <div className="debts-list">
+            {debts.map((debt) => (
+              <article key={debt.id}>
+                <span className={`debt-direction-icon ${debt.direction}`}>
+                  {debt.direction === "i_owe" ? <ArrowUpRight size={17} /> : <ArrowDownLeft size={17} />}
+                </span>
+                <div>
+                  <b>{debt.counterparty}</b>
+                  <small>{debt.direction === "i_owe" ? t("iOwe") : t("owedToMe")}</small>
+                </div>
+                <strong className={debt.direction === "owed_to_me" ? "positive" : "negative"}>
+                  {formatMoney(debt.principal)}
+                </strong>
+              </article>
+            ))}
+            {!debts.length && (
+              <div className="debts-empty">
+                <HandCoins size={24} />
+                <p>{t("noDebts")}</p>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="account-form">
+        <div className="debts-form">
+          <div className="debts-form-title">
+            <b>{t("saveRecord")}</b>
+            <span>{t("principal")}: {formatMoney(parseMoney(principal))}</span>
+          </div>
           <label>
-            Direction
+            {t("direction")}
             <select
               value={direction}
-              onChange={(event) =>
-                setDirection(event.target.value as typeof direction)
-              }
+              onChange={(event) => setDirection(event.target.value as typeof direction)}
             >
-              <option value="i_owe">I owe someone</option>
-              <option value="owed_to_me">Someone owes me</option>
+              <option value="i_owe">{t("iOweSomeone")}</option>
+              <option value="owed_to_me">{t("someoneOwesMe")}</option>
             </select>
           </label>
           <label>
-            Name
+            {t("counterparty")}
             <input
               value={counterparty}
               onChange={(event) => setCounterparty(event.target.value)}
-              placeholder="Counterparty"
+              placeholder={t("counterparty")}
             />
           </label>
           <label>
-            Principal
+            {t("principal")}
             <input
               inputMode="decimal"
               value={principal}
@@ -2355,8 +2864,8 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
               placeholder="0.00"
             />
           </label>
-          <button className="save-button" onClick={save}>
-            Save record
+          <button className="save-button" onClick={save} disabled={!counterparty.trim() || !parseMoney(principal)}>
+            {t("saveRecord")}
           </button>
         </div>
       </section>
@@ -2796,6 +3305,218 @@ function SettingsSheet({
   );
 }
 
+function FriendsSheet({
+  profileId,
+  onClose,
+}: {
+  profileId: string;
+  onClose: () => void;
+}) {
+  const friends = useLiveQuery(
+    () => db.friends.where({ profileId }).filter((friend) => !friend.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const entries = useLiveQuery(
+    () => db.friendLedger.where({ profileId }).filter((entry) => !entry.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const accounts = useLiveQuery(
+    () => db.accounts.where({ profileId }).filter((account) => !account.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const sharedBills = useLiveQuery(
+    () => db.sharedBills.where({ profileId }).filter((bill) => !bill.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentAccountId, setPaymentAccountId] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [addFriendOpen, setAddFriendOpen] = useState(false);
+  const [newFriendName, setNewFriendName] = useState("");
+  const [newFriendPhone, setNewFriendPhone] = useState("");
+  const [newFriendNote, setNewFriendNote] = useState("");
+  const [newFriendColor, setNewFriendColor] = useState("#019B51");
+
+  const friendBalance = (friendId: string) => (entries || [])
+    .filter((entry) => entry.friendId === friendId)
+    .filter((entry) => entry.type !== "shared_bill")
+    .reduce((sum, entry) => sum + (entry.direction === "owed_to_me" ? entry.amount : -entry.amount), 0);
+
+  const total = friends.reduce((sum, friend) => sum + friendBalance(friend.id), 0);
+  const selectedFriend = friends.find((friend) => friend.id === selectedFriendId);
+  const ledger = (entries || [])
+    .filter((entry) => entry.friendId === selectedFriendId)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+
+  const addFriend = async () => {
+    if (!newFriendName.trim()) return;
+    await createFriend(profileId, {
+      name: newFriendName,
+      phone: newFriendPhone,
+      note: newFriendNote,
+      avatarColor: newFriendColor,
+    });
+    document.querySelector<HTMLElement>(".friends-sheet")?.removeAttribute("data-sheet-dirty");
+    setNewFriendName("");
+    setNewFriendPhone("");
+    setNewFriendNote("");
+    setNewFriendColor("#019B51");
+    setAddFriendOpen(false);
+  };
+
+  const recordPayment = async () => {
+    if (!selectedFriend) return;
+    const cents = Math.round(Number(paymentAmount || 0) * 100);
+    if (!Number.isInteger(cents) || cents <= 0) {
+      window.alert("Enter a positive payment amount.");
+      return;
+    }
+    try {
+      await recordFriendPayment(
+        profileId,
+        selectedFriend.id,
+        cents,
+        toDateString(new Date()),
+        paymentNote,
+        paymentAccountId || undefined
+      );
+      setPaymentAmount("");
+      setPaymentNote("");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Could not record the payment.");
+    }
+  };
+
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Friends">
+      <section className="account-sheet friends-sheet">
+        <header className="sheet-header">
+          <button type="button" onClick={onClose} aria-label="Close"><X size={20} /></button>
+          <b>{t("friends")}</b>
+          <button type="button" onClick={() => setAddFriendOpen(true)} aria-label="Add friend"><Plus size={18} /></button>
+        </header>
+        <div className="friends-content">
+          <div className="friends-total">
+            <small>Local shared balance</small>
+            <strong>{formatMoney(total)}</strong>
+          </div>
+          {!selectedFriend ? (
+            <>
+              <div className="friends-list">
+                {friends.filter((friend) => !friend.archivedAt).map((friend) => {
+                  const balance = friendBalance(friend.id);
+                  return (
+                    <button type="button" key={friend.id} onClick={() => setSelectedFriendId(friend.id)}>
+                      <span style={{ background: friend.avatarColor }}>{friend.name[0]?.toUpperCase()}</span>
+                      <div><b>{friend.name}</b><small>{balance === 0 ? "Settled" : balance > 0 ? "Owes you" : "You owe"}</small></div>
+                      <strong className={balance > 0 ? "positive" : balance < 0 ? "negative" : ""}>{formatMoney(Math.abs(balance))}</strong>
+                      <ChevronRight size={16} />
+                    </button>
+                  );
+                })}
+                {!friends.filter((friend) => !friend.archivedAt).length && <p className="muted">No friends yet.</p>}
+              </div>
+              <div className="friends-recent-bills">
+                <h3>Shared bills</h3>
+                {sharedBills.map((bill) => {
+                  const tx = bill.transactionId ? undefined : undefined;
+                  return <div key={bill.id}><b>{bill.title}</b><small>Tracking only</small></div>;
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="friend-ledger">
+              <button type="button" className="friend-ledger-back" onClick={() => setSelectedFriendId(null)}>← {t("friends")}</button>
+              <div className="friend-ledger-head">
+                <span style={{ background: selectedFriend.avatarColor }}>{selectedFriend.name[0]?.toUpperCase()}</span>
+                <div><b>{selectedFriend.name}</b><small>{friendBalance(selectedFriend.id) > 0 ? "Owes you" : friendBalance(selectedFriend.id) < 0 ? "You owe" : "Settled"}</small></div>
+                <strong>{formatMoney(Math.abs(friendBalance(selectedFriend.id)))}</strong>
+              </div>
+              <div className="friend-payment-form">
+                <label>Amount<input inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} placeholder="0.00" /></label>
+                <label>Credit account<select value={paymentAccountId} onChange={(event) => setPaymentAccountId(event.target.value)}><option value="">None</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+                <label>Note<input value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} /></label>
+                <button type="button" onClick={recordPayment}>Record payment</button>
+                <button type="button" onClick={async () => {
+                  const balance = friendBalance(selectedFriend.id);
+                  if (balance <= 0) { window.alert("This friend is already settled."); return; }
+                  await recordFriendPayment(profileId, selectedFriend.id, balance, toDateString(new Date()), "Settled up", paymentAccountId || undefined);
+                }}>Settle up</button>
+              </div>
+              <div className="friend-ledger-timeline">
+                {ledger.map((entry) => (
+                  <div key={entry.id}>
+                    <span>{entry.type === "payment" ? "Payment" : entry.type === "adjustment" ? "Adjustment" : entry.type === "shared_bill" ? "Shared bill" : "Expense share"}</span>
+                    <b>{entry.direction === "owed_to_me" ? "+" : "−"}{formatMoney(entry.amount)}</b>
+                    <small>{entry.note || entry.date}</small>
+                  </div>
+                ))}
+              </div>
+              <div className="friend-ledger-actions">
+                <button type="button" onClick={async () => {
+                  const name = window.prompt("Rename friend", selectedFriend.name);
+                  if (name?.trim()) await updateFriend(selectedFriend.id, { name: name.trim() });
+                }}>Rename</button>
+                <button type="button" onClick={async () => {
+                  await updateFriend(selectedFriend.id, { archivedAt: selectedFriend.archivedAt ? null : new Date().toISOString() });
+                  setSelectedFriendId(null);
+                }}>{selectedFriend.archivedAt ? "Restore" : "Archive"}</button>
+                <button type="button" className="danger" onClick={async () => {
+                  const deleted = await deleteFriendIfZero(profileId, selectedFriend.id);
+                  if (!deleted) window.alert("This friend can only be deleted at a zero balance.");
+                  else setSelectedFriendId(null);
+                }}>Delete</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {addFriendOpen && (
+          <div className="friend-add-overlay" role="dialog" aria-modal="true" aria-label="Add friend">
+            <div className="friend-add-sheet">
+              <div className="sheet-grabber" />
+              <header className="friend-add-header">
+                <div>
+                  <small>Local contact</small>
+                  <b>{t("addFriend")}</b>
+                </div>
+                <button type="button" onClick={() => setAddFriendOpen(false)} aria-label="Close"><X size={18} /></button>
+              </header>
+              <div className="friend-add-form">
+                <label>Name<input autoFocus value={newFriendName} onChange={(event) => setNewFriendName(event.target.value)} placeholder="Friend name" /></label>
+                <label>Phone <span>Optional</span><input value={newFriendPhone} onChange={(event) => setNewFriendPhone(event.target.value)} placeholder="+63" /></label>
+                <label>Note <span>Optional</span><input value={newFriendNote} onChange={(event) => setNewFriendNote(event.target.value)} placeholder="Nickname or details" /></label>
+                <div className="friend-color-field">
+                  <b>Avatar color</b>
+                  <div>
+                    {[
+                      "#019B51", "#10B981", "#0F766E", "#06B6D4",
+                      "#2563EB", "#6366F1", "#7C3AED", "#A855F7",
+                      "#DB2777", "#E11D48", "#DC2626", "#EA580C",
+                      "#D97706", "#CA8A04", "#64748B", "#475569",
+                    ].map((color) => (
+                      <button type="button" key={color} aria-label={color} className={newFriendColor === color ? "selected" : ""} style={{ background: color }} onClick={() => setNewFriendColor(color)} />
+                    ))}
+                    <label className="friend-custom-color" aria-label="Choose custom avatar color" title="Choose custom color">
+                      <span>+</span>
+                      <input type="color" value={newFriendColor} onChange={(event) => setNewFriendColor(event.target.value)} />
+                    </label>
+                  </div>
+                </div>
+                <button type="button" className="save-button" disabled={!newFriendName.trim()} onClick={addFriend}>{t("save")}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function AddTransactionSheet({
   open,
   onClose,
@@ -2804,6 +3525,9 @@ function AddTransactionSheet({
   onOpenCategoryManager,
   receiptFlow,
   editTransactionId,
+  editingTransactionId,
+  duplicatingTransactionId,
+  recurringEditScope,
 }: {
   open: boolean;
   onClose: () => void;
@@ -2812,6 +3536,9 @@ function AddTransactionSheet({
   onOpenCategoryManager: (categoryType: CategoryType, onSelect: (categoryId: string) => void) => void;
   receiptFlow: boolean;
   editTransactionId?: string;
+  editingTransactionId?: string;
+  duplicatingTransactionId?: string;
+  recurringEditScope: "occurrence" | "future";
 }) {
   const accounts = useLiveQuery(
     () =>
@@ -2923,6 +3650,22 @@ function AddTransactionSheet({
       setNote(transaction.note || "");
     });
   }, [open, editTransactionId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = editingTransactionId || duplicatingTransactionId;
+    if (!id) return;
+    void db.transactions.get(id).then((transaction) => {
+      if (!transaction || transaction.type === "transfer") return;
+      setType(transaction.type);
+      setAmount((transaction.amount / 100).toFixed(2));
+      setAccountId(transaction.accountId);
+      setCategoryId(transaction.categoryId || "");
+      setNote(transaction.note || "");
+      setDate(duplicatingTransactionId ? toDateString(new Date()) : transaction.date);
+      setRepeatEnabled(false);
+    });
+  }, [open, editingTransactionId, duplicatingTransactionId]);
 
   useEffect(() => {
     if (!open || receiptStep !== "details") return;
@@ -3234,6 +3977,41 @@ function AddTransactionSheet({
         .startsWith(`${ruleId}:`)
         .first()
         .then((item) => item?.id || null);
+    } else if (editingTransactionId) {
+      const existing = await db.transactions.get(editingTransactionId);
+      if (existing?.splitId && existing.amount !== cents) {
+        const friendIds = (await db.friendLedger
+          .where("transactionId")
+          .equals(editingTransactionId)
+          .filter((entry) => entry.type === "expense_share" && !entry.deletedAt)
+          .toArray())
+          .map((entry) => entry.friendId)
+          .filter((friendId, index, list) => list.indexOf(friendId) === index);
+        if (friendIds.length && window.confirm("The split amount changed. Re-split the new total now?")) {
+          await reconfigureLocalSplit(editingTransactionId, friendIds, "equal");
+        }
+      }
+      await updateTransaction(editingTransactionId, {
+        type,
+        amount: cents,
+        accountId,
+        categoryId: categoryId || null,
+        date,
+        note: note.trim() || null,
+      });
+      if (existing?.recurringId && recurringEditScope === "future") {
+        await db.recurring.update(existing.recurringId, {
+          amount: cents,
+          accountId,
+          categoryId: categoryId || null,
+          note: note.trim() || null,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      transactionId = editingTransactionId;
+      onClose();
+      sheetBackdropRef.current?.querySelector(".add-sheet")?.removeAttribute("data-sheet-dirty");
+      return;
     } else {
       transactionId = await createTransaction({
         profileId,

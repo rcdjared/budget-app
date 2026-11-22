@@ -55,7 +55,7 @@ export interface Category extends BaseRecord {
 }
 
 /** A single money event */
-export type TransactionType = "expense" | "income" | "transfer";
+export type TransactionType = "expense" | "income" | "transfer" | "friend_payment";
 
 export interface Transaction extends BaseRecord {
   profileId: string;
@@ -80,6 +80,76 @@ export interface Transaction extends BaseRecord {
   feeTransactionId?: string | null;
   debtId?: string | null;
   splitGroupId?: string | null;
+  editedAt?: string | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
+  personalShareAmount?: number | null;
+  splitId?: string | null;
+  sharedBillId?: string | null;
+}
+
+export interface Friend extends BaseRecord {
+  profileId: string;
+  name: string;
+  phone?: string | null;
+  note?: string | null;
+  avatarColor: string;
+  linkedUserId?: string | null;
+  archivedAt?: string | null;
+}
+
+export type FriendLedgerEntryType =
+  | "expense_share"
+  | "payment"
+  | "adjustment"
+  | "shared_bill";
+
+export type FriendLedgerDirection = "owed_to_me" | "you_owe";
+
+export interface FriendLedgerEntry extends BaseRecord {
+  profileId: string;
+  friendId: string;
+  transactionId?: string | null;
+  sharedBillId?: string | null;
+  type: FriendLedgerEntryType;
+  direction: FriendLedgerDirection;
+  amount: number;
+  note?: string | null;
+  date: string;
+  accountId?: string | null;
+}
+
+export interface LocalSplit extends BaseRecord {
+  profileId: string;
+  transactionId: string;
+  mode: "equal" | "exact" | "percent";
+  status: "active" | "cancelled";
+}
+
+export interface RecurringSkip extends BaseRecord {
+  profileId: string;
+  recurringId: string;
+  occurrenceDate: string;
+  occurrenceKey: string;
+  reason?: string | null;
+}
+
+export interface SharedBill extends BaseRecord {
+  profileId: string;
+  transactionId: string;
+  title: string;
+  status: "active" | "cancelled";
+}
+
+export interface SharedBillMember extends BaseRecord {
+  sharedBillId: string;
+  friendId?: string | null;
+  name: string;
+  isMe: boolean;
+  amount: number;
+  paidAmount: number;
+  status: "unpaid" | "partial" | "paid";
+  accountId?: string | null;
 }
 
 /** Monthly spending cap per category */

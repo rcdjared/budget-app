@@ -23,6 +23,12 @@ import type {
   Attachment,
   OutboxEntry,
   Settings,
+  Friend,
+  FriendLedgerEntry,
+  LocalSplit,
+  RecurringSkip,
+  SharedBill,
+  SharedBillMember,
 } from "@/domain/types";
 
 export class PesoPulseDB extends Dexie {
@@ -43,6 +49,12 @@ export class PesoPulseDB extends Dexie {
   attachments!: EntityTable<Attachment, "id">;
   outbox!: EntityTable<OutboxEntry, "id">;
   settings!: EntityTable<Settings, "id">;
+  friends!: EntityTable<Friend, "id">;
+  friendLedger!: EntityTable<FriendLedgerEntry, "id">;
+  localSplits!: EntityTable<LocalSplit, "id">;
+  recurringSkips!: EntityTable<RecurringSkip, "id">;
+  sharedBills!: EntityTable<SharedBill, "id">;
+  sharedBillMembers!: EntityTable<SharedBillMember, "id">;
 
   constructor() {
     super("PesoPulseDB");
@@ -95,6 +107,37 @@ export class PesoPulseDB extends Dexie {
         if (!record.occurrenceKey) delete record.occurrenceKey;
       });
     });
+
+    this.version(3).stores({
+      profiles: "id, isDefault",
+      accounts: "id, profileId, type, isArchived",
+      categories: "id, profileId, type, parentId, sortOrder",
+      transactions: "id, profileId, accountId, toAccountId, categoryId, recurringId, transferId, splitId, sharedBillId, date, type, &occurrenceKey, [profileId+date], [accountId+date], [categoryId+date]",
+      budgets: "id, profileId, categoryId",
+      goals: "id, profileId",
+      debts: "id, profileId, direction",
+      recurring: "id, profileId, nextDueDate, kind",
+      holdings: "id, accountId, symbol",
+      priceCache: "symbol",
+      quickNotes: "id, profileId",
+      splitGroups: "id, profileId",
+      splitMembers: "id, splitGroupId",
+      streaks: "id, profileId",
+      attachments: "id, transactionId",
+      outbox: "id, table, recordId, status",
+      settings: "id, profileId, key",
+      friends: "id, profileId, linkedUserId, archivedAt",
+      friendLedger: "id, profileId, friendId, transactionId, sharedBillId, date, type",
+      localSplits: "id, profileId, transactionId, status",
+      recurringSkips: "id, profileId, recurringId, occurrenceDate, &occurrenceKey",
+      sharedBills: "id, profileId, transactionId, status",
+      sharedBillMembers: "id, sharedBillId, friendId, status",
+    }).upgrade(async (transaction) => {
+      await transaction.table("transactions").toCollection().modify((record) => {
+        if (record.cancelledAt === undefined) record.cancelledAt = null;
+        if (record.editedAt === undefined) record.editedAt = null;
+      });
+    });
   }
 }
 
@@ -114,6 +157,12 @@ const SYNCABLE_TABLES = new Set([
   "quickNotes",
   "splitGroups",
   "splitMembers",
+  "friends",
+  "friendLedger",
+  "localSplits",
+  "recurringSkips",
+  "sharedBills",
+  "sharedBillMembers",
   "streaks",
   "attachments",
   "settings",

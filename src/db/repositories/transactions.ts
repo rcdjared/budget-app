@@ -230,12 +230,142 @@ export async function updateTransaction(
   id: string,
   data: Partial<Transaction>
 ): Promise<void> {
-  await db.transactions.update(id, { ...data, updatedAt: now() });
+  await db.transaction("rw", db.tables, async () => {
+    const existing = await db.transactions.get(id);
+    if (!existing) throw new Error("Transaction not found.");
+    if (existing.cancelledAt) throw new Error("Restore this transaction before editing it.");
+    await db.transactions.update(id, { ...data, editedAt: now(), updatedAt: now() });
+  });
+}
+
+export async function cancelTransaction(
+  id: string,
+  reason?: string
+): Promise<void> {
+  await db.transaction("rw", db.tables, async () => {
+    const transaction = await db.transactions.get(id);
+    if (!transaction) throw new Error("Transaction not found.");
+    if (transaction.cancelledAt) return;
+    const timestamp = now();
+    await db.transactions.update(id, {
+      cancelledAt: timestamp,
+      cancellationReason: reason?.trim() || null,
+      updatedAt: timestamp,
+    });
+
+    if (transaction.type === "transfer") {
+      const linkedFees = await db.transactions.filter((item) => item.transferId === id && !item.deletedAt).toArray();
+      for (const fee of linkedFees) {
+        await db.transactions.update(fee.id, { cancelledAt: timestamp, updatedAt: timestamp });
+      }
+    }
+
+    if (transaction.splitId) {
+      const entries = await db.friendLedger.where("transactionId").equals(id).toArray();
+      for (const entry of entries) {
+        if (entry.type === "expense_share" && !entry.deletedAt) {
+          await db.friendLedger.add({
+            id: crypto.randomUUID(),
+            profileId: entry.profileId,
+            friendId: entry.friendId,
+            transactionId: id,
+            type: "adjustment",
+            direction: "you_owe",
+            amount: entry.amount,
+            note: "Split cancelled",
+            date: timestamp.slice(0, 10),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+        }
+      }
+    }
+    if (transaction.sharedBillId) {
+      await db.sharedBills.update(transaction.sharedBillId, { status: "cancelled", updatedAt: timestamp });
+    }
+  });
+}
+
+export async function restoreTransaction(id: string): Promise<void> {
+  await db.transaction("rw", db.tables, async () => {
+    const transaction = await db.transactions.get(id);
+    if (!transaction) throw new Error("Transaction not found.");
+    const account = await db.accounts.get(transaction.accountId);
+    if (!account || account.deletedAt) throw new Error("The source account no longer exists.");
+    if (transaction.toAccountId) {
+      const destination = await db.accounts.get(transaction.toAccountId);
+      if (!destination || destination.deletedAt) throw new Error("The destination account no longer exists.");
+    }
+    const timestamp = now();
+    await db.transactions.update(id, {
+      cancelledAt: null,
+      cancellationReason: null,
+      deletedAt: null,
+      updatedAt: timestamp,
+    });
+    if (transaction.type === "transfer") {
+      const linkedFees = await db.transactions.filter((item) => item.transferId === id).toArray();
+      for (const fee of linkedFees) {
+        await db.transactions.update(fee.id, { cancelledAt: null, deletedAt: null, updatedAt: timestamp });
+      }
+    }
+    if (transaction.splitId) {
+      const entries = await db.friendLedger.where("transactionId").equals(id).toArray();
+      for (const entry of entries) {
+        if (entry.type === "expense_share" && !entry.deletedAt) {
+          await db.friendLedger.add({
+            id: crypto.randomUUID(),
+            profileId: entry.profileId,
+            friendId: entry.friendId,
+            transactionId: id,
+            type: "adjustment",
+            direction: "owed_to_me",
+            amount: entry.amount,
+            note: "Split restored",
+            date: timestamp.slice(0, 10),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+        }
+      }
+    }
+    if (transaction.sharedBillId) {
+      await db.sharedBills.update(transaction.sharedBillId, { status: "active", updatedAt: timestamp });
+    }
+  });
 }
 
 export async function softDeleteTransaction(id: string): Promise<void> {
   const transaction = await db.transactions.get(id);
   const timestamp = now();
+  await db.transaction("rw", db.tables, async () => {
+    const current = await db.transactions.get(id);
+    if (!current) return;
+    if (current.splitId) {
+      const entries = await db.friendLedger.where("transactionId").equals(id).toArray();
+      for (const entry of entries) {
+        if (entry.type === "expense_share" && !entry.deletedAt) {
+          await db.friendLedger.add({
+            id: crypto.randomUUID(),
+            profileId: entry.profileId,
+            friendId: entry.friendId,
+            transactionId: id,
+            type: "adjustment",
+            direction: "you_owe",
+            amount: entry.amount,
+            note: "Split expense deleted",
+            date: timestamp.slice(0, 10),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          });
+        }
+      }
+      if (current.splitId) await db.localSplits.update(current.splitId, { status: "cancelled", updatedAt: timestamp });
+    }
+    if (current.sharedBillId) {
+      await db.sharedBills.update(current.sharedBillId, { status: "cancelled", updatedAt: timestamp });
+    }
+  });
   if (transaction?.type !== "transfer") {
     await db.transactions.update(id, { deletedAt: timestamp, updatedAt: timestamp });
     return;

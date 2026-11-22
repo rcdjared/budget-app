@@ -29,6 +29,12 @@ export async function processDueRecurringTransactions(profileId: string, today: 
         }
 
         const occurrenceKey = `${rule.id}:${nextDueDate}`;
+        const skipped = await db.recurringSkips.where("occurrenceKey").equals(occurrenceKey).first();
+        if (skipped) {
+          occurrencesCreated++;
+          nextDueDate = getNextOccurrenceDate(rule, nextDueDate);
+          continue;
+        }
         const existing = await db.transactions.where("occurrenceKey").equals(occurrenceKey).first();
         if (!existing) {
           const timestamp = new Date().toISOString();

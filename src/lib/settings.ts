@@ -17,6 +17,7 @@ export interface AppSettings {
   cloudBackup: boolean;
   homeSections: string[];
   quickActions: string[];
+  includeFriendReceivables: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -35,6 +36,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cloudBackup: false,
   homeSections: ["net-worth", "budgets", "recent", "insights"],
   quickActions: ["expense", "income", "transfer", "scan"],
+  includeFriendReceivables: true,
 };
 
 const STORAGE_KEY = "kupit-app-settings";

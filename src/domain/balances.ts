@@ -25,7 +25,7 @@ export function computeAccountBalance(
 
   for (const tx of transactions) {
     // Skip soft-deleted transactions
-    if (tx.deletedAt) continue;
+    if (tx.deletedAt || tx.cancelledAt) continue;
 
     switch (tx.type) {
       case "income":
@@ -51,6 +51,11 @@ export function computeAccountBalance(
         }
         // Money arrives at the destination account
         if (tx.toAccountId === accountId) {
+          balance += tx.amount;
+        }
+        break;
+      case "friend_payment":
+        if (tx.accountId === accountId) {
           balance += tx.amount;
         }
         break;
@@ -132,8 +137,11 @@ export function computeMonthlyTotals(
     if (tx.date < startDate || tx.date > endDate) continue;
 
     // Transfers don't count as income or expense
+    if (tx.cancelledAt) continue;
     if (tx.type === "income") income += tx.amount;
-    if (tx.type === "expense") expenses += tx.amount;
+    if (tx.type === "expense") {
+      expenses += tx.personalShareAmount ?? tx.amount;
+    }
   }
 
   return { income, expenses };

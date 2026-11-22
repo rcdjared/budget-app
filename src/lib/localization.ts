@@ -1,0 +1,68 @@
+import { loadAppSettings } from "@/lib/settings";
+
+const en = {
+  edit: "Edit",
+  duplicate: "Duplicate",
+  cancel: "Cancel",
+  restore: "Restore",
+  delete: "Delete",
+  splitWithFriends: "Split with friends",
+  makeSharedBill: "Make shared bill",
+  equal: "Equal",
+  exact: "Exact",
+  percent: "Percent",
+  remaining: "Remaining",
+  friends: "Friends",
+  addFriend: "Add friend",
+  save: "Save",
+  cancelled: "Cancelled",
+  edited: "Edited",
+  split: "Split",
+  sharedBill: "Shared bill",
+  debtsAndReceivables: "Debts & receivables",
+  direction: "Direction",
+  iOweSomeone: "I owe someone",
+  someoneOwesMe: "Someone owes me",
+  counterparty: "Name",
+  principal: "Principal",
+  saveRecord: "Save record",
+  noDebts: "No debts or receivables yet.",
+  iOwe: "I owe",
+  owedToMe: "Owed to me",
+} as const;
+
+const fil: Record<keyof typeof en, string> = {
+  edit: "I-edit",
+  duplicate: "Doblehin",
+  cancel: "Kanselahin",
+  restore: "Ibalik",
+  delete: "Tanggalin",
+  splitWithFriends: "Hatiin sa mga kaibigan",
+  makeSharedBill: "Gawing shared bill",
+  equal: "Pantay",
+  exact: "Eksakto",
+  percent: "Porsyento",
+  remaining: "Natitira",
+  friends: "Mga kaibigan",
+  addFriend: "Magdagdag ng kaibigan",
+  save: "I-save",
+  cancelled: "Nakansela",
+  edited: "Na-edit",
+  split: "Hatiin",
+  sharedBill: "Shared bill",
+  debtsAndReceivables: "Mga utang at dapat tanggapin",
+  direction: "Direksyon",
+  iOweSomeone: "May utang ako",
+  someoneOwesMe: "May utang sa akin",
+  counterparty: "Pangalan",
+  principal: "Halaga",
+  saveRecord: "I-save ang tala",
+  noDebts: "Wala pang utang o dapat tanggapin.",
+  iOwe: "Utang ko",
+  owedToMe: "Dapat sa akin",
+};
+
+export function t(key: keyof typeof en): string {
+  const language = loadAppSettings().language;
+  return language === "fil" ? fil[key] : en[key];
+}

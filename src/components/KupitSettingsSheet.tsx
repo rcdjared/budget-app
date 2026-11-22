@@ -580,6 +580,7 @@ export function KupitSettingsSheet({
                   <Row icon={<CircleDollarSign size={18} />} title="Decimal display" description="Show cents on money values" trailing={<Toggle checked={settings.showDecimals} onChange={(checked) => updateSettings({ showDecimals: checked })} label="Show decimals" />} />
                   <label className="kupit-budget-cycle">Budget cycle starts on <input type="number" min={1} max={31} value={settings.budgetCycleStartDay} onChange={(event) => updateSettings({ budgetCycleStartDay: Math.max(1, Math.min(31, Number(event.target.value))) })} /></label>
                   <Row icon={<Smartphone size={18} />} title="Haptics" description="Use device vibration for supported actions" trailing={<Toggle checked={settings.haptics} onChange={(checked) => updateSettings({ haptics: checked })} label="Haptics" />} />
+                  <Row icon={<CircleDollarSign size={18} />} title="Include money friends owe me" description="Add local friend receivables to net worth" trailing={<Toggle checked={settings.includeFriendReceivables} onChange={(checked) => updateSettings({ includeFriendReceivables: checked })} label="Include friend receivables" />} />
                 </div>
               )}
               {detail === "home" && (
