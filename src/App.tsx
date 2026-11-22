@@ -120,6 +120,7 @@ function categoryFilterKey(category: Pick<Category, "type" | "name">): string {
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
+  const profileSwitchSequence = useRef(0);
   const [tab, setTab] = useState<Tab>("home");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [navCollapsed, setNavCollapsed] = useCollapsingNav(scrollRef, tab, Boolean(profileId));
@@ -446,8 +447,11 @@ function App() {
   }, []);
 
   const switchProfile = async (nextProfileId: string) => {
+    const sequence = ++profileSwitchSequence.current;
     await seedDefaultCategories(nextProfileId);
+    if (sequence !== profileSwitchSequence.current) return;
     await setActiveProfile(nextProfileId);
+    if (sequence !== profileSwitchSequence.current) return;
     setProfileId(nextProfileId);
     setProfilesOpen(false);
   };

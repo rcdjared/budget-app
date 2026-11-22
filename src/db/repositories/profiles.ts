@@ -3,6 +3,7 @@ import type { NotificationPreferences, Profile } from "@/domain/types";
 import { db, withoutOutbox } from "../schema";
 
 export const ACTIVE_PROFILE_STORAGE_KEY = "kupit-active-profile-id";
+export const SESSION_ACTIVE_PROFILE_STORAGE_KEY = "kupit-session-active-profile-id";
 
 const PROFILE_OWNED_TABLES = [
   "accounts",
@@ -58,7 +59,8 @@ export async function getProfileById(id: string): Promise<Profile | undefined> {
 }
 
 export async function getActiveProfileId(): Promise<string | null> {
-  const storedId = localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
+  const storedId = sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY)
+    || localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
   const storedProfile = storedId ? await db.profiles.get(storedId) : undefined;
   if (storedProfile && !storedProfile.deletedAt) return storedProfile.id;
   const active = await getDefaultProfile();
@@ -109,6 +111,7 @@ export async function setActiveProfile(id: string): Promise<void> {
       if (!profile.deletedAt) profile.isDefault = profile.id === id;
     });
   }));
+  sessionStorage.setItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY, id);
   localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, id);
 }
 
@@ -146,7 +149,9 @@ export async function deleteProfile(id: string): Promise<void> {
     if (profiles.length <= 1) throw new Error("profile-last");
     const profile = await db.profiles.get(id);
     if (!profile || profile.deletedAt) throw new Error("profile-not-found");
-    if (profile.isDefault || localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY) === id) {
+    if (profile.isDefault || sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY) === id
+      || (!sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY)
+        && localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY) === id)) {
       throw new Error("profile-active");
     }
 
@@ -208,7 +213,8 @@ async function findLegacyProfileId(): Promise<string | undefined> {
 /** Create or migrate the first local profile and restore the active selection. */
 export async function ensureDefaultProfile(): Promise<Profile> {
   const existing = await getAllProfiles();
-  const storedId = localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
+  const storedId = sessionStorage.getItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY)
+    || localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY);
   const selected = existing.find((profile) => profile.id === storedId)
     || existing.find((profile) => profile.isDefault)
     || existing[0];
@@ -228,6 +234,7 @@ export async function ensureDefaultProfile(): Promise<Profile> {
         });
       }
     }));
+    sessionStorage.setItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY, selected.id);
     localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, selected.id);
     return {
       ...selected,
@@ -262,6 +269,7 @@ export async function ensureDefaultProfile(): Promise<Profile> {
     }
     await db.profiles.add(profile);
   }));
+  sessionStorage.setItem(SESSION_ACTIVE_PROFILE_STORAGE_KEY, id);
   localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, id);
   return profile;
 }
