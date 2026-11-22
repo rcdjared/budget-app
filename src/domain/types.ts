@@ -15,6 +15,22 @@ export interface Profile extends BaseRecord {
   name: string;
   currency: string; // ISO 4217, default "PHP"
   isDefault: boolean;
+  preferredName?: string | null;
+  notificationPreferences?: NotificationPreferences | null;
+}
+
+export interface NotificationPreferences {
+  enabled: boolean;
+  reminderTime: string;
+  timezone: string;
+  categories: {
+    dailyCheckIn: boolean;
+    budgetAlerts: boolean;
+    recurring: boolean;
+    debts: boolean;
+    goals: boolean;
+    receivables: boolean;
+  };
 }
 
 /** Where money lives */
@@ -56,6 +72,7 @@ export interface Category extends BaseRecord {
 
 /** A single money event */
 export type TransactionType = "expense" | "income" | "transfer" | "friend_payment";
+export type FriendPaymentDirection = "received" | "sent";
 
 export interface Transaction extends BaseRecord {
   profileId: string;
@@ -77,6 +94,7 @@ export interface Transaction extends BaseRecord {
   externalToName?: string | null;
   transferFee?: number;
   transferTime?: string | null;
+  friendPaymentDirection?: FriendPaymentDirection;
   feeTransactionId?: string | null;
   debtId?: string | null;
   splitGroupId?: string | null;
@@ -111,18 +129,22 @@ export interface FriendLedgerEntry extends BaseRecord {
   friendId: string;
   transactionId?: string | null;
   sharedBillId?: string | null;
+  sharedBillMemberId?: string | null;
+  reversesEntryId?: string | null;
   type: FriendLedgerEntryType;
   direction: FriendLedgerDirection;
   amount: number;
   note?: string | null;
   date: string;
   accountId?: string | null;
+  expectedBy?: string | null;
 }
 
 export interface LocalSplit extends BaseRecord {
   profileId: string;
   transactionId: string;
   mode: "equal" | "exact" | "percent";
+  friendIds?: string[];
   status: "active" | "cancelled";
 }
 
@@ -150,6 +172,27 @@ export interface SharedBillMember extends BaseRecord {
   paidAmount: number;
   status: "unpaid" | "partial" | "paid";
   accountId?: string | null;
+  expectedBy?: string | null;
+}
+
+export type NotificationCategory =
+  | "dailyCheckIn"
+  | "budgetAlerts"
+  | "recurring"
+  | "debts"
+  | "goals"
+  | "receivables";
+
+export interface InboxNotification {
+  id: string;
+  profileId: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+  route: string;
+  dedupe_key: string;
 }
 
 /** Monthly spending cap per category */

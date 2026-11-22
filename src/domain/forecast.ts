@@ -1,5 +1,6 @@
 import type { Recurring, Transaction } from "./types";
 import { getNextOccurrenceDate } from "@/domain/recurrence";
+import { dateKeyFromParts } from "@/lib/format";
 
 export interface ForecastDay {
   date: string;
@@ -10,12 +11,9 @@ export function getNextRecurrenceDate(
   recurring: Recurring,
   afterDate: Date = new Date()
 ): Date {
-  let nextKey = recurring.nextDueDate;
-  const afterKey = [
-    afterDate.getFullYear(),
-    String(afterDate.getMonth() + 1).padStart(2, "0"),
-    String(afterDate.getDate()).padStart(2, "0"),
-  ].join("-");
+  const [dueYear, dueMonth, dueDay] = recurring.nextDueDate.split("-").map(Number);
+  let nextKey = dateKeyFromParts(dueYear, dueMonth, dueDay);
+  const afterKey = dateKeyFromParts(afterDate.getFullYear(), afterDate.getMonth() + 1, afterDate.getDate());
   while (nextKey < afterKey) nextKey = getNextOccurrenceDate(recurring, nextKey);
   return new Date(`${nextKey}T00:00:00`);
 }
@@ -33,21 +31,13 @@ export function generateForecast(
     const date = new Date(today);
     date.setHours(0, 0, 0, 0);
     date.setDate(date.getDate() + offset);
-    const dateKey = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0"),
-    ].join("-");
+    const dateKey = dateKeyFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
 
     for (const recurring of recurringItems) {
       if (recurring.deletedAt || recurring.isPaused || (recurring.endsAfter && (recurring.occurrencesCreated || 0) >= recurring.endsAfter)) continue;
       if (recurring.endDate && dateKey > recurring.endDate) continue;
       const next = getNextRecurrenceDate(recurring, date);
-      const nextKey = [
-        next.getFullYear(),
-        String(next.getMonth() + 1).padStart(2, "0"),
-        String(next.getDate()).padStart(2, "0"),
-      ].join("-");
+      const nextKey = dateKeyFromParts(next.getFullYear(), next.getMonth() + 1, next.getDate());
       if (nextKey !== dateKey) continue;
       if (recurring.transactionType === "income") balance += recurring.amount;
       else if (recurring.transactionType === "expense") balance -= recurring.amount;

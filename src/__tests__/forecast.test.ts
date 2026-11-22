@@ -6,6 +6,8 @@ import {
   getNextRecurrenceDate,
 } from "@/domain/forecast";
 import type { Recurring } from "@/domain/types";
+import { getNextOccurrenceDate } from "@/domain/recurrence";
+import { dateKeyFromParts } from "@/lib/format";
 
 const recurring = (overrides: Partial<Recurring>): Recurring => ({
   id: "recurring-1",
@@ -14,7 +16,7 @@ const recurring = (overrides: Partial<Recurring>): Recurring => ({
   accountId: "account-1",
   transactionType: "expense",
   frequency: "monthly",
-  startDate: "2026-11-01",
+  startDate: "2026-11-20",
   nextDueDate: "2026-11-20",
   remindDaysBefore: 3,
   kind: "bill",
@@ -31,9 +33,29 @@ describe("recurrence", () => {
   });
 
   it("advances an overdue monthly item", () => {
-    const next = getNextRecurrenceDate(recurring({ nextDueDate: "2026-09-20" }), new Date("2026-11-19T12:00:00"));
-    expect([next.getFullYear(), next.getMonth() + 1, next.getDate()].join("-"))
+    const next = getNextRecurrenceDate(recurring({ startDate: "2026-09-20", nextDueDate: "2026-09-20" }), new Date("2026-11-19T12:00:00"));
+    expect(dateKeyFromParts(next.getFullYear(), next.getMonth() + 1, next.getDate()))
       .toBe("2026-11-20");
+  });
+
+  it("clamps monthly dates to the target month's last day and restores the anchor", () => {
+    const jan31 = recurring({ startDate: "2026-01-31", nextDueDate: "2026-01-31" });
+    expect(getNextOccurrenceDate(jan31, "2026-01-31")).toBe("2026-02-28");
+    expect(getNextOccurrenceDate(jan31, "2026-02-28")).toBe("2026-03-31");
+    expect(getNextOccurrenceDate(recurring({ startDate: "2024-01-31" }), "2024-01-31")).toBe("2024-02-29");
+    expect(getNextOccurrenceDate(recurring({ startDate: "2026-01-30" }), "2026-01-30")).toBe("2026-02-28");
+    expect(getNextOccurrenceDate(recurring({ startDate: "2026-01-30" }), "2026-02-28")).toBe("2026-03-30");
+  });
+
+  it("pads date-only inputs and handles annual year rollover", () => {
+    const annual = recurring({ frequency: "yearly", startDate: "2024-02-29", nextDueDate: "2024-02-29" });
+    expect(getNextOccurrenceDate(annual, "2024-2-29")).toBe("2025-02-28");
+    expect(getNextOccurrenceDate(annual, "2027-02-28")).toBe("2028-02-29");
+    const next = getNextRecurrenceDate(
+      recurring({ nextDueDate: "2026-9-20" }),
+      new Date("2026-11-19T12:00:00")
+    );
+    expect(dateKeyFromParts(next.getFullYear(), next.getMonth() + 1, next.getDate())).toBe("2026-11-20");
   });
 });
 

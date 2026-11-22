@@ -1,629 +1,680 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-  Wallet,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
+  CircleDollarSign,
   ChevronDown,
-  HelpCircle,
+  Clock3,
+  Landmark,
+  ReceiptText,
+  Repeat2,
   TrendingDown,
   TrendingUp,
+  UserRound,
+  Wallet,
 } from "lucide-react";
 import { db } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 import { formatMoney } from "@/domain/money";
+import { sortTransactionsNewestFirst } from "@/domain/history";
+import { computeInsights } from "@/domain/homeInsights";
+import { addDateDays, getSpendingPulseRange } from "@/features/spending-pulse/periods";
+import type { SpendingPulsePeriod } from "@/features/spending-pulse/types";
+import { getBudgetSpendSnapshot } from "@/lib/notificationEngine";
+import { loadAppSettings } from "@/lib/settings";
+import { tForLanguage } from "@/lib/localization";
 import { toDateString } from "@/lib/format";
-import type { Account, Category, Transaction } from "@/domain/types";
+import type {
+  Account,
+  Budget,
+  Category,
+  Debt,
+  FriendLedgerEntry,
+  Recurring,
+  Transaction,
+} from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
-
-type PeriodType = "day" | "week" | "month" | "year";
+import { SpendingPulse } from "@/features/spending-pulse/SpendingPulse";
 
 interface FinsightsPageProps {
   profileId: string;
   onOpenHelp?: () => void;
+  showNetWorth?: boolean;
+  onAddTransaction: (type: "expense" | "income") => void;
+  onHistory: (filters?: { accountId?: string; categoryId?: string; startDate?: string; endDate?: string }) => void;
+  onPlan: () => void;
+  onOpenTransaction: (transactionId: string) => void;
+  onOpenDebt: () => void;
+  onOpenRecurring: () => void;
+  onOpenFriends: () => void;
+  onOpenBudget: () => void;
 }
 
-export function FinsightsPage({ profileId, onOpenHelp }: FinsightsPageProps) {
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
-  const [period, setPeriod] = useState<PeriodType>("day");
-  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
+type SectionId = "netBalance" | "totals" | "insight" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
+
+const DEFAULT_SECTION_ORDER: SectionId[] = [
+  "netBalance",
+  "totals",
+  "insight",
+  "trend",
+  "categories",
+  "budgets",
+  "upcoming",
+  "recent",
+];
+
+function matchesAccount(transaction: Transaction, accountId: string) {
+  if (accountId === "all") return true;
+  if (transaction.type === "transfer") {
+    return transaction.accountId === accountId || transaction.toAccountId === accountId;
+  }
+  return transaction.accountId === accountId;
+}
+
+function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+export function FinsightsPage({
+  profileId,
+  onAddTransaction,
+  onHistory,
+  onPlan,
+  onOpenTransaction,
+  onOpenDebt,
+  onOpenRecurring,
+  onOpenFriends,
+  onOpenBudget,
+}: FinsightsPageProps) {
+  const language = loadAppSettings().language;
+  const [selectedAccountId, setSelectedAccountId] = useState("all");
+  const [period, setPeriod] = useState<SpendingPulsePeriod>("day");
   const [activeTab, setActiveTab] = useState<"expense" | "income">("expense");
+  const [now, setNow] = useState(() => new Date());
 
-  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
-  const [periodDropdownOpen, setPeriodDropdownOpen] = useState(false);
+  useEffect(() => {
+    setSelectedAccountId("all");
+    setPeriod("day");
+  }, [profileId]);
 
-  // Queries
+  useEffect(() => {
+    const refresh = () => setNow(new Date());
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
   const accounts = useLiveQuery(
-    () =>
-      db.accounts
-        .where({ profileId })
-        .filter((a) => !a.deletedAt && !a.isArchived)
-        .toArray(),
+    () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt && !account.isArchived).toArray(),
     [profileId],
     []
   );
-
+  const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
+  const formatProfileMoney = (amount: number) => formatMoney(amount, profile?.currency || "PHP");
   const categories = useLiveQuery(
-    () => db.categories.where({ profileId }).toArray(),
+    () => profileRecords(db.categories, profileId).filter((category) => !category.deletedAt).toArray(),
     [profileId],
     []
   );
-
-  const transactions = useLiveQuery(
-    () =>
-      db.transactions
-        .where({ profileId })
-        .filter((t) => !t.deletedAt)
-        .toArray(),
-    [profileId],
-    []
+  const homeSetting = useLiveQuery(
+    () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
+    [profileId]
   );
 
-  // Calculate Date Range based on period and currentDate
-  const { startStr, endStr, prevStartStr, prevEndStr, displayLabel } = useMemo(() => {
-    const d = new Date(currentDate);
-
-    if (period === "day") {
-      const start = toDateString(d);
-      const prevD = new Date(d);
-      prevD.setDate(prevD.getDate() - 1);
-      const prevStart = toDateString(prevD);
-
-      const label = d.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-
-      return {
-        startStr: start,
-        endStr: start,
-        prevStartStr: prevStart,
-        prevEndStr: prevStart,
-        displayLabel: label,
-      };
-    } else if (period === "week") {
-      const day = d.getDay();
-      // start week on Monday
-      const diffToMonday = (day + 6) % 7;
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - diffToMonday);
-
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-
-      const prevMonday = new Date(monday);
-      prevMonday.setDate(monday.getDate() - 7);
-      const prevSunday = new Date(sunday);
-      prevSunday.setDate(sunday.getDate() - 7);
-
-      const monLabel = monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      const sunLabel = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-
-      return {
-        startStr: toDateString(monday),
-        endStr: toDateString(sunday),
-        prevStartStr: toDateString(prevMonday),
-        prevEndStr: toDateString(prevSunday),
-        displayLabel: `${monLabel} – ${sunLabel}`,
-      };
-    } else if (period === "month") {
-      const y = d.getFullYear();
-      const m = d.getMonth();
-      const firstDay = new Date(y, m, 1);
-      const lastDay = new Date(y, m + 1, 0);
-
-      const prevFirstDay = new Date(y, m - 1, 1);
-      const prevLastDay = new Date(y, m, 0);
-
-      const label = d.toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      });
-
-      return {
-        startStr: toDateString(firstDay),
-        endStr: toDateString(lastDay),
-        prevStartStr: toDateString(prevFirstDay),
-        prevEndStr: toDateString(prevLastDay),
-        displayLabel: label,
-      };
-    } else {
-      // year
-      const y = d.getFullYear();
-      const firstDay = new Date(y, 0, 1);
-      const lastDay = new Date(y, 11, 31);
-
-      const prevFirstDay = new Date(y - 1, 0, 1);
-      const prevLastDay = new Date(y - 1, 11, 31);
-
-      return {
-        startStr: toDateString(firstDay),
-        endStr: toDateString(lastDay),
-        prevStartStr: toDateString(prevFirstDay),
-        prevEndStr: toDateString(prevLastDay),
-        displayLabel: `${y}`,
-      };
+  let sectionSettings = loadAppSettings();
+  if (homeSetting?.value) {
+    try {
+      sectionSettings = { ...sectionSettings, ...JSON.parse(homeSetting.value) };
+    } catch {
+      // Keep defaults for malformed settings.
     }
-  }, [period, currentDate]);
+  }
+  const hiddenSections = new Set(sectionSettings.homeSections);
+  const sectionOrder = (sectionSettings.homeSectionOrder || DEFAULT_SECTION_ORDER) as SectionId[];
 
-  // Navigate Date
-  const handlePrev = () => {
-    setCurrentDate((prev) => {
-      const next = new Date(prev);
-      if (period === "day") next.setDate(next.getDate() - 1);
-      else if (period === "week") next.setDate(next.getDate() - 7);
-      else if (period === "month") next.setMonth(next.getMonth() - 1);
-      else if (period === "year") next.setFullYear(next.getFullYear() - 1);
-      return next;
-    });
-  };
+  const today = useMemo(() => new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now), [now]);
+  const pulseRange = useMemo(
+    () => getSpendingPulseRange(period, now, {
+      budgetCycleStartDay: sectionSettings.budgetCycleStartDay,
+      weekStartsOn: sectionSettings.weekStartsOn,
+    }),
+    [period, now, sectionSettings.budgetCycleStartDay, sectionSettings.weekStartsOn]
+  );
+  const range = useMemo(() => ({
+    start: pulseRange.start,
+    end: today < pulseRange.end ? today : pulseRange.end,
+    comparableStart: pulseRange.previousStart,
+    comparableEnd: pulseRange.previousEnd,
+  }), [pulseRange, today]);
 
-  const handleNext = () => {
-    setCurrentDate((prev) => {
-      const next = new Date(prev);
-      if (period === "day") next.setDate(next.getDate() + 1);
-      else if (period === "week") next.setDate(next.getDate() + 7);
-      else if (period === "month") next.setMonth(next.getMonth() + 1);
-      else if (period === "year") next.setFullYear(next.getFullYear() + 1);
-      return next;
-    });
-  };
-
-  // Filter transactions
-  const filteredTxs = useMemo(() => {
-    return transactions.filter((t) => {
-      if (t.date < startStr || t.date > endStr) return false;
-      if (selectedAccountId !== "all") {
-        if (t.type === "transfer") {
-          return t.accountId === selectedAccountId || t.toAccountId === selectedAccountId;
-        }
-        return t.accountId === selectedAccountId;
+  const filteredTxs = useLiveQuery(
+    () => {
+      if (!["netBalance", "totals", "insight", "trend", "categories"].some((section) => hiddenSections.has(section as SectionId))) {
+        return Promise.resolve([] as Transaction[]);
       }
-      return true;
-    });
-  }, [transactions, startStr, endStr, selectedAccountId]);
+      return db.transactions
+        .where("[profileId+date]")
+        .between([profileId, range.start], [profileId, range.end], true, true)
+        .filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt && matchesAccount(transaction, selectedAccountId))
+        .toArray();
+    },
+    [profileId, range.start, range.end, selectedAccountId, sectionSettings.homeSections.join("|")],
+    [] as Transaction[]
+  );
 
-  // Previous period transactions for comparison
-  const prevPeriodTxs = useMemo(() => {
-    return transactions.filter((t) => {
-      if (t.date < prevStartStr || t.date > prevEndStr) return false;
-      if (selectedAccountId !== "all") {
-        if (t.type === "transfer") {
-          return t.accountId === selectedAccountId || t.toAccountId === selectedAccountId;
-        }
-        return t.accountId === selectedAccountId;
+  const previousTxs = useLiveQuery(
+    () => {
+      if (hiddenSections.has("totals") || hiddenSections.has("insight") || hiddenSections.has("categories")) {
+        return db.transactions
+          .where("[profileId+date]")
+          .between([profileId, range.comparableStart], [profileId, range.comparableEnd], true, true)
+          .filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt && matchesAccount(transaction, selectedAccountId))
+          .toArray();
       }
-      return true;
-    });
-  }, [transactions, prevStartStr, prevEndStr, selectedAccountId]);
+      return Promise.resolve([] as Transaction[]);
+    },
+    [profileId, range.comparableStart, range.comparableEnd, selectedAccountId, sectionSettings.homeSections.join("|")],
+    [] as Transaction[]
+  );
 
-  // Net Balance = Total Income - Total Expense for selected period & account
-  const { totalIncome, totalExpense, netBalance } = useMemo(() => {
-    let inc = 0;
-    let exp = 0;
-    for (const t of filteredTxs) {
-      if (t.type === "income") inc += t.amount;
-      if (t.type === "expense") exp += t.amount;
-    }
-    return {
-      totalIncome: inc,
-      totalExpense: exp,
-      netBalance: inc - exp,
-    };
-  }, [filteredTxs]);
+  const budgets = useLiveQuery(
+    () => hiddenSections.has("budgets")
+      ? profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray()
+      : Promise.resolve([] as Budget[]),
+    [profileId, hiddenSections.has("budgets")],
+    [] as Budget[]
+  );
+  const budgetTransactions = useLiveQuery(
+    () => hiddenSections.has("budgets")
+      ? profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray()
+      : Promise.resolve([] as Transaction[]),
+    [profileId, hiddenSections.has("budgets")],
+    [] as Transaction[]
+  );
 
-  const prevTotal = useMemo(() => {
-    return prevPeriodTxs
-      .filter((t) => t.type === activeTab)
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [prevPeriodTxs, activeTab]);
+  const recurring = useLiveQuery(
+    () => hiddenSections.has("upcoming")
+      ? profileRecords(db.recurring, profileId).filter((item) => !item.deletedAt && !item.isPaused).toArray()
+      : Promise.resolve([] as Recurring[]),
+    [profileId, hiddenSections.has("upcoming")],
+    [] as Recurring[]
+  );
+  const debts = useLiveQuery(
+    () => hiddenSections.has("upcoming")
+      ? profileRecords(db.debts, profileId).filter((item) => !item.deletedAt).toArray()
+      : Promise.resolve([] as Debt[]),
+    [profileId, hiddenSections.has("upcoming")],
+    [] as Debt[]
+  );
+  const friendLedger = useLiveQuery(
+    () => hiddenSections.has("upcoming")
+      ? profileRecords(db.friendLedger, profileId).filter((item) => !item.deletedAt && item.direction === "owed_to_me").toArray()
+      : Promise.resolve([] as FriendLedgerEntry[]),
+    [profileId, hiddenSections.has("upcoming")],
+    [] as FriendLedgerEntry[]
+  );
+  const recentTransactions = useLiveQuery(
+    () => hiddenSections.has("recent")
+      ? profileRecords(db.transactions, profileId)
+        .filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt && matchesAccount(transaction, selectedAccountId))
+        .toArray()
+        .then((transactions) =>
+          sortTransactionsNewestFirst(transactions)
+        )
+      : Promise.resolve([] as Transaction[]),
+    [profileId, selectedAccountId, hiddenSections.has("recent")],
+    [] as Transaction[]
+  );
 
-  const currentTotal = activeTab === "expense" ? totalExpense : totalIncome;
+  const income = filteredTxs.filter((tx) => tx.type === "income").reduce((sum, tx) => sum + tx.amount, 0);
+  const expense = filteredTxs.filter((tx) => tx.type === "expense").reduce((sum, tx) => sum + (tx.personalShareAmount ?? tx.amount), 0);
+  const net = income - expense;
+  const currentTotal = activeTab === "expense" ? expense : income;
 
-  // Comparison %
+  const previousCurrent = previousTxs
+    .filter((tx) => tx.type === activeTab)
+    .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0);
+
   const comparison = useMemo(() => {
-    if (prevTotal === 0 && currentTotal === 0) return { percent: 0, direction: "same" };
-    if (prevTotal === 0) return { percent: 100, direction: "up" };
-    if (currentTotal === 0) return { percent: 100, direction: "down" };
-
-    const diff = currentTotal - prevTotal;
-    const pct = Math.round((Math.abs(diff) / prevTotal) * 100);
+    if (currentTotal === 0 || previousCurrent === 0) return null;
+    const rawChange = ((currentTotal - previousCurrent) / previousCurrent) * 100;
+    const positive = activeTab === "expense" ? rawChange < 0 : rawChange > 0;
     return {
-      percent: pct,
-      direction: diff > 0 ? "up" : diff < 0 ? "down" : "same",
+      percent: Math.round(Math.abs(rawChange)),
+      direction: rawChange === 0 ? "neutral" : rawChange > 0 ? "up" : "down",
+      positive,
     };
-  }, [currentTotal, prevTotal]);
+  }, [currentTotal, previousCurrent, activeTab]);
 
-  const periodComparisonLabel =
-    period === "day"
-      ? "vs. last day"
-      : period === "week"
-      ? "vs. last week"
+  const periodLabel = period === "day"
+    ? tForLanguage("vsLastDay", language)
+    : period === "week"
+      ? tForLanguage("vsLastWeek", language)
       : period === "month"
-      ? "vs. last month"
-      : "vs. last year";
+        ? tForLanguage("vsLastBudgetCycle", language)
+        : tForLanguage("vsLast7Days", language);
 
-  // Category breakdown for activeTab
   const categoryBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of filteredTxs) {
-      if (t.type === activeTab && t.categoryId) {
-        map.set(t.categoryId, (map.get(t.categoryId) || 0) + t.amount);
-      }
+    const totals = new Map<string, number>();
+    for (const tx of filteredTxs) {
+      if (tx.type !== activeTab) continue;
+      const key = tx.categoryId || "__uncategorized";
+      totals.set(key, (totals.get(key) || 0) + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount));
     }
-    const list: { category: Category | undefined; amount: number; pct: number }[] = [];
-    for (const [catId, amount] of map.entries()) {
-      const cat = categories.find((c) => c.id === catId);
-      const pct = currentTotal > 0 ? Math.round((amount / currentTotal) * 100) : 0;
-      list.push({ category: cat, amount, pct });
-    }
-    return list.sort((a, b) => b.amount - a.amount);
+    const ranked = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+    const top = ranked.slice(0, 5);
+    const other = ranked.slice(5).reduce((sum, [, amount]) => sum + amount, 0);
+    if (other > 0) top.push(["__other", other]);
+    return top.map(([categoryId, amount]) => {
+      const category = categories.find((item) => item.id === categoryId);
+      return {
+        categoryId,
+        category,
+        amount,
+        percentage: currentTotal ? (amount / currentTotal) * 100 : 0,
+      };
+    });
   }, [filteredTxs, activeTab, categories, currentTotal]);
 
-  // Trend bars data
   const trendBars = useMemo(() => {
     if (period === "day") {
-      // 24 hours or 4 segments of day
       const segments = [
-        { label: "Morning", startHour: 6, endHour: 12, amount: 0 },
-        { label: "Afternoon", startHour: 12, endHour: 18, amount: 0 },
-        { label: "Evening", startHour: 18, endHour: 24, amount: 0 },
-        { label: "Night", startHour: 0, endHour: 6, amount: 0 },
+        { label: "Morning", start: 6, end: 12, amount: 0 },
+        { label: "Afternoon", start: 12, end: 18, amount: 0 },
+        { label: "Evening", start: 18, end: 24, amount: 0 },
+        { label: "Night", start: 0, end: 6, amount: 0 },
       ];
-      for (const t of filteredTxs) {
-        if (t.type === activeTab) {
-          const hour = new Date(t.createdAt || t.date).getHours();
-          const seg = segments.find((s) => hour >= s.startHour && hour < s.endHour) || segments[0];
-          seg.amount += t.amount;
-        }
+      for (const tx of filteredTxs) {
+        if (tx.type !== activeTab) continue;
+        const hour = new Date(`${tx.date}T12:00:00`).getHours();
+        const segment = segments.find((item) => hour >= item.start && hour < item.end) || segments[3];
+        segment.amount += activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount;
       }
-      return segments.map((s) => ({ label: s.label, amount: s.amount }));
-    } else if (period === "week") {
-      // 7 days of the week (Mon -> Sun)
-      const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      const start = new Date(startStr);
-      const data: { label: string; dateStr: string; amount: number }[] = [];
-      for (let i = 0; i < 7; i++) {
-        const cur = new Date(start);
-        cur.setDate(start.getDate() + i);
-        const ds = toDateString(cur);
-        const amt = filteredTxs
-          .filter((t) => t.type === activeTab && t.date === ds)
-          .reduce((sum, t) => sum + t.amount, 0);
-        data.push({ label: days[i], dateStr: ds, amount: amt });
-      }
-      return data;
-    } else if (period === "month") {
-      // 4 weeks of the month
-      const start = new Date(startStr);
-      const end = new Date(endStr);
-      const totalDays = end.getDate();
-      const weeks = [
-        { label: "W1 (1-7)", startDay: 1, endDay: 7, amount: 0 },
-        { label: "W2 (8-14)", startDay: 8, endDay: 14, amount: 0 },
-        { label: "W3 (15-21)", startDay: 15, endDay: 21, amount: 0 },
-        { label: `W4 (22-${totalDays})`, startDay: 22, endDay: totalDays, amount: 0 },
-      ];
-      for (const t of filteredTxs) {
-        if (t.type === activeTab) {
-          const dayNum = parseInt(t.date.split("-")[2], 10);
-          const w = weeks.find((wk) => dayNum >= wk.startDay && dayNum <= wk.endDay) || weeks[3];
-          w.amount += t.amount;
-        }
-      }
-      return weeks;
-    } else {
-      // 12 months
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const y = new Date(startStr).getFullYear();
-      return months.map((m, idx) => {
-        const mStr = String(idx + 1).padStart(2, "0");
-        const prefix = `${y}-${mStr}`;
-        const amt = filteredTxs
-          .filter((t) => t.type === activeTab && t.date.startsWith(prefix))
-          .reduce((sum, t) => sum + t.amount, 0);
-        return { label: m, amount: amt };
+      return segments.map(({ label, amount }) => ({ label, amount }));
+    }
+    if (period === "week" || period === "sevenDays") {
+      return Array.from({ length: 7 }, (_, index) => {
+        const date = addDateDays(range.start, index);
+        const label = new Intl.DateTimeFormat(language === "fil" ? "fil-PH" : "en-PH", {
+          timeZone: "UTC",
+          weekday: "short",
+        }).format(new Date(`${date}T12:00:00Z`));
+        return {
+          label,
+          amount: filteredTxs.filter((tx) => tx.type === activeTab && tx.date.slice(0, 10) === date)
+            .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0),
+        };
       });
     }
-  }, [period, startStr, endStr, filteredTxs, activeTab]);
+    if (period === "month") {
+      const bars: { label: string; amount: number }[] = [];
+      for (let index = 0; ; index++) {
+        const start = addDateDays(range.start, index * 7);
+        if (start > range.end) break;
+        const end = addDateDays(start, 6);
+        const lastDate = end < range.end ? end : range.end;
+        bars.push({
+          label: `W${index + 1}`,
+          amount: filteredTxs.filter((tx) => tx.type === activeTab)
+            .filter((tx) => tx.date.slice(0, 10) >= start && tx.date.slice(0, 10) <= lastDate)
+            .reduce((sum, tx) => sum + (activeTab === "expense" ? (tx.personalShareAmount ?? tx.amount) : tx.amount), 0),
+        });
+      }
+      return bars;
+    }
+    return [];
+  }, [period, range.start, range.end, filteredTxs, activeTab, language]);
 
-  const maxTrendAmount = useMemo(() => {
-    const max = Math.max(...trendBars.map((b) => b.amount), 0);
-    // Amounts are centavos. Keep a useful minimum scale and round to readable peso intervals.
-    return max > 0 ? Math.ceil(max / 10000) * 10000 : 10000; // ₱2,000 default scale
-  }, [trendBars]);
+  const maxTrendAmount = Math.max(...trendBars.map((bar) => bar.amount), 10000);
 
-  const selectedAccountName =
-    selectedAccountId === "all"
-      ? "All accounts"
-      : accounts.find((a) => a.id === selectedAccountId)?.name || "Account";
+  const insightCandidates = useMemo(() => computeInsights({
+    transactions: filteredTxs,
+    previousTransactions: previousTxs,
+    budgets: selectedAccountId === "all" ? budgets : [],
+    categories,
+    period,
+    now,
+    locale: language,
+  }), [filteredTxs, previousTxs, budgets, categories, period, now, language, selectedAccountId]);
 
-  const periodLabels: Record<PeriodType, string> = {
-    day: "Day",
-    week: "Week",
-    month: "Month",
-    year: "Year",
+  const budgetSnapshots = useMemo(
+    () => getBudgetSpendSnapshot(budgets, budgetTransactions, toDateString(now))
+      .sort((a, b) => (b.spent / b.limit) - (a.spent / a.limit))
+      .slice(0, 3),
+    [budgets, budgetTransactions]
+  );
+
+  const upcomingItems = useMemo(() => {
+    if (!hiddenSections.has("upcoming")) return [];
+    const today = toDateString(now);
+    const end = toDateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7));
+    const items: {
+      id: string;
+      date: string;
+      title: string;
+      amount: number;
+      kind: "recurring" | "debt" | "friend";
+      accountId?: string | null;
+    }[] = [];
+    for (const item of recurring as Recurring[]) {
+      if (item.nextDueDate >= today && item.nextDueDate <= end
+        && (selectedAccountId === "all" || item.accountId === selectedAccountId)) {
+        items.push({
+          id: item.id,
+          date: item.nextDueDate,
+          title: item.note || tForLanguage("recurringNotifications", language),
+          amount: item.transactionType === "income" ? item.amount : -item.amount,
+          kind: "recurring",
+          accountId: item.accountId,
+        });
+      }
+    }
+    for (const item of debts as Debt[]) {
+      if (item.dueDate && item.dueDate >= today && item.dueDate <= end) {
+        items.push({
+          id: item.id,
+          date: item.dueDate,
+          title: item.counterparty,
+          amount: item.direction === "owed_to_me" ? item.principal : -item.principal,
+          kind: "debt",
+        });
+      }
+    }
+    for (const item of friendLedger as FriendLedgerEntry[]) {
+      if (item.expectedBy && item.expectedBy >= today && item.expectedBy <= end
+        && (selectedAccountId === "all" || !item.accountId || item.accountId === selectedAccountId)) {
+        items.push({
+          id: item.id,
+          date: item.expectedBy,
+          title: item.note || tForLanguage("owedToMe", language),
+          amount: item.amount,
+          kind: "friend",
+          accountId: item.accountId,
+        });
+      }
+    }
+    return items.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
+  }, [recurring, debts, friendLedger, selectedAccountId, hiddenSections, now, language]);
+
+  const openHistory = (categoryId?: string) => {
+    const category = categoryId ? categories.find((item) => item.id === categoryId) : undefined;
+    const categoryFilter = category ? `${category.type}:${category.name.trim().toLowerCase()}` : undefined;
+    onHistory({
+      accountId: selectedAccountId === "all" ? undefined : selectedAccountId,
+      categoryId: categoryFilter,
+      startDate: range.start,
+      endDate: range.end,
+    });
   };
 
-  return (
-    <div className="content finsights-container">
-      {/* Top Title Bar */}
-      <header className="page-header finsights-header">
-        <div>
-          <h1 className="finsights-title">Money insights</h1>
-        </div>
-        <button
-          className="help-circle-btn"
-          onClick={onOpenHelp}
-          aria-label="Insights info"
-          title="Money Insights guide"
-        >
-          <HelpCircle size={22} />
-        </button>
-      </header>
+  const netBalanceClass = net > 0 ? "positive" : net < 0 ? "negative" : "neutral";
 
-      {/* Top Filter Pills: Account and Period */}
-      <div className="finsights-filter-row">
-        {/* Account Selector Pill */}
-        <div className="filter-pill-wrapper">
-          <button
-            type="button"
-            className="filter-pill-btn"
-            onClick={() => {
-              setAccountDropdownOpen(!accountDropdownOpen);
-              setPeriodDropdownOpen(false);
-            }}
-          >
-            <div className="filter-pill-icon">
-              <Wallet size={16} />
-            </div>
-            <div className="filter-pill-text">
-              <span className="filter-pill-sub">Account</span>
-              <strong className="filter-pill-val">{selectedAccountName}</strong>
-            </div>
-            <ChevronDown size={16} className="pill-arrow" />
-          </button>
-
-          {accountDropdownOpen && (
-            <div className="filter-dropdown-menu">
-              <button
-                className={`filter-dropdown-item ${selectedAccountId === "all" ? "active" : ""}`}
-                onClick={() => {
-                  setSelectedAccountId("all");
-                  setAccountDropdownOpen(false);
-                }}
-              >
-                All accounts
-              </button>
-              {accounts.map((acc) => (
-                <button
-                  key={acc.id}
-                  className={`filter-dropdown-item ${selectedAccountId === acc.id ? "active" : ""}`}
-                  onClick={() => {
-                    setSelectedAccountId(acc.id);
-                    setAccountDropdownOpen(false);
-                  }}
-                >
-                  <span
-                    className="acc-color-dot"
-                    style={{ backgroundColor: acc.color || "var(--primary)" }}
-                  />
-                  {acc.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Period Selector Pill */}
-        <div className="filter-pill-wrapper">
-          <button
-            type="button"
-            className="filter-pill-btn"
-            onClick={() => {
-              setPeriodDropdownOpen(!periodDropdownOpen);
-              setAccountDropdownOpen(false);
-            }}
-          >
-            <div className="filter-pill-icon">
-              <Calendar size={16} />
-            </div>
-            <div className="filter-pill-text">
-              <span className="filter-pill-sub">Period</span>
-              <strong className="filter-pill-val">{periodLabels[period]}</strong>
-            </div>
-            <ChevronDown size={16} className="pill-arrow" />
-          </button>
-
-          {periodDropdownOpen && (
-            <div className="filter-dropdown-menu">
-              {(["day", "week", "month", "year"] as PeriodType[]).map((p) => (
-                <button
-                  key={p}
-                  className={`filter-dropdown-item ${period === p ? "active" : ""}`}
-                  onClick={() => {
-                    setPeriod(p);
-                    setPeriodDropdownOpen(false);
-                  }}
-                >
-                  {periodLabels[p]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Date Navigator & Net Balance Card */}
-      <section className="finsights-date-card">
-        <div className="date-nav-row">
-          <button
-            type="button"
-            className="date-nav-btn"
-            onClick={handlePrev}
-            aria-label="Previous period"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <span className="date-nav-text">{displayLabel}</span>
-          <button
-            type="button"
-            className="date-nav-btn"
-            onClick={handleNext}
-            aria-label="Next period"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-
-        <div className="net-balance-content">
-          <small className="net-balance-label">NET BALANCE</small>
-          <strong
-            className={`net-balance-value ${
-              netBalance >= 0 ? "text-emerald" : "text-rose"
-            }`}
-          >
-            {netBalance >= 0 ? "+" : "−"}
-            {formatMoney(Math.abs(netBalance))}
+  const renderSection = (sectionId: SectionId) => {
+    if (!hiddenSections.has(sectionId)) return null;
+    if (sectionId === "netBalance") {
+      return (
+        <section className="home-net-card" key={sectionId}>
+          <span className="eyebrow">{tForLanguage("netBalance", language)}</span>
+          <strong className={`home-net-amount ${netBalanceClass}`}>
+            {net > 0 ? "+" : net < 0 ? "-" : ""}
+            {formatProfileMoney(Math.abs(net))}
           </strong>
-        </div>
-      </section>
-
-      {/* Segmented Switch: Expense vs Income */}
-      <div className="finsights-tab-switch">
-        <button
-          type="button"
-          className={`tab-switch-pill ${activeTab === "expense" ? "active-expense" : ""}`}
-          onClick={() => setActiveTab("expense")}
-        >
-          Expense
-        </button>
-        <button
-          type="button"
-          className={`tab-switch-pill ${activeTab === "income" ? "active-income" : ""}`}
-          onClick={() => setActiveTab("income")}
-        >
-          Income
-        </button>
-      </div>
-
-      {/* Total Metric Card with Comparison Badge */}
-      <section
-        className={`finsights-total-card ${
-          activeTab === "expense" ? "expense-tint" : "income-tint"
-        }`}
-      >
-        <div className="total-card-head">
-          <div className="total-card-left">
-            <span className="total-card-label">
-              TOTAL {activeTab === "expense" ? "EXPENSES" : "INCOME"}
-            </span>
-            <strong className="total-card-value">
-              {formatMoney(currentTotal)}
-            </strong>
-          </div>
-
-          <div
-            className={`comparison-badge ${
-              comparison.direction === "down"
-                ? "badge-down"
-                : comparison.direction === "up"
-                ? "badge-up"
-                : "badge-neutral"
-            }`}
-          >
-            {comparison.direction === "down" ? (
-              <TrendingDown size={14} />
-            ) : (
-              <TrendingUp size={14} />
-            )}
-            <span>
-              {comparison.direction === "down" ? "▼" : "▲"}{" "}
-              {comparison.percent}%
-            </span>
-            <small className="comp-subtext">{periodComparisonLabel}</small>
-          </div>
-        </div>
-
-        {/* Category Breakdown inside the card */}
-        <div className="category-breakdown-area">
-          {categoryBreakdown.length === 0 ? (
-            <div className="no-record-msg">
-              No {activeTab}s recorded
-            </div>
-          ) : (
-            <div className="cat-breakdown-list">
-              {categoryBreakdown.map(({ category, amount, pct }) => (
-                <div key={category?.id || "other"} className="breakdown-row">
-                  <div className="breakdown-cat-header">
-                    <span className="breakdown-cat-title">
-                      <CategoryIcon
-                        icon={category?.icon}
-                        color={category?.color}
-                        size={16}
-                      />
-                      <span>{category?.name || "Uncategorized"}</span>
-                    </span>
-                    <strong className="breakdown-amount">
-                      {formatMoney(amount)} <small>({pct}%)</small>
-                    </strong>
-                  </div>
-                  <div className="breakdown-bar-track">
-                    <div
-                      className="breakdown-bar-fill"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: category?.color || (activeTab === "expense" ? "#E11D48" : "#059669"),
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Trend Chart Card */}
-      <section className="finsights-chart-card">
-        <div className="chart-card-header">
-          <span className="chart-card-title">
-            {activeTab.toUpperCase()} TREND
-          </span>
-        </div>
-
-        <div className="trend-chart-container">
-          <div className="trend-y-axis">
-            {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
-              <span key={fraction}>{formatMoney(Math.round(maxTrendAmount * fraction))}</span>
+        </section>
+      );
+    }
+    if (sectionId === "totals") {
+      return (
+        <section className="home-totals-card" key={sectionId}>
+          <div className="finsights-tab-switch" role="tablist" aria-label="Transaction type">
+            {(["expense", "income"] as const).map((type) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === type}
+                key={type}
+                className={`tab-switch-pill ${activeTab === type ? `active-${type}` : ""}`}
+                onClick={() => setActiveTab(type)}
+              >
+                {tForLanguage(type, language)}
+              </button>
             ))}
           </div>
-
-          <div className="trend-bars-wrapper">
-            {trendBars.map((bar, idx) => {
-              const heightPercent =
-                maxTrendAmount > 0 ? Math.min(100, Math.round((bar.amount / maxTrendAmount) * 100)) : 0;
-              return (
-                <div key={idx} className="trend-bar-column">
-                  <div className="trend-bar-track">
-                    <div
-                      className={`trend-bar-pill ${
-                        activeTab === "expense" ? "expense-bar" : "income-bar"
-                      }`}
-                      style={{
-                        height: `${Math.max(bar.amount > 0 ? 8 : 2, heightPercent)}%`,
-                      }}
-                      title={`${bar.label}: ${formatMoney(bar.amount)}`}
-                    />
-                  </div>
-                  <span className="trend-bar-label">{bar.label}</span>
+          {currentTotal === 0 ? (
+            <div className="home-empty-total">
+              <b>{activeTab === "expense" ? tForLanguage("noExpensesRecorded", language) : tForLanguage("noIncomeRecorded", language)}</b>
+              <button type="button" className="kupit-primary-button" onClick={() => onAddTransaction(activeTab)}>
+                {activeTab === "expense" ? tForLanguage("addExpense", language) : tForLanguage("addIncome", language)}
+              </button>
+            </div>
+          ) : (
+            <div className="home-total-heading">
+              <div>
+                <span className="eyebrow">{activeTab === "expense" ? tForLanguage("expense", language) : tForLanguage("income", language)}</span>
+                <strong>{formatProfileMoney(currentTotal)}</strong>
+              </div>
+              {comparison && (
+                <span className={`home-change-chip ${comparison.positive ? "positive" : comparison.direction === "neutral" ? "neutral" : "negative"}`}>
+                  {comparison.direction === "down" ? <TrendingDown size={14} /> : comparison.direction === "up" ? <TrendingUp size={14} /> : null}
+                  {comparison.direction === "up" ? "↑" : comparison.direction === "down" ? "↓" : ""}
+                  {comparison.percent}% · {periodLabel}
+                </span>
+              )}
+            </div>
+          )}
+        </section>
+      );
+    }
+    if (sectionId === "insight") {
+      if (filteredTxs.length < 3 || !insightCandidates.length) return null;
+      const insight = insightCandidates[0];
+      return (
+        <button
+          type="button"
+          className="home-insight-card"
+          key={sectionId}
+          onClick={() => {
+            if (insight.kind === "budget") onOpenBudget();
+            else openHistory(insight.categoryId);
+          }}
+        >
+          <CircleDollarSign size={18} />
+          <span>{insight.text}</span>
+        </button>
+      );
+    }
+    if (sectionId === "trend") {
+      const max = Math.ceil(Math.max(maxTrendAmount, 10000) / 10000) * 10000;
+      return (
+        <section className="home-trend-card" key={sectionId}>
+          <span className="eyebrow">{tForLanguage(activeTab, language)} trend</span>
+          <div className="home-trend-bars" aria-label={`${activeTab} trend`}>
+            {trendBars.map((bar) => (
+              <div className="home-trend-column" key={bar.label}>
+                <div className="home-trend-track">
+                  <span
+                    className={activeTab === "expense" ? "expense" : "income"}
+                    style={{ height: `${Math.max(bar.amount > 0 ? 8 : 2, Math.min(100, (bar.amount / max) * 100))}%` }}
+                  />
                 </div>
+                <small>{bar.label}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+    if (sectionId === "categories") {
+      if (!categoryBreakdown.length) return null;
+      return (
+        <section className="home-section-card" key={sectionId}>
+          <div className="home-section-heading">
+            <h2>{tForLanguage("categories", language)}</h2>
+            <button type="button" onClick={() => openHistory()}>{tForLanguage("seeAll", language)}</button>
+          </div>
+          <div className="home-category-list">
+            {categoryBreakdown.map((row) => (
+              <button
+                type="button"
+                className="home-category-row"
+                key={row.categoryId}
+                onClick={() => row.categoryId !== "__other" ? openHistory(row.categoryId === "__uncategorized" ? undefined : row.categoryId) : openHistory()}
+              >
+                <CategoryIcon
+                  icon={row.category?.icon}
+                  color={row.category?.color}
+                  size={18}
+                />
+                <span className="home-category-copy">
+                  <b>{row.categoryId === "__other" ? tForLanguage("other", language) : row.category?.name || tForLanguage("other", language)}</b>
+                  <span className="home-category-bar"><i style={{ width: `${Math.min(100, row.percentage)}%` }} /></span>
+                </span>
+                <span className="home-category-value">
+                  <b>{formatProfileMoney(row.amount)}</b>
+                  <small>{Math.round(row.percentage)}%</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      );
+    }
+    if (sectionId === "budgets") {
+      if (!budgets.length) return null;
+      return (
+        <section className="home-section-card" key={sectionId}>
+          <div className="home-section-heading">
+            <h2>{tForLanguage("budgets", language)}</h2>
+            <button type="button" onClick={onPlan}>{tForLanguage("seeAll", language)}</button>
+          </div>
+          <div className="home-budget-list">
+            {budgetSnapshots.map((snapshot) => {
+              const budget = budgets.find((item) => item.id === snapshot.budgetId);
+              const category = categories.find((item) => item.id === budget?.categoryId);
+              const percent = snapshot.limit ? (snapshot.spent / snapshot.limit) * 100 : 0;
+              const barClass = percent >= 100 ? "expense" : percent >= 80 ? "warning" : "normal";
+              const remaining = Math.max(0, snapshot.limit - snapshot.spent);
+              return (
+                <button type="button" className="home-budget-row" key={snapshot.budgetId} onClick={onOpenBudget}>
+                  <span><b>{category?.name || tForLanguage("budgets", language)}</b><small>{formatProfileMoney(snapshot.spent)} / {formatProfileMoney(snapshot.limit)}</small></span>
+                  <span className="home-budget-bar"><i className={barClass} style={{ width: `${Math.min(100, percent)}%` }} /></span>
+                  <small>{formatProfileMoney(remaining)} {tForLanguage("remaining", language)}</small>
+                </button>
               );
             })}
           </div>
-        </div>
-      </section>
+        </section>
+      );
+    }
+    if (sectionId === "upcoming") {
+      if (!upcomingItems.length) return null;
+      return (
+        <section className="home-section-card" key={sectionId}>
+          <div className="home-section-heading">
+            <h2>{tForLanguage("upcoming", language)}</h2>
+          </div>
+          <div className="home-upcoming-list">
+            {upcomingItems.map((item) => {
+              const distance = daysBetween(toDateString(now), item.date);
+              const relative = distance === 0 ? tForLanguage("today", language) : distance === 1 ? tForLanguage("tomorrow", language) : item.date;
+              const open = item.kind === "recurring" ? onOpenRecurring : item.kind === "debt" ? onOpenDebt : onOpenFriends;
+              const Icon = item.kind === "recurring" ? Repeat2 : item.kind === "debt" ? Landmark : UserRound;
+              return (
+                <button type="button" className="home-upcoming-row" key={`${item.kind}-${item.id}`} onClick={open}>
+                  <span className="home-row-icon"><Icon size={18} /></span>
+                  <span><b>{item.title}</b><small>{relative}</small></span>
+                  <strong className={item.amount >= 0 ? "income" : "expense"}>
+                    {item.amount >= 0 ? "+" : "-"}{formatProfileMoney(Math.abs(item.amount))}
+                  </strong>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      );
+    }
+    if (sectionId === "recent") {
+      const rows = (recentTransactions as Transaction[]).slice(0, 5);
+      return (
+        <section className="home-section-card" key={sectionId}>
+          <div className="home-section-heading">
+            <h2>{tForLanguage("recent", language)}</h2>
+            <button type="button" onClick={() => openHistory()}>{tForLanguage("seeAll", language)}</button>
+          </div>
+          {!rows.length ? (
+            <p className="home-inline-empty">{tForLanguage("noRecentTransactions", language)}</p>
+          ) : (
+            <div className="home-recent-list">
+              {rows.map((tx) => {
+                const category = categories.find((item) => item.id === tx.categoryId);
+                const account = accounts.find((item) => item.id === tx.accountId);
+                const relativeTime = tx.date === toDateString(now)
+                  ? tForLanguage("today", language)
+                  : tx.date;
+                const signedAmount = tx.type === "income" ? tx.amount : tx.type === "expense" ? -(tx.personalShareAmount ?? tx.amount) : 0;
+                return (
+                  <button type="button" className="home-recent-row" key={tx.id} onClick={() => onOpenTransaction(tx.id)}>
+                    <CategoryIcon icon={category?.icon} color={category?.color} size={18} />
+                    <span><b>{tx.note || category?.name || tForLanguage("other", language)}</b><small>{account?.name || tForLanguage("account", language)} · {relativeTime}</small></span>
+                    {tx.type !== "transfer" && (
+                      <strong className={signedAmount >= 0 ? "income" : "expense"}>
+                        {signedAmount >= 0 ? "+" : "-"}{formatProfileMoney(Math.abs(signedAmount))}
+                      </strong>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      );
+    }
+    return null;
+  };
+
+  const selectedAccountName = selectedAccountId === "all"
+    ? tForLanguage("allAccounts", language)
+    : accounts.find((account) => account.id === selectedAccountId)?.name || tForLanguage("account", language);
+  const accountFilter = (
+    <label className="spending-pulse__account-filter">
+      <Wallet size={15} aria-hidden="true" />
+      <select
+        value={selectedAccountId}
+        onChange={(event) => setSelectedAccountId(event.target.value)}
+        aria-label={tForLanguage("account", language)}
+        title={selectedAccountName}
+      >
+        <option value="all">{tForLanguage("allAccounts", language)}</option>
+        {accounts.map((account) => (
+          <option value={account.id} key={account.id}>{account.name}</option>
+        ))}
+      </select>
+      <ChevronDown size={14} aria-hidden="true" />
+    </label>
+  );
+
+  return (
+    <div className="home-dashboard">
+      <SpendingPulse
+        profileId={profileId}
+        accountId={selectedAccountId}
+        accountFilter={accountFilter}
+        period={period}
+        onPeriodChange={setPeriod}
+        budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
+        weekStartsOn={sectionSettings.weekStartsOn}
+        tone={sectionSettings.spendingPulseTone}
+        reduceMotion={sectionSettings.reduceMotion}
+      />
+      <div className="home-section-list">
+        {sectionOrder.map(renderSection)}
+      </div>
     </div>
   );
 }

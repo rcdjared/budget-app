@@ -27,7 +27,12 @@ export function formatDateTime(date: Date | string): string {
 
 /** Format date as ISO date string (YYYY-MM-DD) for storage */
 export function toDateString(date: Date): string {
-  return format(date, "yyyy-MM-dd");
+  return dateKeyFromParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+/** Build a zero-padded calendar date from local year, month, and day parts. */
+export function dateKeyFromParts(year: number, month: number, day: number): string {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 /** Get the first and last day of a month */
@@ -47,6 +52,23 @@ export function getMonthRange(year: number, month: number): {
 export function getCurrentMonthRange(): { start: string; end: string } {
   const now = new Date();
   return getMonthRange(now.getFullYear(), now.getMonth());
+}
+
+export function getBudgetCycleRange(cycleStartDay: number, date = new Date()) {
+  const startDay = Math.max(1, Math.min(31, cycleStartDay));
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  if (date.getDate() >= startDay) {
+    start.setDate(startDay);
+  } else {
+    start.setMonth(start.getMonth() - 1);
+    const lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    start.setDate(Math.min(startDay, lastDay));
+  }
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), 0).getDate();
+  end.setDate(Math.min(startDay - 1, lastDay));
+  return { start: toDateString(start), end: toDateString(end) };
 }
 
 /** Re-export formatMoney from domain/money */

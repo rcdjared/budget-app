@@ -2,6 +2,7 @@
 // Run once when a new profile is created.
 
 import { db } from "./schema";
+import { profileRecords } from "./profileScope";
 import type { Category } from "@/domain/types";
 import { ensureDefaultProfile } from "./repositories/profiles";
 
@@ -127,7 +128,7 @@ export async function seedDefaultCategories(profileId: string): Promise<void> {
     const seedVersionId = `category-seed-v2:${profileId}`;
     if ((await db.settings.get(seedVersionId))?.value === "done") return;
 
-    const existingCategories = await db.categories.where({ profileId }).filter((category) => !category.deletedAt).toArray();
+    const existingCategories = await profileRecords(db.categories, profileId).filter((category) => !category.deletedAt).toArray();
     const hasLegacyExpenseDefaults = existingCategories.some(
       (category) => category.type === "expense" && LEGACY_EXPENSE_CATEGORY_NAMES.has(category.name)
     );
@@ -187,7 +188,7 @@ export async function seedDefaultCategories(profileId: string): Promise<void> {
 /** Move old starter-category links to the simple defaults without deleting ledger history. */
 export async function migrateLegacyExpenseCategories(profileId: string): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    const allCategories = await db.categories.where({ profileId }).toArray();
+    const allCategories = await profileRecords(db.categories, profileId).toArray();
     const activeCategories = allCategories.filter((category) => !category.deletedAt);
     const currentByName = new Map<string, Category>();
     for (const category of activeCategories) {
@@ -208,19 +209,19 @@ export async function migrateLegacyExpenseCategories(profileId: string): Promise
     if (!categoryIdMap.size) return;
 
     const timestamp = now();
-    const transactions = await db.transactions.where({ profileId }).toArray();
+    const transactions = await profileRecords(db.transactions, profileId).toArray();
     for (const transaction of transactions) {
       const targetId = transaction.categoryId ? categoryIdMap.get(transaction.categoryId) : undefined;
       if (targetId) await db.transactions.update(transaction.id, { categoryId: targetId, updatedAt: timestamp });
     }
 
-    const recurringRules = await db.recurring.where({ profileId }).toArray();
+    const recurringRules = await profileRecords(db.recurring, profileId).toArray();
     for (const rule of recurringRules) {
       const targetId = rule.categoryId ? categoryIdMap.get(rule.categoryId) : undefined;
       if (targetId) await db.recurring.update(rule.id, { categoryId: targetId, updatedAt: timestamp });
     }
 
-    const activeBudgets = await db.budgets.where({ profileId }).filter((budget) => !budget.deletedAt).toArray();
+    const activeBudgets = await profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray();
     const budgetTargetsWithLegacyRules = new Set(
       activeBudgets.map((budget) => categoryIdMap.get(budget.categoryId)).filter((id): id is string => Boolean(id))
     );

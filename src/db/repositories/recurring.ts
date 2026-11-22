@@ -1,10 +1,10 @@
 import { db } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 import { getNextOccurrenceDate } from "@/domain/recurrence";
 import type { Recurring, Transaction } from "@/domain/types";
 
 export async function processDueRecurringTransactions(profileId: string, today: string): Promise<string[]> {
-  const rules = await db.recurring
-    .where({ profileId })
+  const rules = await profileRecords(db.recurring, profileId)
     .filter((rule) => !rule.deletedAt && !rule.isPaused && rule.transactionType === "expense")
     .toArray();
   const createdIds: string[] = [];
