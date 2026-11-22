@@ -1,7 +1,7 @@
 // Transaction repository — the core ledger of all money movements.
 
 import { db } from "../schema";
-import { profileRecords } from "../profileScope";
+import { getProfileRecord, profileRecords } from "../profileScope";
 import type { Transaction } from "@/domain/types";
 
 function now(): string {
@@ -18,17 +18,16 @@ export async function getTransactionsByProfile(
 }
 
 export async function getTransactionsByAccount(
-  accountId: string
+  accountId: string,
+  profileId: string
 ): Promise<Transaction[]> {
   // Get all transactions where this account is involved (source or destination)
-  const asSource = await db.transactions
-    .where({ accountId })
-    .filter((t) => !t.deletedAt)
+  const asSource = await profileRecords(db.transactions, profileId)
+    .filter((t) => t.accountId === accountId && !t.deletedAt)
     .toArray();
 
-  const asDestination = await db.transactions
-    .where({ toAccountId: accountId })
-    .filter((t) => !t.deletedAt)
+  const asDestination = await profileRecords(db.transactions, profileId)
+    .filter((t) => t.toAccountId === accountId && !t.deletedAt)
     .toArray();
 
   // Merge, deduplicate, and sort by date descending
@@ -55,25 +54,21 @@ export async function getTransactionsByDateRange(
 
 export async function getTransactionsByCategory(
   categoryId: string,
+  profileId: string,
   startDate?: string,
   endDate?: string
 ): Promise<Transaction[]> {
-  let query = db.transactions.where({ categoryId });
-
-  return query
-    .filter((t) => {
-      if (t.deletedAt) return false;
-      if (startDate && t.date < startDate) return false;
-      if (endDate && t.date > endDate) return false;
-      return true;
-    })
+  return profileRecords(db.transactions, profileId)
+    .filter((t) => t.categoryId === categoryId && !t.deletedAt
+      && (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate))
     .toArray();
 }
 
 export async function getTransactionById(
-  id: string
+  id: string,
+  profileId: string
 ): Promise<Transaction | undefined> {
-  return db.transactions.get(id);
+  return getProfileRecord(db.transactions, id, profileId);
 }
 
 export async function createTransaction(
@@ -174,10 +169,12 @@ export async function updateTransfer(id: string, data: TransferData): Promise<vo
   if (transferFee && !data.feeCategoryId) throw new Error("A fee category is required for this transfer.");
 
   await db.transaction("rw", db.tables, async () => {
-    const existing = await db.transactions.get(id);
+    const existing = await getProfileRecord(db.transactions, id, data.profileId);
     if (!existing || existing.type !== "transfer") throw new Error("Transfer not found.");
     const timestamp = now();
-    const existingFee = existing.feeTransactionId ? await db.transactions.get(existing.feeTransactionId) : undefined;
+    const existingFee = existing.feeTransactionId
+      ? await getProfileRecord(db.transactions, existing.feeTransactionId, data.profileId)
+      : undefined;
     await db.transactions.update(id, {
       amount,
       accountId: data.accountId,
@@ -228,22 +225,25 @@ export async function updateTransfer(id: string, data: TransferData): Promise<vo
 
 export async function updateTransaction(
   id: string,
+  profileId: string,
   data: Partial<Transaction>
 ): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    const existing = await db.transactions.get(id);
+    const existing = await getProfileRecord(db.transactions, id, profileId);
     if (!existing) throw new Error("Transaction not found.");
+    if (data.profileId && data.profileId !== profileId) throw new Error("Transaction profile cannot be changed.");
     if (existing.cancelledAt) throw new Error("Restore this transaction before editing it.");
-    await db.transactions.update(id, { ...data, editedAt: now(), updatedAt: now() });
+    await db.transactions.update(id, { ...data, profileId, editedAt: now(), updatedAt: now() });
   });
 }
 
 export async function cancelTransaction(
   id: string,
+  profileId: string,
   reason?: string
 ): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    const transaction = await db.transactions.get(id);
+    const transaction = await getProfileRecord(db.transactions, id, profileId);
     if (!transaction) throw new Error("Transaction not found.");
     if (transaction.cancelledAt) return;
     const timestamp = now();
@@ -254,7 +254,8 @@ export async function cancelTransaction(
     });
 
     if (transaction.type === "transfer") {
-      const linkedFees = await db.transactions.filter((item) => item.transferId === id && !item.deletedAt).toArray();
+      const linkedFees = await profileRecords(db.transactions, profileId)
+        .filter((item) => item.transferId === id && !item.deletedAt).toArray();
       for (const fee of linkedFees) {
         await db.transactions.update(fee.id, { cancelledAt: timestamp, updatedAt: timestamp });
       }
@@ -286,14 +287,14 @@ export async function cancelTransaction(
   });
 }
 
-export async function restoreTransaction(id: string): Promise<void> {
+export async function restoreTransaction(id: string, profileId: string): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    const transaction = await db.transactions.get(id);
+    const transaction = await getProfileRecord(db.transactions, id, profileId);
     if (!transaction) throw new Error("Transaction not found.");
-    const account = await db.accounts.get(transaction.accountId);
+    const account = await getProfileRecord(db.accounts, transaction.accountId, transaction.profileId);
     if (!account || account.deletedAt) throw new Error("The source account no longer exists.");
     if (transaction.toAccountId) {
-      const destination = await db.accounts.get(transaction.toAccountId);
+      const destination = await getProfileRecord(db.accounts, transaction.toAccountId, transaction.profileId);
       if (!destination || destination.deletedAt) throw new Error("The destination account no longer exists.");
     }
     const timestamp = now();
@@ -304,7 +305,8 @@ export async function restoreTransaction(id: string): Promise<void> {
       updatedAt: timestamp,
     });
     if (transaction.type === "transfer") {
-      const linkedFees = await db.transactions.filter((item) => item.transferId === id).toArray();
+      const linkedFees = await profileRecords(db.transactions, transaction.profileId)
+        .filter((item) => item.transferId === id).toArray();
       for (const fee of linkedFees) {
         await db.transactions.update(fee.id, { cancelledAt: null, deletedAt: null, updatedAt: timestamp });
       }
@@ -335,11 +337,11 @@ export async function restoreTransaction(id: string): Promise<void> {
   });
 }
 
-export async function softDeleteTransaction(id: string): Promise<void> {
-  const transaction = await db.transactions.get(id);
+export async function softDeleteTransaction(id: string, profileId: string): Promise<void> {
+  const transaction = await getProfileRecord(db.transactions, id, profileId);
   const timestamp = now();
   await db.transaction("rw", db.tables, async () => {
-    const current = await db.transactions.get(id);
+    const current = await getProfileRecord(db.transactions, id, profileId);
     if (!current) return;
     if (current.splitId) {
       const entries = await db.friendLedger.where("transactionId").equals(id).toArray();
@@ -372,7 +374,8 @@ export async function softDeleteTransaction(id: string): Promise<void> {
   }
   await db.transaction("rw", db.tables, async () => {
     await db.transactions.update(id, { deletedAt: timestamp, updatedAt: timestamp });
-    const linkedFees = await db.transactions.filter((item) => item.transferId === id && !item.deletedAt).toArray();
+    const linkedFees = await profileRecords(db.transactions, profileId)
+      .filter((item) => item.transferId === id && !item.deletedAt).toArray();
     for (const fee of linkedFees) await db.transactions.update(fee.id, { deletedAt: timestamp, updatedAt: timestamp });
   });
 }

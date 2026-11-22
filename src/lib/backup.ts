@@ -1,4 +1,5 @@
 import { db, withoutOutbox } from "@/db/schema";
+import { profileRecords } from "@/db/profileScope";
 
 const TABLE_NAMES = [
   "profiles",
@@ -18,11 +19,16 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-export async function exportJsonBackup(): Promise<void> {
+export async function exportJsonBackup(profileId: string): Promise<void> {
   const data: Record<string, unknown[]> = { exportedAt: [] };
   data.exportedAt = [{ iso: new Date().toISOString(), app: "Kupit" }];
   for (const table of TABLE_NAMES) {
-    data[table] = await db.table(table).toArray();
+    if (table === "profiles") {
+      const profile = await db.profiles.get(profileId);
+      data[table] = profile ? [profile] : [];
+    } else {
+      data[table] = await db.table(table).where("profileId").equals(profileId).toArray();
+    }
   }
   downloadBlob(
     new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
@@ -30,10 +36,10 @@ export async function exportJsonBackup(): Promise<void> {
   );
 }
 
-export async function exportTransactionsCsv(): Promise<void> {
-  const transactions = await db.transactions.toArray();
-  const accounts = await db.accounts.toArray();
-  const categories = await db.categories.toArray();
+export async function exportTransactionsCsv(profileId: string): Promise<void> {
+  const transactions = await profileRecords(db.transactions, profileId).toArray();
+  const accounts = await profileRecords(db.accounts, profileId).toArray();
+  const categories = await profileRecords(db.categories, profileId).toArray();
   const rows = [
     ["Date", "Type", "Amount (PHP)", "Account", "Category", "Note"],
     ...transactions.map((tx) => [

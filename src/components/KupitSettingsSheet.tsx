@@ -481,8 +481,8 @@ export function KupitSettingsSheet({
                 </button>
                 {backupOpen && (
                   <div className="kupit-backup-actions">
-                    <button type="button" onClick={exportJsonBackup}><Download size={16} /> Export JSON</button>
-                    <button type="button" onClick={exportTransactionsCsv}><FileSpreadsheet size={16} /> Export CSV</button>
+                    <button type="button" onClick={() => void exportJsonBackup(profileId)}><Download size={16} /> Export JSON</button>
+                    <button type="button" onClick={() => void exportTransactionsCsv(profileId)}><FileSpreadsheet size={16} /> Export CSV</button>
                     <label><Upload size={16} /> Restore from file
                       <input type="file" accept=".json,application/json" onChange={async (event) => {
                         const file = event.target.files?.[0];

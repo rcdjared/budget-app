@@ -1,12 +1,14 @@
 import { db } from "@/db/schema";
+import { getProfileRecord } from "@/db/profileScope";
 import { softDeleteTransaction, cancelTransaction } from "@/db/repositories/transactions";
 
 export async function cancelRecurringOccurrence(
   transactionId: string,
+  profileId: string,
   reason?: string
 ): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    const transaction = await db.transactions.get(transactionId);
+    const transaction = await getProfileRecord(db.transactions, transactionId, profileId);
     if (!transaction) throw new Error("Transaction not found.");
     if (transaction.recurringId && transaction.occurrenceKey) {
       const [, occurrenceDate] = transaction.occurrenceKey.split(/:(.+)/);
@@ -22,12 +24,12 @@ export async function cancelRecurringOccurrence(
       });
     }
   });
-  await cancelTransaction(transactionId, reason);
+  await cancelTransaction(transactionId, profileId, reason);
 }
 
-export async function deleteRecurringOccurrence(transactionId: string): Promise<void> {
+export async function deleteRecurringOccurrence(transactionId: string, profileId: string): Promise<void> {
   await db.transaction("rw", db.tables, async () => {
-    const transaction = await db.transactions.get(transactionId);
+    const transaction = await getProfileRecord(db.transactions, transactionId, profileId);
     if (!transaction) throw new Error("Transaction not found.");
     if (transaction.recurringId && transaction.occurrenceKey) {
       const [, occurrenceDate] = transaction.occurrenceKey.split(/:(.+)/);
@@ -43,5 +45,5 @@ export async function deleteRecurringOccurrence(transactionId: string): Promise<
       });
     }
   });
-  await softDeleteTransaction(transactionId);
+  await softDeleteTransaction(transactionId, profileId);
 }

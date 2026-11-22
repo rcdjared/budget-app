@@ -116,7 +116,7 @@ export function CategoryManagerSheet({
     setFormError("");
 
     if (editingCategory) {
-      await updateCategory(editingCategory.id, {
+      await updateCategory(editingCategory.id, profileId, {
         name,
         type: formType,
         icon: formIcon,
@@ -152,11 +152,11 @@ export function CategoryManagerSheet({
       : `Delete "${cat.name}"? Past transactions will keep their history.`;
 
     if (window.confirm(msg)) {
-      await softDeleteCategory(cat.id);
+      await softDeleteCategory(cat.id, profileId);
       // Also soft-delete any children
       const children = categories.filter((c) => c.parentId === cat.id);
       for (const child of children) {
-        await softDeleteCategory(child.id);
+        await softDeleteCategory(child.id, profileId);
       }
       if (editingCategory?.id === cat.id) {
         setIsAdding(false);

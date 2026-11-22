@@ -805,7 +805,7 @@ function App() {
       />
 
       {recurringShortcutId !== null && (
-        <RecurringSheet onClose={() => setRecurringShortcutId(null)} focusRuleId={recurringShortcutId || undefined} />
+        <RecurringSheet profileId={profileId} onClose={() => setRecurringShortcutId(null)} focusRuleId={recurringShortcutId || undefined} />
       )}
 
       {helpOpen && (
@@ -1398,8 +1398,8 @@ function TransactionList({
     const deleteTransaction = async () => {
       if (!window.confirm("Delete this record? You can undo for about 6 seconds.")) return;
       try {
-        if (transaction.recurringId) await deleteRecurringOccurrence(transaction.id);
-        else await softDeleteTransaction(transaction.id);
+        if (transaction.recurringId) await deleteRecurringOccurrence(transaction.id, profileId);
+        else await softDeleteTransaction(transaction.id, profileId);
         setUndoVisible(true);
         deleteTimerRef.current = window.setTimeout(async () => {
           setUndoVisible(false);
@@ -1426,11 +1426,11 @@ function TransactionList({
     const cancelOrRestore = async () => {
       try {
         if (transaction.cancelledAt) {
-          await restoreTransaction(transaction.id);
+          await restoreTransaction(transaction.id, profileId);
         } else {
           const reason = window.prompt("Optional cancellation reason")?.trim();
-          if (transaction.recurringId) await cancelRecurringOccurrence(transaction.id, reason || undefined);
-          else await cancelTransaction(transaction.id, reason || undefined);
+          if (transaction.recurringId) await cancelRecurringOccurrence(transaction.id, profileId, reason || undefined);
+          else await cancelTransaction(transaction.id, profileId, reason || undefined);
         }
       } catch (error) {
         window.alert(error instanceof Error ? error.message : "Could not update this record.");
@@ -1503,7 +1503,7 @@ function TransactionList({
                   <button type="button" className="undo-toast visible" onClick={async () => {
                     if (deleteTimerRef.current !== null) window.clearTimeout(deleteTimerRef.current);
                     deleteTimerRef.current = null;
-                    await restoreTransaction(transaction.id);
+                    await restoreTransaction(transaction.id, profileId);
                     setUndoVisible(false);
                     onClose();
                   }}>Deleted · Undo</button>
@@ -1712,7 +1712,7 @@ function TransactionList({
             </strong>
             {transfer && <div className="transaction-action-buttons">
               <button type="button" className="transaction-edit-button" aria-label="Edit transfer" onClick={() => window.dispatchEvent(new CustomEvent("kupit:edit-transfer", { detail: tx.id }))}><Edit2 size={15} /></button>
-              <button type="button" className="transaction-edit-button" aria-label="Delete transfer" onClick={() => { if (window.confirm("Delete this transfer? Its linked fee will also be removed.")) void softDeleteTransaction(tx.id); }}><Trash2 size={15} /></button>
+              <button type="button" className="transaction-edit-button" aria-label="Delete transfer" onClick={() => { if (window.confirm("Delete this transfer? Its linked fee will also be removed.")) void softDeleteTransaction(tx.id, profileId); }}><Trash2 size={15} /></button>
             </div>}
           </article>
         );
@@ -2089,7 +2089,7 @@ function AccountsPage({
                       );
                       if (!confirmed) return;
                       try {
-                        await softDeleteAccount(account.id);
+                        await softDeleteAccount(account.id, profileId);
                       } catch (error) {
                         console.error("Could not delete account:", error);
                         window.alert(
@@ -2338,8 +2338,8 @@ function BudgetsPage({
         />
       )}
       {goalOpen && <GoalForm profileId={profileId} onClose={() => setGoalOpen(false)} />}
-      {recurringOpen && <RecurringSheet onClose={() => setRecurringOpen(false)} />}
-      {debtsOpen && <DebtsSheet onClose={() => setDebtsOpen(false)} />}
+      {recurringOpen && <RecurringSheet profileId={profileId} onClose={() => setRecurringOpen(false)} />}
+      {debtsOpen && <DebtsSheet profileId={profileId} onClose={() => setDebtsOpen(false)} />}
     </div>
   );
 }
@@ -2516,12 +2516,8 @@ function GoalForm({
   );
 }
 
-function RecurringSheet({ onClose, focusRuleId }: { onClose: () => void; focusRuleId?: string }) {
-  const profile = useLiveQuery(
-    () => db.profiles.filter((item) => item.isDefault && !item.deletedAt).first(),
-    [],
-    undefined
-  );
+function RecurringSheet({ profileId, onClose, focusRuleId }: { profileId: string; onClose: () => void; focusRuleId?: string }) {
+  const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
   const accounts = useLiveQuery(
     () => profile ? profileRecords(db.accounts, profile.id).filter((item) => !item.deletedAt).toArray() : [],
     [profile?.id],
@@ -3132,21 +3128,17 @@ function ChatLogSheet({
   );
 }
 
-function DebtsSheet({ onClose }: { onClose: () => void }) {
+function DebtsSheet({ profileId, onClose }: { profileId: string; onClose: () => void }) {
   const debts = useLiveQuery(
-    () => db.debts.filter((item) => !item.deletedAt).toArray(),
-    [],
+    () => profileRecords(db.debts, profileId).filter((item) => !item.deletedAt).toArray(),
+    [profileId],
     []
   );
   const [direction, setDirection] = useState<"i_owe" | "owed_to_me">("i_owe");
   const [counterparty, setCounterparty] = useState("");
   const [principal, setPrincipal] = useState("");
   const [debtDueDate, setDebtDueDate] = useState("");
-  const profile = useLiveQuery(
-    () => db.profiles.filter((item) => item.isDefault && !item.deletedAt).first(),
-    [],
-    undefined
-  );
+  const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
 
   const save = async () => {
     if (!profile || !counterparty.trim() || !parseMoney(principal)) return;
@@ -3272,6 +3264,7 @@ function DebtsSheet({ onClose }: { onClose: () => void }) {
 function SettingsSheet({
   open,
   onClose,
+  profileId,
   themePreference,
   onThemeChange,
   onOpenCategories,
@@ -3280,6 +3273,7 @@ function SettingsSheet({
 }: {
   open: boolean;
   onClose: () => void;
+  profileId: string;
   themePreference: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
   onOpenCategories: () => void;
@@ -3305,7 +3299,11 @@ function SettingsSheet({
     ? configuredRedirectUrl.toString().replace(/\/$/, "")
     : window.location.origin;
 
-  const categories = useLiveQuery(() => db.categories.filter((c) => !c.deletedAt).toArray(), [], []);
+  const categories = useLiveQuery(
+    () => profileRecords(db.categories, profileId).filter((category) => !category.deletedAt).toArray(),
+    [profileId],
+    []
+  );
 
   useEffect(() => {
     if (authCallbackNotice) setCloudMessage(authCallbackNotice);
@@ -3584,7 +3582,7 @@ function SettingsSheet({
           <div className="ios-grouped-section">
             <div className="ios-group-title">Data & Backup</div>
             <div className="ios-group-card">
-              <button className="ios-row-btn" onClick={exportTransactionsCsv}>
+              <button className="ios-row-btn" onClick={() => void exportTransactionsCsv(profileId)}>
                 <div className="ios-row-left">
                   <span className="ios-squircle squircle-green">
                     <FileSpreadsheet size={18} />
@@ -3599,7 +3597,7 @@ function SettingsSheet({
 
               <div className="ios-divider" />
 
-              <button className="ios-row-btn" onClick={exportJsonBackup}>
+              <button className="ios-row-btn" onClick={() => void exportJsonBackup(profileId)}>
                 <div className="ios-row-left">
                   <span className="ios-squircle squircle-teal">
                     <Download size={18} />
@@ -4386,7 +4384,7 @@ function AddTransactionSheet({
           await reconfigureLocalSplit(editingTransactionId, friendIds, "equal");
         }
       }
-      await updateTransaction(editingTransactionId, {
+        await updateTransaction(editingTransactionId, profileId, {
         type,
         amount: cents,
         accountId,
@@ -4832,7 +4830,7 @@ function AddTransactionSheet({
           <button
             className="undo-toast"
             onClick={async () => {
-              await softDeleteTransaction(undoId);
+              await softDeleteTransaction(undoId, profileId);
               setUndoId(null);
               onClose();
             }}
