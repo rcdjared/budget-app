@@ -1,0 +1,73 @@
+{
+  "_readme": "Draft response bank for the roadmap's response-generator phase; the current chat UI does not load this file. Template facts must be computed by app code, never invented. Each template declares language and vars for review. Keep responses brief, non-shaming, and aligned with supported actions before wiring them into the app.",
+  "moods": ["happy", "worried", "idle"],
+  "templates": [
+    {"id":"le_calm_01","intent":"LOG_EXPENSE","mood":"idle","intensity":1,"text":"Logged ₱{amount} under {category} ({account}). ₱{catRemaining} left this month.","language":"en","vars":["amount","category","account","catRemaining"]},
+    {"id":"le_calm_02","intent":"LOG_EXPENSE","mood":"idle","intensity":1,"text":"₱{amount} → {category}. Done.","language":"en","vars":["amount","category"]},
+    {"id":"le_calm_03","intent":"LOG_EXPENSE","mood":"idle","intensity":1,"language":"en-tl","vars":["amount","category","catRemaining"],"text":"₱{amount} sa {category}—naitala na. ₱{catRemaining} pa ang budget this month."},
+    {"id":"le_happy_01","intent":"LOG_EXPENSE","mood":"happy","intensity":2,"text":"Safe in the ledger: ₱{amount} for {category}. Still ₱{catRemaining} in that shell.","language":"en","vars":["amount","category","catRemaining"]},
+    {"id":"le_happy_02","intent":"LOG_EXPENSE","mood":"happy","intensity":2,"text":"Nice and tidy. ₱{amount} on {category}, only {catPercent}% used.","language":"en","vars":["amount","category","catPercent"]},
+    {"id":"le_happy_03","intent":"LOG_EXPENSE","mood":"happy","intensity":2,"text":"Logged! {category} sits at {catPercent}%. Claws relaxed.","language":"en","vars":["category","catPercent"]},
+    {"id":"le_happy_04","intent":"LOG_EXPENSE","mood":"happy","intensity":2,"language":"en-tl","vars":["amount","category","catPercent"],"text":"Nice! ₱{amount} sa {category}, {catPercent}% pa lang ng budget. Relax muna ang claws ko."},
+    {"id":"le_first_01","intent":"LOG_EXPENSE","mood":"idle","intensity":1,"tags":["first_of_day"],"text":"First entry today: ₱{amount} for {category}.","language":"en","vars":["amount","category"]},
+    {"id":"le_micro_01","intent":"LOG_EXPENSE","mood":"idle","intensity":2,"tags":["micro_spend"],"text":"Small pinches add up: {todayCount} entries today, ₱{todayTotal} total.","language":"en","vars":["todayCount","todayTotal"]},
+    {"id":"le_micro_02","intent":"LOG_EXPENSE","mood":"worried","intensity":2,"tags":["micro_spend"],"text":"That's {todayCount} small ones today (₱{todayTotal}). Tiny leaks sink big ships!","language":"en","vars":["todayCount","todayTotal"]},
+    {"id":"le_near_01","intent":"LOG_EXPENSE","mood":"worried","intensity":2,"tags":["near_budget"],"text":"Careful! ₱{amount} leaves ₱{catRemaining} in {category} with {daysLeft} days to go.","language":"en","vars":["amount","catRemaining","category","daysLeft"]},
+    {"id":"le_near_02","intent":"LOG_EXPENSE","mood":"worried","intensity":2,"tags":["near_budget"],"text":"My shell is sweating. {category} is at {catPercent}%.","language":"en","vars":["category","catPercent"]},
+    {"id":"le_near_03","intent":"LOG_EXPENSE","mood":"worried","intensity":1,"tags":["near_budget"],"text":"{category}: {catPercent}% used. About ₱{dailySafe}/day keeps you on track.","language":"en","vars":["category","catPercent","dailySafe"]},
+    {"id":"le_near_04","intent":"LOG_EXPENSE","mood":"worried","intensity":2,"tags":["near_budget"],"language":"en-tl","vars":["category","catPercent","daysLeft"],"text":"Heads-up: {category} is at {catPercent}% with {daysLeft} days left. Bantayan natin ang budget."},
+    {"id":"le_over_01","intent":"LOG_EXPENSE","mood":"worried","intensity":3,"tags":["over_budget"],"text":"Oh no, {category} hit {catPercent}%! That's ₱{overAmount} past the limit.","language":"en","vars":["category","catPercent","overAmount"]},
+    {"id":"le_over_02","intent":"LOG_EXPENSE","mood":"worried","intensity":3,"tags":["over_budget"],"text":"Claws trembling... {category} is ₱{overAmount} over. Adjust the budget or move funds?","language":"en","vars":["category","overAmount"]},
+    {"id":"le_over_03","intent":"LOG_EXPENSE","mood":"worried","intensity":1,"tags":["over_budget"],"text":"{category} is now ₱{overAmount} over budget. Tap to see options.","language":"en","vars":["category","overAmount"]},
+    {"id":"le_big_01","intent":"LOG_EXPENSE","mood":"worried","intensity":3,"tags":["big_expense"],"text":"Big one! ₱{amount} is {amountPctOfBudget}% of your {category} budget.","language":"en","vars":["amount","amountPctOfBudget","category"]},
+    {"id":"le_big_02","intent":"LOG_EXPENSE","mood":"worried","intensity":2,"tags":["big_expense"],"text":"Whoa, ₱{amount} in one go. Logged, but my claws felt that.","language":"en","vars":["amount"]},
+
+    {"id":"inc_01","intent":"LOG_INCOME","mood":"happy","intensity":3,"text":"Fresh treasure! +₱{amount} in {account}. Balance: ₱{accBalance}.","language":"en","vars":["amount","account","accBalance"]},
+    {"id":"inc_02","intent":"LOG_INCOME","mood":"happy","intensity":2,"text":"Claws up! ₱{amount} secured in {account}. Maybe set some aside first?","language":"en","vars":["amount","account"]},
+    {"id":"inc_03","intent":"LOG_INCOME","mood":"happy","intensity":2,"text":"Sahod day! +₱{amount} added to {account}.","language":"en-tl","vars":["amount","account"]},
+    {"id":"inc_04","intent":"LOG_INCOME","mood":"happy","intensity":1,"text":"Income logged: +₱{amount} to {account}.","language":"en","vars":["amount","account"]},
+    {"id":"inc_05","intent":"LOG_INCOME","mood":"happy","intensity":2,"language":"en-tl","vars":["amount","account"],"text":"+₱{amount} sa {account}—naitala na. Claws up!"},
+
+    {"id":"tr_01","intent":"TRANSFER","mood":"idle","intensity":1,"text":"Moved ₱{amount} from {fromAccount} to {toAccount}. Net worth unchanged.","language":"en","vars":["amount","fromAccount","toAccount"]},
+    {"id":"tr_02","intent":"TRANSFER","mood":"happy","intensity":2,"text":"Shifted ₱{amount}: {fromAccount} → {toAccount}. Nothing lost, nothing gained.","language":"en","vars":["amount","fromAccount","toAccount"]},
+    {"id":"tr_03","intent":"TRANSFER","mood":"idle","intensity":1,"language":"en-tl","vars":["amount","fromAccount","toAccount"],"text":"₱{amount} moved from {fromAccount} to {toAccount}. Lipat lang—unchanged ang total balance."},
+
+    {"id":"ed_confirm_01","intent":"EDIT_TXN","mood":"idle","intensity":1,"stage":"confirm","text":"Update {field}: {oldValue} → {newValue}. Confirm?","language":"en","vars":["field","oldValue","newValue"]},
+    {"id":"ed_done_01","intent":"EDIT_TXN","mood":"idle","intensity":1,"stage":"done","text":"Updated. {category} now has ₱{catRemaining} left.","language":"en","vars":["category","catRemaining"]},
+    {"id":"ed_done_02","intent":"EDIT_TXN","mood":"happy","intensity":2,"stage":"done","text":"Fixed! ₱{oldAmount} → ₱{newAmount}. Ledger is honest again.","language":"en","vars":["oldAmount","newAmount"]},
+    {"id":"ed_ambig_01","intent":"EDIT_TXN","mood":"idle","intensity":1,"stage":"ambiguous","text":"I found {matchCount} matches: {options}. Which one should I pinch?","language":"en","vars":["matchCount","options"]},
+    {"id":"ed_missing_01","intent":"EDIT_TXN","mood":"idle","intensity":1,"stage":"not_found","text":"I couldn't find that entry. Try \"change last transport to 35\".","language":"en","vars":[]},
+
+    {"id":"del_confirm_01","intent":"DELETE_TXN","mood":"worried","intensity":1,"stage":"confirm","text":"Remove ₱{amount} {category} ({date})? Confirm?","language":"en","vars":["amount","category","date"]},
+    {"id":"del_done_01","intent":"DELETE_TXN","mood":"idle","intensity":1,"stage":"done","text":"Removed. ₱{amount} is back in your {category} budget.","language":"en","vars":["amount","category"]},
+    {"id":"undo_done_01","intent":"UNDO","mood":"idle","intensity":1,"stage":"done","text":"Undone. Back to how it was.","language":"en","vars":[]},
+    {"id":"undo_none_01","intent":"UNDO","mood":"idle","intensity":1,"stage":"nothing","text":"Nothing to undo yet.","language":"en","vars":[]},
+
+    {"id":"q_rem_ok_01","intent":"QUERY_STATS","mood":"happy","intensity":2,"tags":["remaining_ok"],"text":"₱{catRemaining} left in {category}, about ₱{dailySafe}/day to month end.","language":"en","vars":["catRemaining","category","dailySafe"]},
+    {"id":"q_rem_ok_02","intent":"QUERY_STATS","mood":"happy","intensity":1,"tags":["remaining_ok"],"text":"{category}: ₱{catRemaining} left ({catPercent}% used).","language":"en","vars":["category","catRemaining","catPercent"]},
+    {"id":"q_rem_low_01","intent":"QUERY_STATS","mood":"worried","intensity":2,"tags":["remaining_low"],"text":"Only ₱{catRemaining} left in {category}. That's ₱{dailySafe}/day for {daysLeft} days.","language":"en","vars":["catRemaining","category","dailySafe","daysLeft"]},
+    {"id":"q_rem_over_01","intent":"QUERY_STATS","mood":"worried","intensity":1,"tags":["remaining_over"],"text":"{category} is ₱{overAmount} over budget. Want to see where it went?","language":"en","vars":["category","overAmount"]},
+    {"id":"q_top_01","intent":"QUERY_STATS","mood":"idle","intensity":1,"tags":["top_category"],"text":"{topCategory} leads at ₱{topAmount} ({topPercent}% of ₱{periodTotal}), then {secondCategory} at ₱{secondAmount}.","language":"en","vars":["topCategory","topAmount","topPercent","periodTotal","secondCategory","secondAmount"]},
+    {"id":"q_networth_01","intent":"QUERY_STATS","mood":"happy","intensity":2,"tags":["net_worth"],"text":"Across all shells: ₱{netWorth}. Biggest stash: {topAccount} (₱{topAccountBal}).","language":"en","vars":["netWorth","topAccount","topAccountBal"]},
+    {"id":"q_empty_01","intent":"QUERY_STATS","mood":"idle","intensity":1,"tags":["empty"],"text":"No entries for that period yet.","language":"en","vars":[]},
+
+    {"id":"slot_amount_01","intent":"SLOT_FILL","mood":"idle","intensity":1,"slot":"amount","text":"Got {merchantOrCategory}. How much was it?","language":"en","vars":["merchantOrCategory"]},
+    {"id":"slot_amount_02","intent":"SLOT_FILL","mood":"idle","intensity":2,"slot":"amount","text":"{merchantOrCategory}, magkano? How many pesos did that pinch?","language":"en-tl","vars":["merchantOrCategory"]},
+    {"id":"slot_account_01","intent":"SLOT_FILL","mood":"idle","intensity":1,"slot":"account","text":"Which wallet? {options}","language":"en","vars":["options"]},
+    {"id":"slot_confirm_01","intent":"SLOT_FILL","mood":"idle","intensity":1,"slot":"confirm","text":"Did you mean ₱{amount} for {category}? Tap to confirm.","language":"en","vars":["amount","category"]},
+
+    {"id":"unk_01","intent":"UNKNOWN","mood":"idle","intensity":2,"text":"My tiny crab brain couldn't crack that one. Try \"Lunch 120 cash\" or \"Food budget left\".","language":"en","vars":[]},
+    {"id":"unk_02","intent":"UNKNOWN","mood":"idle","intensity":1,"text":"Hindi ko nakuha 'yan. Try \"coffee 150\" or \"how much left in Food?\"","language":"en-tl","vars":[]},
+    {"id":"help_01","intent":"HELP","mood":"idle","intensity":1,"text":"I can log spending (\"jeep 40\"), log income (\"sahod 15k\"), fix entries (\"make that 45\"), and answer questions (\"top spending\").","language":"en-tl","vars":[]},
+    {"id":"help_02","intent":"HELP","mood":"idle","intensity":1,"language":"en-tl","vars":[],"text":"I can prepare an expense, income, or transfer for review. Sabihin lang ang item at amount, like “jeep 40”."},
+    {"id":"greet_01","intent":"SMALLTALK","mood":"idle","intensity":1,"tags":["greeting"],"text":"Hi! Tell me what you spent, like \"coffee 120\".","language":"en","vars":[]},
+    {"id":"greet_02","intent":"SMALLTALK","mood":"happy","intensity":2,"tags":["greeting"],"text":"Kumusta! Your shells are safe with me. What are we logging?","language":"en-tl","vars":[]},
+    {"id":"thanks_01","intent":"SMALLTALK","mood":"happy","intensity":1,"tags":["thanks"],"text":"Anytime! Protecting your stash is my job.","language":"en","vars":[]},
+    {"id":"cancel_01","intent":"CANCEL","mood":"idle","intensity":1,"text":"Okay, cancelled. Nothing changed.","language":"en","vars":[]},
+
+    {"id":"streak_01","intent":"PROACTIVE","mood":"happy","intensity":3,"tags":["streak"],"text":"{streakDays} days under budget! Claws up!","language":"en","vars":["streakDays"]},
+    {"id":"nospend_01","intent":"PROACTIVE","mood":"happy","intensity":2,"tags":["no_spend"],"text":"No spending today. Kupi approves.","language":"en","vars":[]},
+    {"id":"idle_nudge_01","intent":"PROACTIVE","mood":"idle","intensity":1,"tags":["no_logs_2d"],"text":"Haven't heard from you in {days} days. Anything to log?","language":"en","vars":["days"]}
+  ]
+}
+

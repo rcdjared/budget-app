@@ -1,0 +1,1985 @@
+{
+  "_readme": "Kupi response bank v2. Facts are computed by app code and passed as preformatted strings (money WITHOUT the peso sign; templates add it). Never invent facts. Every `vars` list must equal the unique {placeholders} in `text`, in order of first appearance, and every var must be in FACT_KEYS (see src/kupi/__tests__/kupiTraining.test.ts). Sensitive intents (DELETE_TXN, UNDO, UNKNOWN, ERROR, UNSUPPORTED) and tags remaining_low / remaining_over stay at intensity 1. Never shame spending; the joke is the crab's panic, not the user. Original wording only, no show catchphrases. Optional fields: tags[], stage (confirm|done|ambiguous|not_found|nothing), slot.",
+  "moods": [
+    "happy",
+    "worried",
+    "idle"
+  ],
+  "templates": [
+    {
+      "id": "le_i1_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "account",
+        "catRemaining"
+      ],
+      "text": "Logged ₱{amount} under {category} ({account}). ₱{catRemaining} left this month."
+    },
+    {
+      "id": "le_i1_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "₱{amount} → {category}. Done."
+    },
+    {
+      "id": "le_i1_en_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "category",
+        "amount",
+        "account"
+      ],
+      "text": "Saved: {category}, ₱{amount}, from {account}."
+    },
+    {
+      "id": "le_i1_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "catRemaining"
+      ],
+      "text": "₱{amount} sa {category}—naitala na. ₱{catRemaining} pa ang budget this month."
+    },
+    {
+      "id": "le_i1_tl_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "account"
+      ],
+      "text": "Naitala na: ₱{amount} sa {category} gamit ang {account}."
+    },
+    {
+      "id": "le_i1_tl_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "Okay, ₱{amount} para sa {category}. Naka-save na."
+    },
+    {
+      "id": "le_h2_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catRemaining"
+      ],
+      "text": "Safe in the ledger: ₱{amount} for {category}. Still ₱{catRemaining} in that shell."
+    },
+    {
+      "id": "le_h2_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Nice and tidy. ₱{amount} on {category}, only {catPercent}% used."
+    },
+    {
+      "id": "le_h2_en_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "category",
+        "catPercent"
+      ],
+      "text": "Logged! {category} sits at {catPercent}%. Claws relaxed."
+    },
+    {
+      "id": "le_h2_en_04",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "₱{amount} counted and tucked away. {category} is comfy at {catPercent}%."
+    },
+    {
+      "id": "le_h2_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Nice! ₱{amount} sa {category}, {catPercent}% pa lang ng budget. Relax muna ang claws ko."
+    },
+    {
+      "id": "le_h2_tl_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "catRemaining"
+      ],
+      "text": "Ayos! Naitala ang ₱{amount} sa {category}. ₱{catRemaining} pa ang natitira."
+    },
+    {
+      "id": "le_h2_tl_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "category",
+        "catPercent"
+      ],
+      "text": "Solid! {category} nasa {catPercent}% pa lang. Tipid vibes."
+    },
+    {
+      "id": "le_first_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "first_of_day"
+      ],
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "First entry today: ₱{amount} for {category}."
+    },
+    {
+      "id": "le_first_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "first_of_day"
+      ],
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "Unang entry ngayong araw: ₱{amount} sa {category}."
+    },
+    {
+      "id": "le_micro_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "micro_spend"
+      ],
+      "vars": [
+        "todayCount",
+        "todayTotal"
+      ],
+      "text": "Small pinches add up: {todayCount} entries today, ₱{todayTotal} total."
+    },
+    {
+      "id": "le_micro_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "micro_spend"
+      ],
+      "vars": [
+        "todayCount",
+        "todayTotal"
+      ],
+      "text": "That's {todayCount} small ones today (₱{todayTotal}). Tiny leaks sink big ships!"
+    },
+    {
+      "id": "le_micro_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en-tl",
+      "tags": [
+        "micro_spend"
+      ],
+      "vars": [
+        "todayCount",
+        "todayTotal"
+      ],
+      "text": "{todayCount} maliliit na gastos na ngayon, ₱{todayTotal} na lahat. Maliit na butas, malaking tagas!"
+    },
+    {
+      "id": "le_near_w2_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "amount",
+        "catRemaining",
+        "category",
+        "daysLeft"
+      ],
+      "text": "Careful! ₱{amount} leaves ₱{catRemaining} in {category} with {daysLeft} days to go."
+    },
+    {
+      "id": "le_near_w2_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "category",
+        "catPercent"
+      ],
+      "text": "My shell is sweating. {category} is at {catPercent}%."
+    },
+    {
+      "id": "le_near_w2_en_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "category",
+        "catPercent",
+        "daysLeft"
+      ],
+      "text": "{category} is at {catPercent}% with {daysLeft} days left. Let's guard the rest."
+    },
+    {
+      "id": "le_near_w1_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "category",
+        "catPercent",
+        "dailySafe"
+      ],
+      "text": "{category}: {catPercent}% used. About ₱{dailySafe}/day keeps you on track."
+    },
+    {
+      "id": "le_near_w1_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "category",
+        "catRemaining",
+        "daysLeft"
+      ],
+      "text": "Logged. {category} has ₱{catRemaining} left for {daysLeft} days."
+    },
+    {
+      "id": "le_near_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en-tl",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "category",
+        "catPercent",
+        "daysLeft"
+      ],
+      "text": "Heads-up: {category} is at {catPercent}% with {daysLeft} days left. Bantayan natin ang budget."
+    },
+    {
+      "id": "le_near_tl_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en-tl",
+      "tags": [
+        "near_budget"
+      ],
+      "vars": [
+        "category",
+        "catPercent",
+        "daysLeft"
+      ],
+      "text": "Kinakabahan na ang claws ko: {category} nasa {catPercent}% na, {daysLeft} araw pa."
+    },
+    {
+      "id": "le_over_w3_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 3,
+      "language": "en",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "catPercent",
+        "overAmount"
+      ],
+      "text": "Oh no, {category} hit {catPercent}%! That's ₱{overAmount} past the limit."
+    },
+    {
+      "id": "le_over_w3_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 3,
+      "language": "en",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "Claws trembling... {category} is ₱{overAmount} over. Adjust the budget or move funds?"
+    },
+    {
+      "id": "le_over_w3_en_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 3,
+      "language": "en",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "Shell alarm! {category} crossed the line by ₱{overAmount}."
+    },
+    {
+      "id": "le_over_w1_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "{category} is now ₱{overAmount} over budget. Tap to see options."
+    },
+    {
+      "id": "le_over_w1_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "Logged. {category} is ₱{overAmount} past its budget."
+    },
+    {
+      "id": "le_over_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 3,
+      "language": "en-tl",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "Naku, {category} lampas na ng ₱{overAmount}! Ayusin natin ang budget?"
+    },
+    {
+      "id": "le_over_tl_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "overAmount",
+        "category"
+      ],
+      "text": "Naitala. Lampas na ng ₱{overAmount} ang {category}."
+    },
+    {
+      "id": "le_big_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 3,
+      "language": "en",
+      "tags": [
+        "big_expense"
+      ],
+      "vars": [
+        "amount",
+        "amountPctOfBudget",
+        "category"
+      ],
+      "text": "Big one! ₱{amount} is {amountPctOfBudget}% of your {category} budget."
+    },
+    {
+      "id": "le_big_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "big_expense"
+      ],
+      "vars": [
+        "amount"
+      ],
+      "text": "Whoa, ₱{amount} in one go. Logged, but my claws felt that."
+    },
+    {
+      "id": "le_big_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en-tl",
+      "tags": [
+        "big_expense"
+      ],
+      "vars": [
+        "amount"
+      ],
+      "text": "Grabe, ₱{amount} sa isang bagsak! Naitala na, pero ramdam ng claws ko."
+    },
+    {
+      "id": "le_conf_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "category",
+        "account",
+        "date"
+      ],
+      "text": "Save ₱{amount} for {category} from {account}, {date}?"
+    },
+    {
+      "id": "le_conf_en_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "category",
+        "account",
+        "date"
+      ],
+      "text": "₱{amount} · {category} · {account} · {date}. Tap to save."
+    },
+    {
+      "id": "le_conf_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "category",
+        "account",
+        "date"
+      ],
+      "text": "I-save ang ₱{amount} sa {category} mula sa {account} ({date})?"
+    },
+    {
+      "id": "inc_h3_en_01",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 3,
+      "language": "en",
+      "vars": [
+        "amount",
+        "account",
+        "accBalance"
+      ],
+      "text": "Fresh treasure! +₱{amount} in {account}. Balance: ₱{accBalance}."
+    },
+    {
+      "id": "inc_h3_tl_01",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 3,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "account",
+        "accBalance"
+      ],
+      "text": "Claws up, may pera! +₱{amount} sa {account}. Balance: ₱{accBalance}."
+    },
+    {
+      "id": "inc_h2_en_01",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "account"
+      ],
+      "text": "Claws up! ₱{amount} secured in {account}. Maybe set some aside first?"
+    },
+    {
+      "id": "inc_h2_en_02",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "account"
+      ],
+      "text": "Money in: +₱{amount} to {account}. Nice haul."
+    },
+    {
+      "id": "inc_h2_tl_01",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "account"
+      ],
+      "text": "Sahod day! +₱{amount} added to {account}."
+    },
+    {
+      "id": "inc_h2_tl_02",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "account"
+      ],
+      "text": "+₱{amount} sa {account}—naitala na. Claws up!"
+    },
+    {
+      "id": "inc_h1_en_01",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "account"
+      ],
+      "text": "Income logged: +₱{amount} to {account}."
+    },
+    {
+      "id": "inc_h1_tl_01",
+      "intent": "LOG_INCOME",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "account"
+      ],
+      "text": "Naitala ang kita: +₱{amount} sa {account}."
+    },
+    {
+      "id": "inc_conf_en_01",
+      "intent": "LOG_INCOME",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "category",
+        "account",
+        "date"
+      ],
+      "text": "Add +₱{amount} as {category} to {account}, {date}?"
+    },
+    {
+      "id": "tr_i1_en_01",
+      "intent": "TRANSFER",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "fromAccount",
+        "toAccount"
+      ],
+      "text": "Moved ₱{amount} from {fromAccount} to {toAccount}. Net worth unchanged."
+    },
+    {
+      "id": "tr_i1_tl_01",
+      "intent": "TRANSFER",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "fromAccount",
+        "toAccount"
+      ],
+      "text": "₱{amount} moved from {fromAccount} to {toAccount}. Lipat lang—unchanged ang total balance."
+    },
+    {
+      "id": "tr_h2_en_01",
+      "intent": "TRANSFER",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "fromAccount",
+        "toAccount"
+      ],
+      "text": "Shifted ₱{amount}: {fromAccount} → {toAccount}. Nothing lost, nothing gained."
+    },
+    {
+      "id": "tr_fee_en_01",
+      "intent": "TRANSFER",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "fee"
+      ],
+      "vars": [
+        "amount",
+        "fromAccount",
+        "toAccount",
+        "fee"
+      ],
+      "text": "Moved ₱{amount} from {fromAccount} to {toAccount}. Fee of ₱{fee} logged under Fees."
+    },
+    {
+      "id": "tr_fee_tl_01",
+      "intent": "TRANSFER",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "fee"
+      ],
+      "vars": [
+        "amount",
+        "fromAccount",
+        "toAccount",
+        "fee"
+      ],
+      "text": "Nailipat ang ₱{amount} mula {fromAccount} papuntang {toAccount}. ₱{fee} na fee, naitala sa Fees."
+    },
+    {
+      "id": "tr_conf_en_01",
+      "intent": "TRANSFER",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "fromAccount",
+        "toAccount"
+      ],
+      "text": "Move ₱{amount} from {fromAccount} to {toAccount}?"
+    },
+    {
+      "id": "ed_conf_en_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "confirm",
+      "vars": [
+        "field",
+        "oldValue",
+        "newValue"
+      ],
+      "text": "Update {field}: {oldValue} → {newValue}. Confirm?"
+    },
+    {
+      "id": "ed_conf_tl_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "confirm",
+      "vars": [
+        "field",
+        "oldValue",
+        "newValue"
+      ],
+      "text": "Palitan ang {field}: {oldValue} → {newValue}. Okay ba?"
+    },
+    {
+      "id": "ed_done_en_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "done",
+      "vars": [
+        "category",
+        "catRemaining"
+      ],
+      "text": "Updated. {category} now has ₱{catRemaining} left."
+    },
+    {
+      "id": "ed_done_en_02",
+      "intent": "EDIT_TXN",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "stage": "done",
+      "vars": [
+        "oldAmount",
+        "newAmount"
+      ],
+      "text": "Fixed! ₱{oldAmount} → ₱{newAmount}. Ledger is honest again."
+    },
+    {
+      "id": "ed_done_tl_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "done",
+      "vars": [
+        "catRemaining",
+        "category"
+      ],
+      "text": "Na-update na. ₱{catRemaining} pa ang natitira sa {category}."
+    },
+    {
+      "id": "ed_ambig_en_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "ambiguous",
+      "vars": [
+        "matchCount",
+        "options"
+      ],
+      "text": "I found {matchCount} matches: {options}. Which one should I pinch?"
+    },
+    {
+      "id": "ed_ambig_tl_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "ambiguous",
+      "vars": [
+        "matchCount",
+        "options"
+      ],
+      "text": "May {matchCount} na tugma: {options}. Alin ang gusto mong palitan?"
+    },
+    {
+      "id": "ed_miss_en_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "not_found",
+      "vars": [],
+      "text": "I couldn't find that entry. Try “change last transport to 35”."
+    },
+    {
+      "id": "ed_miss_tl_01",
+      "intent": "EDIT_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "not_found",
+      "vars": [],
+      "text": "Hindi ko makita 'yang entry. Try “change last transport to 35”."
+    },
+    {
+      "id": "del_conf_en_01",
+      "intent": "DELETE_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "category",
+        "date"
+      ],
+      "text": "Remove ₱{amount} {category} ({date})? Confirm?"
+    },
+    {
+      "id": "del_conf_tl_01",
+      "intent": "DELETE_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "confirm",
+      "vars": [
+        "amount",
+        "category",
+        "date"
+      ],
+      "text": "Burahin ang ₱{amount} sa {category} ({date})? Okay ba?"
+    },
+    {
+      "id": "del_ambig_en_01",
+      "intent": "DELETE_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "ambiguous",
+      "vars": [
+        "matchCount",
+        "options"
+      ],
+      "text": "I found {matchCount} matches: {options}. Which one should I remove?"
+    },
+    {
+      "id": "del_done_en_01",
+      "intent": "DELETE_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "done",
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "Removed. ₱{amount} is back in your {category} budget."
+    },
+    {
+      "id": "del_done_tl_01",
+      "intent": "DELETE_TXN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "done",
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "Nabura na. Bumalik ang ₱{amount} sa {category} budget mo."
+    },
+    {
+      "id": "undo_done_en_01",
+      "intent": "UNDO",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "done",
+      "vars": [],
+      "text": "Undone. Back to how it was."
+    },
+    {
+      "id": "undo_done_tl_01",
+      "intent": "UNDO",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "done",
+      "vars": [],
+      "text": "Na-undo na. Balik sa dati."
+    },
+    {
+      "id": "undo_none_en_01",
+      "intent": "UNDO",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "stage": "nothing",
+      "vars": [],
+      "text": "Nothing to undo yet."
+    },
+    {
+      "id": "undo_none_tl_01",
+      "intent": "UNDO",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "stage": "nothing",
+      "vars": [],
+      "text": "Wala pang puwedeng i-undo."
+    },
+    {
+      "id": "cancel_en_01",
+      "intent": "CANCEL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [],
+      "text": "Okay, cancelled. Nothing changed."
+    },
+    {
+      "id": "cancel_tl_01",
+      "intent": "CANCEL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [],
+      "text": "Sige, kinansela. Walang nagbago."
+    },
+    {
+      "id": "q_rem_ok_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "remaining_ok"
+      ],
+      "vars": [
+        "catRemaining",
+        "category",
+        "dailySafe"
+      ],
+      "text": "₱{catRemaining} left in {category}, about ₱{dailySafe}/day to month end."
+    },
+    {
+      "id": "q_rem_ok_en_02",
+      "intent": "QUERY_STATS",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "remaining_ok"
+      ],
+      "vars": [
+        "category",
+        "catRemaining",
+        "catPercent"
+      ],
+      "text": "{category}: ₱{catRemaining} left ({catPercent}% used)."
+    },
+    {
+      "id": "q_rem_ok_tl_01",
+      "intent": "QUERY_STATS",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "remaining_ok"
+      ],
+      "vars": [
+        "catRemaining",
+        "category",
+        "dailySafe"
+      ],
+      "text": "₱{catRemaining} pa ang natitira sa {category}, mga ₱{dailySafe} kada araw."
+    },
+    {
+      "id": "q_rem_low_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "remaining_low"
+      ],
+      "vars": [
+        "catRemaining",
+        "category",
+        "dailySafe",
+        "daysLeft"
+      ],
+      "text": "Only ₱{catRemaining} left in {category}. That's ₱{dailySafe}/day for {daysLeft} days."
+    },
+    {
+      "id": "q_rem_low_tl_01",
+      "intent": "QUERY_STATS",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "remaining_low"
+      ],
+      "vars": [
+        "catRemaining",
+        "category",
+        "dailySafe",
+        "daysLeft"
+      ],
+      "text": "₱{catRemaining} na lang sa {category}. Mga ₱{dailySafe} kada araw para sa {daysLeft} araw."
+    },
+    {
+      "id": "q_rem_over_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "remaining_over"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "{category} is ₱{overAmount} over budget. Want to see where it went?"
+    },
+    {
+      "id": "q_rem_over_tl_01",
+      "intent": "QUERY_STATS",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "remaining_over"
+      ],
+      "vars": [
+        "overAmount",
+        "category"
+      ],
+      "text": "Lampas na ng ₱{overAmount} ang {category}. Gusto mong makita kung saan napunta?"
+    },
+    {
+      "id": "q_total_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "total"
+      ],
+      "vars": [
+        "periodTotal",
+        "periodLabel"
+      ],
+      "text": "You spent ₱{periodTotal} {periodLabel}."
+    },
+    {
+      "id": "q_total_tl_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "total"
+      ],
+      "vars": [
+        "periodTotal",
+        "periodLabel"
+      ],
+      "text": "₱{periodTotal} ang nagastos {periodLabel}."
+    },
+    {
+      "id": "q_count_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "count"
+      ],
+      "vars": [
+        "count",
+        "periodLabel",
+        "periodTotal"
+      ],
+      "text": "{count} entries {periodLabel}, ₱{periodTotal} in total."
+    },
+    {
+      "id": "q_avg_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "daily_average"
+      ],
+      "vars": [
+        "dailyAverage",
+        "periodLabel"
+      ],
+      "text": "About ₱{dailyAverage}/day {periodLabel}."
+    },
+    {
+      "id": "q_big_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "biggest_expense"
+      ],
+      "vars": [
+        "periodLabel",
+        "biggestAmount",
+        "biggestNote",
+        "biggestDate"
+      ],
+      "text": "Biggest {periodLabel}: ₱{biggestAmount} on {biggestNote} ({biggestDate})."
+    },
+    {
+      "id": "q_top_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "top_category"
+      ],
+      "vars": [
+        "topCategory",
+        "topAmount",
+        "topPercent",
+        "periodTotal",
+        "secondCategory",
+        "secondAmount"
+      ],
+      "text": "{topCategory} leads at ₱{topAmount} ({topPercent}% of ₱{periodTotal}), then {secondCategory} at ₱{secondAmount}."
+    },
+    {
+      "id": "q_vs_low_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "vs_lower"
+      ],
+      "vars": [
+        "periodTotal",
+        "periodLabel",
+        "diffAmount",
+        "comparePeriodLabel"
+      ],
+      "text": "₱{periodTotal} {periodLabel}, ₱{diffAmount} less than {comparePeriodLabel}. Nice."
+    },
+    {
+      "id": "q_vs_high_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "vs_higher"
+      ],
+      "vars": [
+        "periodTotal",
+        "periodLabel",
+        "diffAmount",
+        "comparePeriodLabel"
+      ],
+      "text": "₱{periodTotal} {periodLabel}, ₱{diffAmount} more than {comparePeriodLabel}."
+    },
+    {
+      "id": "q_safe_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "safe_to_spend"
+      ],
+      "vars": [
+        "dailySafe",
+        "daysLeft"
+      ],
+      "text": "Safe to spend today: about ₱{dailySafe} ({daysLeft} days left in the month)."
+    },
+    {
+      "id": "q_net_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "net_worth"
+      ],
+      "vars": [
+        "netWorth",
+        "topAccount",
+        "topAccountBal"
+      ],
+      "text": "Across all shells: ₱{netWorth}. Biggest stash: {topAccount} (₱{topAccountBal})."
+    },
+    {
+      "id": "q_empty_en_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "empty"
+      ],
+      "vars": [],
+      "text": "No entries for that period yet."
+    },
+    {
+      "id": "q_empty_tl_01",
+      "intent": "QUERY_STATS",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "empty"
+      ],
+      "vars": [],
+      "text": "Wala pang entry sa panahong 'yan."
+    },
+    {
+      "id": "slot_amt_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "amount",
+      "vars": [
+        "merchantOrCategory"
+      ],
+      "text": "Got {merchantOrCategory}. How much was it?"
+    },
+    {
+      "id": "slot_amt_tl_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 2,
+      "language": "en-tl",
+      "slot": "amount",
+      "vars": [
+        "merchantOrCategory"
+      ],
+      "text": "{merchantOrCategory}, magkano? How many pesos did that pinch?"
+    },
+    {
+      "id": "slot_acc_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "account",
+      "vars": [
+        "options"
+      ],
+      "text": "Which wallet? {options}"
+    },
+    {
+      "id": "slot_acc_tl_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "slot": "account",
+      "vars": [
+        "options"
+      ],
+      "text": "Saang wallet galing? {options}"
+    },
+    {
+      "id": "slot_cat_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "category",
+      "vars": [
+        "merchantOrCategory",
+        "options"
+      ],
+      "text": "Which category fits {merchantOrCategory}? {options}"
+    },
+    {
+      "id": "slot_date_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "date",
+      "vars": [
+        "options"
+      ],
+      "text": "When was this? {options}"
+    },
+    {
+      "id": "slot_qty_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "quantity",
+      "vars": [
+        "amount",
+        "quantity"
+      ],
+      "text": "Is ₱{amount} the total, or each for {quantity}?"
+    },
+    {
+      "id": "slot_guess_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "guess",
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "My best guess: ₱{amount} for {category}. Save it?"
+    },
+    {
+      "id": "slot_from_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "fromAccount",
+      "vars": [
+        "amount",
+        "toAccount",
+        "options"
+      ],
+      "text": "₱{amount} to {toAccount}. Moving it from where? {options}"
+    },
+    {
+      "id": "slot_scope_en_01",
+      "intent": "SLOT_FILL",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "slot": "scope",
+      "vars": [
+        "scopeValue"
+      ],
+      "text": "Should {scopeValue} apply to every item or just the last one?"
+    },
+    {
+      "id": "dis_en_01",
+      "intent": "DISAMBIGUATE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category"
+      ],
+      "text": "Did you mean ₱{amount} for {category}? Tap to confirm."
+    },
+    {
+      "id": "dis_en_02",
+      "intent": "DISAMBIGUATE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "bestGuess",
+        "options"
+      ],
+      "text": "Did you mean {bestGuess}? Or {options}."
+    },
+    {
+      "id": "dis_tl_01",
+      "intent": "DISAMBIGUATE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "bestGuess",
+        "options"
+      ],
+      "text": "Ito ba ang ibig mong sabihin: {bestGuess}? O {options}."
+    },
+    {
+      "id": "unk_en_01",
+      "intent": "UNKNOWN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [],
+      "text": "Sorry, I didn't get that. Try “Lunch 120 cash” or “Food budget left”."
+    },
+    {
+      "id": "unk_en_02",
+      "intent": "UNKNOWN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [],
+      "text": "That one lost me. I can log spending, income, transfers, or answer budget questions."
+    },
+    {
+      "id": "unk_tl_01",
+      "intent": "UNKNOWN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [],
+      "text": "Hindi ko nakuha 'yan. Try “coffee 150” or “how much left in Food?”"
+    },
+    {
+      "id": "unk_tl_02",
+      "intent": "UNKNOWN",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [],
+      "text": "Medyo naguluhan ako. Sabihin lang ang item at amount, like “jeep 40”."
+    },
+    {
+      "id": "uns_en_01",
+      "intent": "UNSUPPORTED",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "feature"
+      ],
+      "text": "{feature} isn't supported yet. I can log expenses, income, and transfers."
+    },
+    {
+      "id": "uns_tl_01",
+      "intent": "UNSUPPORTED",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "feature"
+      ],
+      "text": "Wala pa ang {feature}. Kaya ko pa lang mag-log ng gastos, kita, at transfer."
+    },
+    {
+      "id": "err_amt_en_01",
+      "intent": "ERROR",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "bad_amount"
+      ],
+      "vars": [],
+      "text": "The amount needs to be above ₱0. What's the right number?"
+    },
+    {
+      "id": "err_same_en_01",
+      "intent": "ERROR",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "same_account"
+      ],
+      "vars": [],
+      "text": "Those two accounts are the same. Pick a different destination?"
+    },
+    {
+      "id": "err_future_en_01",
+      "intent": "ERROR",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "future_date"
+      ],
+      "vars": [
+        "options"
+      ],
+      "text": "That date is in the future. Did you mean {options}?"
+    },
+    {
+      "id": "err_save_en_01",
+      "intent": "ERROR",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "commit_failed"
+      ],
+      "vars": [],
+      "text": "I couldn't save that, and nothing was changed. Try again?"
+    },
+    {
+      "id": "err_save_tl_01",
+      "intent": "ERROR",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "commit_failed"
+      ],
+      "vars": [],
+      "text": "Hindi na-save, at walang nagbago. Subukan ulit?"
+    },
+    {
+      "id": "help_en_01",
+      "intent": "HELP",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [],
+      "text": "I can log spending (“jeep 40”), log income (“sahod 15k”), fix entries (“make that 45”), and answer questions (“top spending”)."
+    },
+    {
+      "id": "help_tl_01",
+      "intent": "HELP",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [],
+      "text": "Kaya kong mag-log ng gastos (“jeep 40”), kita (“sahod 15k”), mag-ayos ng entry (“make that 45”), at sumagot ng tanong (“top spending”)."
+    },
+    {
+      "id": "help_tl_02",
+      "intent": "HELP",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [],
+      "text": "I can prepare an expense, income, or transfer for review. Sabihin lang ang item at amount, like “jeep 40”."
+    },
+    {
+      "id": "greet_en_01",
+      "intent": "SMALLTALK",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "greeting"
+      ],
+      "vars": [],
+      "text": "Hi! Tell me what you spent, like “coffee 120”."
+    },
+    {
+      "id": "greet_tl_01",
+      "intent": "SMALLTALK",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "tags": [
+        "greeting"
+      ],
+      "vars": [],
+      "text": "Kumusta! Your shells are safe with me. What are we logging?"
+    },
+    {
+      "id": "greet_tl_02",
+      "intent": "SMALLTALK",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "greeting"
+      ],
+      "vars": [],
+      "text": "Uy, hello! Ano ang ilo-log natin ngayon?"
+    },
+    {
+      "id": "thanks_en_01",
+      "intent": "SMALLTALK",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "thanks"
+      ],
+      "vars": [],
+      "text": "Anytime! Protecting your stash is my job."
+    },
+    {
+      "id": "thanks_tl_01",
+      "intent": "SMALLTALK",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "thanks"
+      ],
+      "vars": [],
+      "text": "Walang anuman! Ako na ang bahala sa ledger."
+    },
+    {
+      "id": "who_en_01",
+      "intent": "SMALLTALK",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "identity"
+      ],
+      "vars": [],
+      "text": "I'm Kupi, your offline money crab. I log and explain your spending, right here on your device."
+    },
+    {
+      "id": "pro_streak_en_01",
+      "intent": "PROACTIVE",
+      "mood": "happy",
+      "intensity": 3,
+      "language": "en",
+      "tags": [
+        "streak"
+      ],
+      "vars": [
+        "streakDays"
+      ],
+      "text": "{streakDays} days under budget! Claws up!"
+    },
+    {
+      "id": "pro_nospend_en_01",
+      "intent": "PROACTIVE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "no_spend"
+      ],
+      "vars": [],
+      "text": "No spending today. Kupi approves."
+    },
+    {
+      "id": "pro_nospend_tl_01",
+      "intent": "PROACTIVE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "tags": [
+        "no_spend"
+      ],
+      "vars": [],
+      "text": "Walang gastos ngayon. Proud ang claws ko."
+    },
+    {
+      "id": "pro_nologs_en_01",
+      "intent": "PROACTIVE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "no_logs_2d"
+      ],
+      "vars": [
+        "days"
+      ],
+      "text": "Haven't heard from you in {days} days. Anything to log?"
+    },
+    {
+      "id": "pro_today_en_01",
+      "intent": "PROACTIVE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "nothing_today"
+      ],
+      "vars": [],
+      "text": "Nothing logged today yet. Anything to add?"
+    },
+    {
+      "id": "pro_today_tl_01",
+      "intent": "PROACTIVE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "tags": [
+        "nothing_today"
+      ],
+      "vars": [],
+      "text": "Wala pang naka-log ngayon. May idadagdag ka ba?"
+    },
+    {
+      "id": "pro_pace_en_01",
+      "intent": "PROACTIVE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "critical_pacing"
+      ],
+      "vars": [
+        "category",
+        "catPercent",
+        "daysLeft",
+        "dailySafe"
+      ],
+      "text": "{category} is at {catPercent}% with {daysLeft} days left. About ₱{dailySafe}/day keeps you safe."
+    },
+    {
+      "id": "pro_micro_en_01",
+      "intent": "PROACTIVE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en",
+      "tags": [
+        "micro_velocity"
+      ],
+      "vars": [
+        "todayCount",
+        "todayTotal"
+      ],
+      "text": "{todayCount} small purchases today already (₱{todayTotal}). Tiny pinches add up!"
+    },
+    {
+      "id": "pro_safe_en_01",
+      "intent": "PROACTIVE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "daily_safe"
+      ],
+      "vars": [
+        "dailySafe"
+      ],
+      "text": "You can spend about ₱{dailySafe} today and stay on track."
+    },
+    {
+      "id": "pro_over_en_01",
+      "intent": "PROACTIVE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en",
+      "tags": [
+        "over_budget"
+      ],
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "{category} is ₱{overAmount} over budget. Tap to review."
+    },
+    {
+      "id": "le_i1_en_04",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catRemaining"
+      ],
+      "text": "₱{amount} filed under {category}. ₱{catRemaining} still available."
+    },
+    {
+      "id": "le_i1_en_05",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "category",
+        "amount"
+      ],
+      "text": "{category} +₱{amount}. Recorded."
+    },
+    {
+      "id": "le_i1_tl_04",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "account"
+      ],
+      "text": "Sige, ₱{amount} sa {category} mula sa {account}. Tapos na."
+    },
+    {
+      "id": "le_i1_tl_05",
+      "intent": "LOG_EXPENSE",
+      "mood": "idle",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "category",
+        "amount"
+      ],
+      "text": "{category}: ₱{amount}. Naka-log na."
+    },
+    {
+      "id": "le_h2_en_05",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catRemaining"
+      ],
+      "text": "₱{amount} on {category}, and ₱{catRemaining} still snug in the shell."
+    },
+    {
+      "id": "le_h2_tl_04",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Okay na okay: ₱{amount} sa {category}, {catPercent}% pa lang. Chill ang claws."
+    },
+    {
+      "id": "le_h1_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Logged ₱{amount} for {category}. Only {catPercent}% used so far."
+    },
+    {
+      "id": "le_h1_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Naitala ang ₱{amount} sa {category}. {catPercent}% pa lang ang nagagamit."
+    },
+    {
+      "id": "le_h3_en_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 3,
+      "language": "en",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Claws up! ₱{amount} for {category} and still just {catPercent}% used. Beautiful."
+    },
+    {
+      "id": "le_h3_tl_01",
+      "intent": "LOG_EXPENSE",
+      "mood": "happy",
+      "intensity": 3,
+      "language": "en-tl",
+      "vars": [
+        "amount",
+        "category",
+        "catPercent"
+      ],
+      "text": "Yehey, claws up! ₱{amount} sa {category}, {catPercent}% pa lang. Ang ganda ng takbo."
+    },
+    {
+      "id": "le_near_w2_tl_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 2,
+      "language": "en-tl",
+      "vars": [
+        "catRemaining",
+        "category",
+        "daysLeft"
+      ],
+      "text": "Hala, ₱{catRemaining} na lang sa {category} para sa {daysLeft} araw. Dahan-dahan muna tayo.",
+      "tags": [
+        "near_budget"
+      ]
+    },
+    {
+      "id": "le_over_w3_tl_02",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 3,
+      "language": "en-tl",
+      "vars": [
+        "category",
+        "overAmount"
+      ],
+      "text": "Naku po, {category} lampas ng ₱{overAmount}! Nanginginig ang shell ko.",
+      "tags": [
+        "over_budget"
+      ]
+    },
+    {
+      "id": "le_over_w1_tl_03",
+      "intent": "LOG_EXPENSE",
+      "mood": "worried",
+      "intensity": 1,
+      "language": "en-tl",
+      "vars": [
+        "overAmount",
+        "category"
+      ],
+      "text": "Naitala. Lampas ng ₱{overAmount} ang {category}. Gusto mo bang tingnan ang options?",
+      "tags": [
+        "over_budget"
+      ]
+    }
+  ]
+}
