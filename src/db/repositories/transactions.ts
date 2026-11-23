@@ -87,13 +87,15 @@ export async function createTransaction(
   }
   const id = crypto.randomUUID();
   const timestamp = now();
-  await db.transactions.add({
-    ...data,
-    // Income and expense direction comes from `type`; ledger amounts stay positive.
-    amount: Math.abs(Math.round(data.amount)),
-    id,
-    createdAt: timestamp,
-    updatedAt: timestamp,
+  await db.transaction("rw", db.tables, async () => {
+    await db.transactions.add({
+      ...data,
+      // Income and expense direction comes from `type`; ledger amounts stay positive.
+      amount: Math.abs(Math.round(data.amount)),
+      id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
   });
   return id;
 }

@@ -329,6 +329,16 @@ export interface OutboxEntry extends BaseRecord {
   status: OutboxStatus;
 }
 
+/** Local idempotency and undo receipt for an offline Kupi action. */
+export interface KupiActionRecord extends BaseRecord {
+  profileId: string;
+  actionJson: string;
+  transactionId: string;
+  resultUpdatedAt: string;
+  undoAvailable: boolean;
+  undoneAt?: string | null;
+}
+
 /** App settings (per-device or per-profile) */
 export interface Settings {
   id: string;

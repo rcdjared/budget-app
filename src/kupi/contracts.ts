@@ -1,3 +1,5 @@
+import type { Transaction } from "@/domain/types";
+
 /** Integer centavos (₱1 = 100). Never use floats for money. */
 export type Centavos = number;
 
@@ -28,6 +30,7 @@ export const KUPI_CONFIG = {
     microSpendCount: 3,
   },
   dialogue: { maxQuestions: 2, antiRepeatWindow: 5, undoStackCap: 20, futureDateMaxDays: 0 },
+  actions: { largeAmountMultiplier: 5 },
   fuzzy: { minimumAliasScore: 0.78, maximumCandidateLength: 128 },
   parser: {
     explicitCueConfidence: 0.93,
@@ -124,13 +127,67 @@ export interface SessionContext {
   rngSeed: number;
 }
 
-export interface KupiAction {
-  id: string; // idempotency key
-  kind: "create" | "update" | "delete" | "transfer";
-  before: unknown | null;
-  after: unknown | null;
+export type KupiCreateTransaction = Omit<Transaction, "id" | "createdAt" | "updatedAt" | "deletedAt">;
+
+export type KupiEditableTransactionFields = Pick<
+  Transaction,
+  "amount" | "accountId" | "categoryId" | "date" | "note"
+>;
+
+export interface KupiTransferData {
+  profileId: string;
+  amount: Centavos;
+  accountId: string;
+  toAccountId?: string | null;
+  sourceType: "my" | "external";
+  destinationType: "my" | "external";
+  externalFromName?: string | null;
+  externalToName?: string | null;
+  transferFee: Centavos;
+  feeCategoryId?: string | null;
+  date: string;
+  time: string;
+  note?: string | null;
+}
+
+interface KupiActionBase {
+  id: string;
+  profileId: string;
   warnings: string[];
 }
+
+export type KupiAction =
+  | (KupiActionBase & {
+      kind: "create";
+      before: null;
+      after: KupiCreateTransaction;
+    })
+  | (KupiActionBase & {
+      kind: "transfer";
+      before: null;
+      after: KupiTransferData;
+    })
+  | (KupiActionBase & {
+      kind: "update";
+      before: Transaction;
+      after: Transaction;
+    })
+  | (KupiActionBase & {
+      kind: "delete";
+      before: Transaction;
+      after: null;
+    });
+
+export type KupiActionProposal =
+  | { kind: "create"; profileId: string; after: KupiCreateTransaction }
+  | { kind: "transfer"; profileId: string; after: KupiTransferData }
+  | {
+      kind: "update";
+      profileId: string;
+      before: Transaction;
+      changes: Partial<KupiEditableTransactionFields>;
+    }
+  | { kind: "delete"; profileId: string; before: Transaction };
 
 export interface Template {
   id: string;

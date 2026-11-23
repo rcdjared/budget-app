@@ -1,7 +1,7 @@
 # Kupi Assistant Recon and Phase 2 Status
 
 **Date:** 2026-11-24  
-**Scope:** inspect the existing app and the supplied Kupi data pack; no application-source changes in this phase.
+**Scope:** record the application and supplied data pack, then track the pure Kupi core through Phase 3.
 
 ## Executive summary
 
@@ -25,7 +25,7 @@ The persistence foundation is suitable for the planned action layer: Dexie is th
 3. **Cancel, restore, soft-delete:** `cancelTransaction`, `restoreTransaction`, and `softDeleteTransaction` update timestamps and related transfer fees, split/shared-bill state, or friend-ledger state. Recurring-occurrence cancel/delete wrappers in `src/db/repositories/historyActions.ts` create a skip record before applying the transaction action.
 4. **Recurring create:** `processDueRecurringTransactions` in `src/db/repositories/recurring.ts` materializes due expense occurrences with an `occurrenceKey` and skips existing occurrences. It updates the recurring rule in the same Dexie transaction.
 5. **Split/shared-bill bookkeeping:** `src/db/repositories/localFinance.ts` can update a transaction’s split/share fields and write related ledger records. It uses Dexie transactions and explicit `updatedAt` values.
-6. **Assistant create:** the chat sheet in `src/App.tsx` creates transactions via `createTransaction`; draft review happens before the save. The assistant does not currently have a generic action proposal/undo stack.
+6. **Assistant create:** the chat sheet in `src/App.tsx` creates transactions via `createTransaction`; draft review happens before the save. A generic Kupi proposal/commit/undo service now exists, but is not connected to the sheet.
 7. **Hard delete:** the transaction detail UI first soft-deletes, exposes an undo window for about six seconds, then directly calls `db.transactions.delete` and deletes related local records. This bypasses the repository and has no Dexie deleting hook. The earlier soft-delete has already queued a tombstone; the later physical deletion itself is not represented in the outbox.
 
 Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.ts` installs `creating` and `updating` hooks on syncable tables; the update hook sets `updatedAt` and queues create/update/delete outbox records based on `deletedAt`. There is no corresponding deleting hook. `applyRemoteChanges` ignores an incoming record only when the local `updatedAt` is strictly newer, so equal timestamps are resolved in favor of the remote record.
@@ -48,13 +48,14 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 
 ## Tests and baseline
 
-- Unit tests use Vitest with jsdom (`vite.config.ts`); persistence tests opt into `fake-indexeddb/auto`. Existing parser coverage is in `src/__tests__/parser.test.ts`; there is no Kupi-core parser test directory yet.
+- Unit tests use Vitest with jsdom (`vite.config.ts`); persistence tests opt into `fake-indexeddb/auto`. Existing parser coverage is in `src/__tests__/parser.test.ts`; Kupi-core text, parser, training, and action tests live under `src/kupi/`.
 - E2E tests are under `e2e/` and use Playwright Chromium against the Vite preview server.
 - Phase 0 baseline run on the then-current working tree:
   - `pnpm test` — **13 files passed, 70 tests passed**.
   - `pnpm build` — **TypeScript check and Vite production build passed**.
   - The build emits a pre-existing chunk-size warning: main JS **921.06 kB minified / 270.61 kB gzip** (threshold 500 kB); PWA precache reports 48 entries / 11,657.89 KiB.
 - These are measurements of the current, already-modified working tree, not a clean-branch baseline. Existing user changes were preserved.
+- Latest Phase 3 verification: `pnpm test` — **17 files / 123 tests passed**; `pnpm build` — TypeScript and production build passed. The pre-existing large-bundle warning remains.
 
 ## Supplied `updates/` pack audit
 
@@ -81,14 +82,22 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 - `KUPI_GATES=1` enables the stricter corpus thresholds and 10,000 deterministic fuzz inputs. The fuzz test has a longer timeout only in strict mode so this release gate can complete without weakening its iteration count.
 - Strict gate result: **passed** with the corpus thresholds and all 10,000 deterministic fuzz inputs.
 - Template lint is passing but reports **49 of 66** mood/intensity/language combinations below its non-blocking three-variant target; improve these before wiring the response bank into the app.
-- Latest complete validation: **16 test files / 115 tests passed**, and `pnpm build` passed. The build retains the existing ~921 kB minified main-bundle warning.
-- The parser is not integrated into `src/App.tsx`, and no action execution, undo, or database write path has been added. Stop at this phase boundary.
+- The parser is not integrated into `src/App.tsx`; the action service is still not wired into the chat or UI.
+
+## Phase 3 action layer
+
+- Added typed action proposals and validation for expense/income creation, transfers, edits, and soft deletion. Validation checks integer-centavo amounts, profile-owned active accounts/categories, future dates, same-account transfers, and unusually large amounts against a category median.
+- `commitAction` requires explicit confirmation, revalidates against the current profile snapshot inside one Dexie transaction, and delegates every ledger mutation to the existing transaction repositories. Persistent local receipts make action IDs idempotent; reusing an ID for a different action is rejected.
+- `undoAction` applies repository-level compensating operations. It refuses to overwrite a transaction changed after the original action, restores transfer fees with their parent transfer, and retains idempotency receipts while limiting available undo history to the configured 20 actions per profile.
+- Dexie schema version 7 adds a local-only `kupiActions` receipt table. Syncable record updates now preserve monotonic `updatedAt` values even if the device clock is behind; the sync hook returns that timestamp to Dexie so it is actually persisted. `createTransaction` now opens the outbox store in its write transaction so direct repository creates are queued for sync.
+- Fake-IndexedDB coverage verifies explicit confirmation, profile isolation, create/idempotency, unusual-amount warnings, transfer-fee deletion/undo, soft-delete restoration, outbox records, monotonic timestamps, undo limits, and stale remote updates not overwriting a newer local undo.
+- The proposal API accepts already resolved IDs and before/after snapshots; automatic conversion of parser results into proposals, confirmation UI, action cards, and chat integration remain for later phases. Undo receipts are local to the device and are not synced.
 
 ## Open questions and implementation risks
 
 1. **Clock/timezone integration:** the Phase 1 date utility now uses Asia/Manila and tests the 04:00 `kanina` cutoff. The existing app still follows browser-local date parts; integrate the policy only when the new parser path is introduced and verify target browsers.
 2. **Live aliases:** the pure parser matches against the snapshot supplied by its caller. The future integration must build that snapshot from the active profile and must not silently map a global alias to a missing profile account.
 3. **Ambiguous language:** the pure parser can represent clarify/confirm outcomes for terms such as `baon`, `padala`, `deposit`, and `allowance`; the existing UI does not yet render those structured outcomes.
-4. **Writes and undo:** the current review-before-save flow is useful prior art, but a Kupi action/undo layer must preserve repository invariants, profile scoping, linked transfer fees, splits, friend ledgers, tombstones, and monotonic sync timestamps. Avoid routing assistant writes directly to Dexie.
+4. **Writes and undo:** the Phase 3 service uses repositories and handles transfer fees, linked split/shared-bill delete restoration, tombstones, and monotonic timestamps. The future UI must preserve confirmation and profile scope; Kupi edits to friend-payment, split, and shared-bill transactions are intentionally rejected, and recurring-occurrence deletes require their dedicated history action.
 5. **Golden evaluation:** retain a frozen hold-out for future work and avoid tuning against it. The current perfect score is a regression result against the supplied corpus, not an unbiased accuracy measurement.
-6. **Phase boundary:** Phase 0 recon, Phase 1 text foundations, and Phase 2 pure parsing are complete. Keep existing app behavior unchanged; do not wire parser actions or writes until the next planned phase addresses UI confirmation, repository invariants, and undo.
+6. **Phase boundary:** Phases 0–3 are complete. Keep existing app behavior unchanged; do not wire the parser/action service into chat until Phase 5 adds confirmation cards, accessible feedback, and undo UI. Phase 4 is next in roadmap order.
