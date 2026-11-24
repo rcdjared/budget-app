@@ -77,6 +77,42 @@ describe("computeKupiNudge", () => {
     expect(nearCycleEnd.some(({ id }) => id.startsWith("budget-pacing:"))).toBe(false);
   });
 
+  it("warns when daily budget pacing reaches the critical threshold", () => {
+    const nudges = computeKupiNudge(
+      [transaction("food", "2026-11-24", 1_900_000)],
+      [budget({ period: "daily", amount: 2_000_000 })],
+      now,
+    );
+
+    expect(nudges[0]).toMatchObject({
+      id: "budget-pacing:food-budget",
+      priority: 2,
+      facts: { spentCentavos: 1_900_000, budgetCentavos: 2_000_000, percent: 95, daysLeft: 1 },
+      mood: "worried",
+      tags: ["near_budget"],
+    });
+  });
+
+  it("prioritizes combined category budget pacing for today's total spend", () => {
+    const nudges = computeKupiNudge([
+      transaction("food", "2026-11-24", 1_000_000),
+      transaction("shopping", "2026-11-24", 800_000, { categoryId: "shopping" }),
+      transaction("phone", "2026-11-24", 100_000, { categoryId: "phone" }),
+    ], [
+      budget({ id: "food-daily", period: "daily", amount: 1_050_000 }),
+      budget({ id: "shopping-daily", categoryId: "shopping", period: "daily", amount: 850_000 }),
+      budget({ id: "phone-daily", categoryId: "phone", period: "daily", amount: 100_000 }),
+    ], now);
+
+    expect(nudges[0]).toMatchObject({
+      id: "budget-total-pacing:daily",
+      priority: 1,
+      facts: { spentCentavos: 1_900_000, budgetCentavos: 2_000_000, percent: 95 },
+      mood: "worried",
+      tags: ["near_budget"],
+    });
+  });
+
   it("counts only live sub-₱50 expenses for the micro-spend nudge", () => {
     const nudges = computeKupiNudge([
       transaction("a", "2026-11-24", 4_999),

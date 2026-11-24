@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-  CircleDollarSign,
   ChevronDown,
   Clock3,
   Landmark,
@@ -54,10 +53,9 @@ interface FinsightsPageProps {
   onOpenKupi: (message: string, mood: Mood) => void;
 }
 
-type SectionId = "netBalance" | "totals" | "insight" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
+type SectionId = "netBalance" | "totals" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
 
 const DEFAULT_SECTION_ORDER: SectionId[] = [
-  "insight",
   "categories",
   "budgets",
   "upcoming",
@@ -71,6 +69,28 @@ function messageForNudge(
   language: "en" | "fil",
 ): string {
   const category = categoryName || (language === "fil" ? "Kategorya" : "A category");
+  if (nudge.id.startsWith("budget-total-")) {
+    const period = nudge.facts.period;
+    const periodLabel = period === "daily" ? (language === "fil" ? "araw-araw" : "daily")
+      : period === "weekly" ? (language === "fil" ? "lingguhan" : "weekly")
+        : period === "biweekly" ? (language === "fil" ? "kada dalawang linggo" : "biweekly")
+          : period === "annual" ? (language === "fil" ? "taunan" : "annual")
+            : (language === "fil" ? "buwanan" : "monthly");
+    const spent = Number(nudge.facts.spentCentavos);
+    const limit = Number(nudge.facts.budgetCentavos);
+    const remaining = Math.max(0, limit - spent);
+    const percent = Number(nudge.facts.percent);
+    const daysLeft = Number(nudge.facts.daysLeft);
+    if (nudge.id.startsWith("budget-total-exceeded:")) {
+      const overBy = formatProfileMoney(spent - limit);
+      return language === "fil"
+        ? `Lampas na nang ${overBy} ang pinagsamang ${periodLabel} budget mo (${percent}% ang nagamit). Gusto mo bang suriin ang mga gastos?`
+        : `You've gone ${overBy} over your combined ${periodLabel} budgets (${percent}% used). Want to review your spending?`;
+    }
+    return language === "fil"
+      ? `Nagamit na ang ${percent}% ng pinagsamang ${periodLabel} budget mo${period === "daily" ? " ngayong araw" : ` at ${daysLeft} araw pa sa cycle`}. May ${formatProfileMoney(remaining)} pang natitira. Tingnan natin kung ano ang nagtutulak sa gastos?`
+      : `You've used ${percent}% of your combined ${periodLabel} budgets${period === "daily" ? " today" : ` with ${daysLeft} days left`}, with ${formatProfileMoney(remaining)} remaining. Want to see what's driving spending?`;
+  }
   if (nudge.id.startsWith("budget-exceeded:")) {
     return language === "fil"
       ? `${category} ay lampas na sa budget sa ${nudge.facts.percent}%. Gusto mo bang suriin ang gastos?`
@@ -178,6 +198,8 @@ export function FinsightsPage({
       // Keep defaults for malformed settings.
     }
   }
+  const reduceMotionActive = sectionSettings.reduceMotion
+    || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const hiddenSections = new Set(sectionSettings.homeSections);
   const sectionOrder = ((sectionSettings.homeSectionOrder || DEFAULT_SECTION_ORDER) as string[])
     .filter((section): section is SectionId => DEFAULT_SECTION_ORDER.includes(section as SectionId));
@@ -204,7 +226,7 @@ export function FinsightsPage({
 
   const filteredTxs = useLiveQuery(
     () => {
-      if (!["netBalance", "totals", "insight", "trend", "categories"].some((section) => hiddenSections.has(section as SectionId))) {
+      if (!["netBalance", "totals", "trend", "categories"].some((section) => hiddenSections.has(section as SectionId))) {
         return Promise.resolve([] as Transaction[]);
       }
       return db.transactions
@@ -219,7 +241,7 @@ export function FinsightsPage({
 
   const previousTxs = useLiveQuery(
     () => {
-      if (hiddenSections.has("totals") || hiddenSections.has("insight") || hiddenSections.has("categories")) {
+      if (hiddenSections.has("totals") || hiddenSections.has("categories")) {
         return db.transactions
           .where("[profileId+date]")
           .between([profileId, range.comparableStart], [profileId, range.comparableEnd], true, true)
@@ -528,24 +550,6 @@ export function FinsightsPage({
         </section>
       );
     }
-    if (sectionId === "insight") {
-      if (filteredTxs.length < 3 || !insightCandidates.length) return null;
-      const insight = insightCandidates[0];
-      return (
-        <button
-          type="button"
-          className="home-insight-card"
-          key={sectionId}
-          onClick={() => {
-            if (insight.kind === "budget") onOpenBudget();
-            else openHistory(insight.categoryId);
-          }}
-        >
-          <CircleDollarSign size={18} />
-          <span>{insight.text}</span>
-        </button>
-      );
-    }
     if (sectionId === "trend") {
       const max = Math.ceil(Math.max(maxTrendAmount, 10000) / 10000) * 10000;
       return (
@@ -794,7 +798,7 @@ export function FinsightsPage({
       ) : homeHasNoTransactions ? (
         <section
           className="home-first-record"
-          data-reduce-motion={sectionSettings.reduceMotion || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)}
+          data-reduce-motion={reduceMotionActive}
         >
           <h2>{tForLanguage("homeFirstRecordTitle", language)}</h2>
           <p>{tForLanguage("homeFirstRecordBody", language)}</p>
@@ -809,7 +813,7 @@ export function FinsightsPage({
         </section>
       ) : (
         <>
-          <section className="kupi-home-nudge" aria-label="Kupi insight">
+          <section className="kupi-home-nudge" data-reduce-motion={reduceMotionActive} aria-label="Kupi insight">
               <button
                 type="button"
                 className="spending-pulse__mascot-wrap kupi-home-nudge__mascot"

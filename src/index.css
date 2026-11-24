@@ -576,20 +576,6 @@ button {
   text-align: center;
 }
 
-.home-insight-card {
-  min-height: 44px;
-  display: grid;
-  grid-template-columns: 44px 1fr;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--muted);
-  color: var(--foreground);
-  padding: 8px 12px 8px 8px;
-  text-align: left;
-}
-
 .home-trend-card {
   min-height: 220px;
 }
@@ -2499,49 +2485,96 @@ button {
 
 .header-action.tutorial-target {
   position: relative;
-  color: var(--primary);
+  color: var(--primary-foreground, #fff);
+  background: var(--primary);
   border-color: var(--primary);
   box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 14%, transparent);
-  animation: kupi-tutorial-pulse 1.8s ease-in-out infinite;
+  animation: none;
+}
+
+.wallet-plus-tutorial {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: -4px 0 12px;
+  pointer-events: none;
+}
+
+.wallet-plus-tutorial__mascot {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 22%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+}
+
+.wallet-plus-tutorial__bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-radius: 16px 16px 5px 16px;
+  padding: 8px 10px;
+  background: var(--card);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.wallet-plus-tutorial__bubble > span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--primary);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wallet-plus-tutorial__bubble b {
+  display: block;
+  font-size: 12px;
+}
+
+.wallet-plus-tutorial__bubble p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wallet-plus-tutorial__bubble small {
+  display: block;
+  margin-top: 5px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.wallet-plus-tutorial[data-reduce-motion="true"] .wallet-plus-tutorial__mascot {
+  animation: none;
 }
 
 .kupi-add-tutorial {
-  position: fixed;
-  z-index: 31;
-  left: 12px;
-  bottom: calc(330px + env(safe-area-inset-bottom));
-  width: min(290px, calc(100vw - 24px));
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
+  padding: 2px 8px 6px;
   pointer-events: none;
 }
 
 .kupi-add-tutorial__mascot {
-  width: 72px;
-  height: 72px;
-  flex: 0 0 72px;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
   filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 22%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
 }
 
-.kupi-add-tutorial__bubble {
-  display: grid;
-  gap: 3px;
-  flex: 1;
-  border: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
-  border-radius: 14px;
-  padding: 8px 10px;
-  background: var(--card);
-}
-
-.kupi-add-tutorial__bubble b {
-  font-size: 12px;
-}
-
-.kupi-add-tutorial__bubble small {
-  color: var(--muted-foreground);
-  font-size: 11px;
+.kupi-add-tutorial[data-reduce-motion="true"] .kupi-add-tutorial__mascot {
+  animation: none;
 }
 
 .add-menu-item.tutorial-target {
@@ -2560,6 +2593,22 @@ button {
   gap: 8px;
   transform: translateX(-50%);
   pointer-events: none;
+}
+
+.kupi-nav-tutorial--add {
+  left: auto;
+  right: 12px;
+  width: min(300px, calc(100vw - 24px));
+  flex-direction: row-reverse;
+  transform: none;
+}
+
+.kupi-nav-tutorial--add .kupi-nav-tutorial__bubble::after {
+  right: -6px;
+  left: auto;
+  border-right: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-left: 0;
+  transform: rotate(-45deg);
 }
 
 .kupi-nav-tutorial__mascot {
@@ -2626,7 +2675,7 @@ button {
 }
 
 .kupi-nav-tutorial[data-reduce-motion="true"] .kupi-nav-tutorial__mascot,
-.nav-item.tutorial-target[data-reduce-motion="true"]::before {
+.bottom-nav[data-reduce-motion="true"] .nav-item.tutorial-target::before {
   animation: none;
 }
 
@@ -2736,6 +2785,14 @@ button {
   .add-menu-overlay.is-closing,
   .add-menu.is-closing {
     animation-duration: 1ms !important;
+  }
+
+  .wallet-plus-tutorial__mascot {
+    animation: none !important;
+  }
+
+  .kupi-add-tutorial__mascot {
+    animation: none !important;
   }
 }
 

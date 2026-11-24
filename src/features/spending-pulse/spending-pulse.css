@@ -475,13 +475,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spending-pulse-widget * {
+  .spending-pulse-widget *,
+  .kupi-home-nudge * {
     animation: none !important;
     transition: none !important;
   }
 }
 
-.spending-pulse-widget[data-reduce-motion="true"] * {
+.spending-pulse-widget[data-reduce-motion="true"] *,
+.kupi-home-nudge[data-reduce-motion="true"] * {
   animation: none !important;
   transition: none !important;
 }

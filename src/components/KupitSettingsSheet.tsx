@@ -718,7 +718,6 @@ export function KupitSettingsSheet({
               {detail === "home" && (
                 <div className="kupit-simple-options">
                   {[
-                    ["insight", "Insight"],
                     ["categories", "Categories"],
                     ["budgets", "Budgets"],
                     ["upcoming", "Upcoming & balances"],
@@ -727,7 +726,7 @@ export function KupitSettingsSheet({
                     <Row key={id} icon={<LayoutGrid size={18} />} title={label} description={settings.homeSections.includes(id) ? "Visible on Home" : "Hidden from Home"} trailing={<Toggle checked={settings.homeSections.includes(id)} onChange={(checked) => updateSettings({ homeSections: checked ? [...settings.homeSections, id] : settings.homeSections.filter((item) => item !== id) })} label={label} />} />
                   ))}
                   <p className="eyebrow">Section order</p>
-                  {settings.homeSectionOrder.filter((sectionId) => !["netBalance", "totals", "trend", "categories"].includes(sectionId)).map((sectionId, index, visibleOrder) => {
+                  {settings.homeSectionOrder.filter((sectionId) => !["netBalance", "totals", "trend", "categories", "insight"].includes(sectionId)).map((sectionId, index, visibleOrder) => {
                     const label = sectionId.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
                     return (
                       <div className="kupit-section-order-row" key={sectionId}>

@@ -5,6 +5,7 @@ const DAY_MS = 86_400_000;
 const DAY_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
 const SAFE_TO_SPEND_COOLDOWN_MS = 12 * 60 * 60 * 1_000;
 const CRITICAL_PACING_PERCENT = 80;
+const URGENT_TOTAL_PACING_PERCENT = 90;
 const CRITICAL_PACING_DAYS_LEFT = 5;
 const MICRO_SPEND_MAX_CENTAVOS = 5_000;
 const MICRO_SPEND_COUNT = 3;
@@ -146,13 +147,62 @@ export function computeKupiNudge(
         { budgetId: budget.id, categoryId: budget.categoryId, spentCentavos: spent, budgetCentavos: budget.amount, percent, daysLeft },
         { catPercent: rawPercent },
       ));
-    } else if (percent >= CRITICAL_PACING_PERCENT && daysLeft >= CRITICAL_PACING_DAYS_LEFT) {
+    } else if (
+      percent >= CRITICAL_PACING_PERCENT
+      && (budget.period === "daily" || daysLeft >= CRITICAL_PACING_DAYS_LEFT)
+    ) {
       nudges.push(makeNudge(
         `budget-pacing:${budget.id}`,
         2,
         DAY_COOLDOWN_MS,
         { budgetId: budget.id, categoryId: budget.categoryId, spentCentavos: spent, budgetCentavos: budget.amount, percent, daysLeft },
         { catPercent: percent },
+      ));
+    }
+  }
+
+  const budgetsByPeriod = new Map<Budget["period"], {
+    spent: number;
+    limit: number;
+    daysLeft: number;
+    count: number;
+  }>();
+  for (const { budget, spent, daysLeft } of eligibleBudgets) {
+    const total = budgetsByPeriod.get(budget.period) ?? { spent: 0, limit: 0, daysLeft, count: 0 };
+    total.spent += spent;
+    total.limit += budget.amount;
+    total.count += 1;
+    budgetsByPeriod.set(budget.period, total);
+  }
+  for (const [period, total] of budgetsByPeriod) {
+    if (total.count < 2) continue;
+    const rawPercent = (total.spent / total.limit) * 100;
+    const percent = Math.floor(rawPercent);
+    const facts = {
+      period,
+      spentCentavos: total.spent,
+      budgetCentavos: total.limit,
+      percent,
+      daysLeft: total.daysLeft,
+    };
+    if (total.spent > total.limit) {
+      nudges.push(makeNudge(
+        `budget-total-exceeded:${period}`,
+        1,
+        DAY_COOLDOWN_MS,
+        facts,
+        { catPercent: rawPercent },
+      ));
+    } else if (
+      percent >= CRITICAL_PACING_PERCENT
+      && (period === "daily" || total.daysLeft >= CRITICAL_PACING_DAYS_LEFT)
+    ) {
+      nudges.push(makeNudge(
+        `budget-total-pacing:${period}`,
+        rawPercent >= URGENT_TOTAL_PACING_PERCENT ? 1 : 2,
+        DAY_COOLDOWN_MS,
+        facts,
+        { catPercent: rawPercent },
       ));
     }
   }

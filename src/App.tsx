@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -806,6 +806,7 @@ function App() {
               profileId={profileId}
               onAdd={() => setAccountOpen(true)}
               tutorialPlus={tutorialTarget === "wallet-plus"}
+              reduceMotion={reduceTutorialMotion}
             />
           )}
           {tab === "plan" && (
@@ -833,6 +834,7 @@ function App() {
         className={`bottom-nav ${navCollapsed ? "collapsed" : ""} ${navEntering ? "nav-entering" : ""} ${navDragging ? "dragging" : ""} ${planPanelOpen ? "hidden-by-panel" : ""}`}
         data-active-tab={addMenuOpen ? "add" : tab}
         data-tutorial-target={tutorialTarget || undefined}
+        data-reduce-motion={reduceTutorialMotion}
         aria-label="Primary navigation"
         onPointerDown={handleNavPointerDown}
         onPointerMove={handleNavPointerMove}
@@ -857,12 +859,12 @@ function App() {
         ))}
       </nav>
 
-      {tutorialTarget && tutorialTarget !== "expense" && (
+      {tutorialTarget && tutorialTarget !== "expense" && tutorialTarget !== "wallet-plus" && (
         <aside
           className={`kupi-nav-tutorial kupi-nav-tutorial--${tutorialTarget}`}
           data-reduce-motion={reduceTutorialMotion}
           aria-live="polite"
-          aria-label={tutorialTarget.includes("wallet") ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
+          aria-label={tutorialTarget === "wallet" ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
         >
           <span className="kupi-nav-tutorial__mascot">
             <Kupi mood="calm" size={84} state="pointing" />
@@ -871,18 +873,15 @@ function App() {
             <span className="kupi-nav-tutorial__speaker">Kupi</span>
             <b>
               {tutorialTarget === "wallet" ? "First, tap Wallet"
-                : tutorialTarget === "wallet-plus" ? "Now tap the Plus"
                 : "Next, tap Add"}
             </b>
             <p>
               {tutorialTarget === "wallet"
                 ? "Open Wallet below to create your first account."
-                : tutorialTarget === "wallet-plus"
-                  ? "Use the Plus button to add a wallet, bank, or cash account."
                 : "Tap Add below, then choose Expense or Income for your first transaction."}
             </p>
             <small>
-              {tutorialTarget === "wallet" || tutorialTarget === "wallet-plus" ? "Step 1 of 2" : "Step 2 of 2"}
+              {tutorialTarget === "wallet" ? "Step 1 of 2" : "Step 2 of 2"}
             </small>
           </div>
         </aside>
@@ -891,7 +890,8 @@ function App() {
       {addMenuOpen && (
         <AddActionsMenu
           closing={addMenuClosing}
-          tutorialExpense={tutorialTarget === "expense"}
+          tutorialFirstTransaction={tutorialTarget === "expense"}
+          reduceMotion={reduceTutorialMotion}
           onClose={() => closeAddMenu()}
           onAction={(action) => closeAddMenu(() => {
             if (action === "chat") {
@@ -1070,12 +1070,14 @@ function AddActionsMenu({
   onClose,
   onAction,
   closing,
-  tutorialExpense,
+  tutorialFirstTransaction,
+  reduceMotion,
 }: {
   onClose: () => void;
   onAction: (action: AddAction) => void;
   closing: boolean;
-  tutorialExpense: boolean;
+  tutorialFirstTransaction: boolean;
+  reduceMotion: boolean;
 }) {
   const actions: { id: AddAction; label: string; hint: string; icon: typeof Home }[] = [
     { id: "chat", label: "Chat", hint: "Log naturally with your assistant", icon: MessageCircle },
@@ -1098,21 +1100,28 @@ function AddActionsMenu({
           <b>Quick actions</b>
           <small>Choose how you want to add something</small>
         </div>
-        {tutorialExpense && (
-          <div className="kupi-add-tutorial" role="status" aria-live="polite">
-            <span className="kupi-add-tutorial__mascot"><Kupi mood="calm" size={72} state="pointing" /></span>
-            <span className="kupi-add-tutorial__bubble">
-              <b>Kupi: tap Expense</b>
-              <small>Then enter the amount for your first expense.</small>
-            </span>
-          </div>
-        )}
         {actions.map(({ id, label, hint, icon: Icon }) => (
-          <button key={id} className={`add-menu-item ${tutorialExpense && id === "expense" ? "tutorial-target" : ""}`} onClick={() => onAction(id)}>
-            <span className={`add-menu-icon ${id}`}><Icon size={19} /></span>
-            <span className="add-menu-copy"><b>{label}</b><small>{hint}</small></span>
-            <ChevronRight size={17} className="add-menu-chevron" />
-          </button>
+          <Fragment key={id}>
+            <button
+              className={`add-menu-item ${tutorialFirstTransaction && (id === "expense" || id === "income") ? "tutorial-target" : ""}`}
+              onClick={() => onAction(id)}
+            >
+              <span className={`add-menu-icon ${id}`}><Icon size={19} /></span>
+              <span className="add-menu-copy"><b>{label}</b><small>{hint}</small></span>
+              <ChevronRight size={17} className="add-menu-chevron" />
+            </button>
+            {tutorialFirstTransaction && id === "scan" && (
+              <div className="kupi-add-tutorial" data-reduce-motion={reduceMotion} role="status" aria-live="polite">
+                <span className="kupi-add-tutorial__mascot"><Kupi mood="calm" size={60} state="pointing" /></span>
+                <span className="kupi-nav-tutorial__bubble">
+                  <span className="kupi-nav-tutorial__speaker">Kupi</span>
+                  <b>Choose Expense or Income</b>
+                  <p>Tap either one to record your first transaction.</p>
+                  <small>Step 2 of 2</small>
+                </span>
+              </div>
+            )}
+          </Fragment>
         ))}
       </section>
     </div>
@@ -2381,10 +2390,12 @@ function AccountsPage({
   profileId,
   onAdd,
   tutorialPlus,
+  reduceMotion,
 }: {
   profileId: string;
   onAdd: () => void;
   tutorialPlus: boolean;
+  reduceMotion: boolean;
 }) {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const accounts = useLiveQuery(
@@ -2507,6 +2518,20 @@ function AccountsPage({
         </button>
       </header>
 
+      {tutorialPlus && (
+        <aside className="wallet-plus-tutorial" data-reduce-motion={reduceMotion} aria-label="Kupi account tutorial">
+          <span className="wallet-plus-tutorial__mascot">
+            <Kupi mood="calm" size={64} state="pointing" />
+          </span>
+          <div className="wallet-plus-tutorial__bubble">
+            <span>Kupi</span>
+            <b>Tap the Plus</b>
+            <p>Use it to add your first wallet, bank, or cash account.</p>
+            <small>Step 1 of 2</small>
+          </div>
+        </aside>
+      )}
+
       <section className="wallet-net">
         <small>Net worth</small>
         <strong>{formatMoney(net.netWorth)}</strong>
@@ -2525,9 +2550,11 @@ function AccountsPage({
           <WalletCards size={28} />
           <p>Your wallet is empty</p>
           <small>Add an account to start tracking your money.</small>
-          <button className="empty-action" onClick={onAdd}>
-            Add your first account
-          </button>
+          {!tutorialPlus && (
+            <button className="empty-action" onClick={onAdd}>
+              Add your first account
+            </button>
+          )}
         </div>
       )}
 

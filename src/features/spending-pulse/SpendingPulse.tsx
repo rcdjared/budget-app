@@ -149,9 +149,11 @@ export function SpendingPulse({
       aria-label="Spending Pulse"
       data-reduce-motion={reduceMotionActive}
     >
-      <div className="spending-pulse__insight-row">
-        {accountFilter}
-      </div>
+      {accountFilter ? (
+        <div className="spending-pulse__insight-row">
+          {accountFilter}
+        </div>
+      ) : null}
 
       <div className="spending-pulse">
         <div className="spending-pulse__tabs-shell">
