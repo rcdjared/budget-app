@@ -1,18 +1,18 @@
-# Kupi Assistant Recon and Phase 2 Status
+# Kupi Assistant Recon and Phase 4 Status
 
 **Date:** 2026-11-24  
-**Scope:** record the application and supplied data pack, then track the pure Kupi core through Phase 3.
+**Scope:** record the application and supplied data pack, then track the pure Kupi core through Phase 4.
 
 ## Executive summary
 
-The app already has an offline “Money assistant” inside `src/App.tsx`, but it is a small rule-based quick-log and local-question flow, not the structured Kupi core described in the roadmap. At the time of the Phase 0 inspection, there was no `src/kupi/` implementation or `fixtures/` directory. Phase 1 and the pure Phase 2 parser have since been added; the parser is still deliberately separate from the live chat and all database writes.
+The app already has an offline “Money assistant” inside `src/App.tsx`, but it is a small rule-based quick-log and local-question flow, not the structured Kupi core described in the roadmap. At the time of the Phase 0 inspection, there was no `src/kupi/` implementation or `fixtures/` directory. Phases 1–4 now provide a pure text foundation, parser, confirmed action layer, dialogue reducer, structured query engine, and response/mood generator. These remain deliberately separate from the live chat.
 
 The persistence foundation is suitable for the planned action layer: Dexie is the local source of truth, transaction writes are generally routed through repositories, and synced updates are timestamped and queued by table hooks. Before assistant-driven writes are added, the direct hard-delete path, incomplete cloud table coverage, profile-scope checks, and timezone assumptions need deliberate treatment.
 
 ## Current architecture and data contracts
 
 - **App/runtime:** Vite + React + TypeScript PWA. `src/main.tsx` mounts `src/App.tsx`; the assistant lives as a sheet/component in that file rather than an isolated feature package.
-- **Local persistence:** `src/db/schema.ts` defines Dexie database `PesoPulseDB`, currently schema version 6. Tables include profiles, accounts, categories, transactions, budgets, recurring rules, and finance/social records. Versions 2–6 add indexes/tables and perform targeted migrations.
+- **Local persistence:** `src/db/schema.ts` defines Dexie database `PesoPulseDB`, currently schema version 7. Tables include profiles, accounts, categories, transactions, budgets, recurring rules, and finance/social records. Versions 2–7 add indexes/tables and perform targeted migrations.
 - **Profiles:** profile-owned entities carry `profileId`. `src/db/profileScope.ts` provides `profileRecords` and `getProfileRecord` to scope reads and lookups. Some settings are device-level (`profileId` is optional).
 - **Types:** `src/domain/types.ts` is the current source for `Account`, `Category`, `Transaction`, and `Budget`. Transactions include expenses, income, transfers, and friend payments; they support soft deletion through `deletedAt`, cancellation through `cancelledAt`, and optional split/recurrence/transfer metadata.
 - **Money:** money is an integer count of centavos throughout the domain. `src/domain/money.ts` converts typed values to centavos, formats for display, and parses decimal, comma-separated, `k`, and `m` amounts. `formatMoney` formats centavos as PHP by default.
@@ -43,7 +43,7 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 - **Transaction parsing:** `src/domain/parser.ts` exports `parseTransactionPhrase`, `parseMultipleTransactions`, and `parseNaturalDate`. It returns a transaction draft (`type`, centavo `amount`, date, account/category hints, note), not a `KupiIntent`, confidence, tier, flags, alternatives, or action proposal.
 - **Chat routing:** the chat in `src/App.tsx` first handles account/budget setup, then calls `answerLocalMoneyQuestion`, then calls the transaction parser. Drafts are editable and reviewed before saving. Category-learning choices are stored in profile-keyed `localStorage`; they are not currently Dexie records or synced.
 - **Money questions:** `src/domain/localAssistant.ts` computes answers from local transactions and balances. It supports a limited English question vocabulary; it does not implement the roadmap’s structured query contract.
-- **Responses/persona:** the current chat uses fixed inline English strings. The root `kupi_templates.json` and `kupi_mood_engine.js` are not loaded by the current chat. The supplied response bank’s values therefore need an explicit response-generator implementation before they affect users.
+- **Responses/persona:** the current chat still uses fixed inline English strings. The typed Phase 4 response generator loads the copied template bank, computes mood from supplied budget/activity facts, enforces personality and sensitive-intent intensity caps, and selects templates with seeded randomness plus a five-turn anti-repeat window. It does not wire responses into the current chat.
 - **Home:** `src/domain/homeInsights.ts` computes budget/category/top-category/largest-expense insight candidates, using thresholds from `src/lib/homeConfig.ts`; `src/components/FinsightsPage.tsx` consumes them. Home uses a separate insight flow, not Kupi nudges or the supplied mood engine.
 
 ## Tests and baseline
@@ -93,6 +93,15 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 - Fake-IndexedDB coverage verifies explicit confirmation, profile isolation, create/idempotency, unusual-amount warnings, transfer-fee deletion/undo, soft-delete restoration, outbox records, monotonic timestamps, undo limits, and stale remote updates not overwriting a newer local undo.
 - The proposal API accepts already resolved IDs and before/after snapshots; automatic conversion of parser results into proposals, confirmation UI, action cards, and chat integration remain for later phases. Undo receipts are local to the device and are not synced.
 
+## Phase 4 dialogue, queries, responses, and mood
+
+- `src/kupi/dialogue/reducer.ts` models idle, slot, confirmation, and disambiguation states. New parsed topics replace pending dialogue; confirm/cancel controls resolve a pending confirmation. After two unanswered slot turns it marks `questionLimitReached` so Phase 5 can offer a best guess without treating an incomplete action as confirmable.
+- `src/kupi/queries/executeStatsQuery.ts` evaluates typed `StatsQuery` values against a caller-provided, already profile-scoped snapshot. It supports totals, category breakdown/top category, biggest expense, count, daily average, budget remaining, safe-to-spend, equal-length prior-period comparisons, and net worth. Results stay numeric in integer centavos; date periods use Asia/Manila.
+- Budget remaining uses the active budget cycle and category spending-to-date. Safe-to-spend divides positive remaining budget by days left in that cycle. It does not forecast upcoming bills or carry historical rollover: budget records do not preserve prior limit versions, so including rollover would require additional history.
+- `src/kupi/responses/generateResponse.ts` ports the mood/template selection path to TypeScript. It uses configured thresholds, supplied facts only, personality/sensitive-intent caps, an injected seed, and recent template IDs; rendering fails explicitly on missing or invalid facts rather than leaking placeholders.
+- Focused tests cover dialogue transitions/interruption/question limits, query period and budget behavior, mood thresholds, sensitive responses, deterministic variation, anti-repeat, and strict fact rendering. The parser/action service and response engine are still not connected to the app; confirmation cards and undo UI remain Phase 5.
+- Phase 4 verification: `pnpm test` — **20 files / 138 tests passed**; `pnpm build` — TypeScript and production build passed with the existing bundle-size warning. The strict parser gate passed: **211 corpus cases and 10,000 deterministic fuzz inputs**.
+
 ## Open questions and implementation risks
 
 1. **Clock/timezone integration:** the Phase 1 date utility now uses Asia/Manila and tests the 04:00 `kanina` cutoff. The existing app still follows browser-local date parts; integrate the policy only when the new parser path is introduced and verify target browsers.
@@ -100,4 +109,4 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 3. **Ambiguous language:** the pure parser can represent clarify/confirm outcomes for terms such as `baon`, `padala`, `deposit`, and `allowance`; the existing UI does not yet render those structured outcomes.
 4. **Writes and undo:** the Phase 3 service uses repositories and handles transfer fees, linked split/shared-bill delete restoration, tombstones, and monotonic timestamps. The future UI must preserve confirmation and profile scope; Kupi edits to friend-payment, split, and shared-bill transactions are intentionally rejected, and recurring-occurrence deletes require their dedicated history action.
 5. **Golden evaluation:** retain a frozen hold-out for future work and avoid tuning against it. The current perfect score is a regression result against the supplied corpus, not an unbiased accuracy measurement.
-6. **Phase boundary:** Phases 0–3 are complete. Keep existing app behavior unchanged; do not wire the parser/action service into chat until Phase 5 adds confirmation cards, accessible feedback, and undo UI. Phase 4 is next in roadmap order.
+6. **Phase boundary:** Phases 0–4 are complete. Keep existing app behavior unchanged; do not wire the parser/action service into chat until Phase 5 adds confirmation cards, accessible feedback, and undo UI.

@@ -17,6 +17,7 @@ export type Tier = "auto" | "confirm" | "ask" | "fallback";
 export type Mood = "happy" | "worried" | "idle";
 export type Intensity = 1 | 2 | 3;
 export type Language = "en" | "tl" | "en-tl";
+export type Personality = "chill" | "classic" | "dramatic";
 
 /** All thresholds live here. Tune in Phase 9 from calibration data, never inline. */
 export const KUPI_CONFIG = {
@@ -123,7 +124,7 @@ export interface SessionContext {
   lastTxnId?: string;
   pending?: { kind: "confirmAction" | "slot" | "disambiguation"; slot?: string; draft?: Partial<DraftTxn>; actionId?: string };
   recentTemplateIds: string[]; // last N rendered, for anti-repeat
-  personality: "chill" | "classic" | "dramatic";
+  personality: Personality;
   rngSeed: number;
 }
 
