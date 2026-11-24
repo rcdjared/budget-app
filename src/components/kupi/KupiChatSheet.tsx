@@ -257,6 +257,7 @@ export function KupiChatSheet({
   open,
   onClose,
   onOpenForm,
+  onOpenKupiSettings = () => undefined,
   profileId,
   initialMessage,
   initialMood = "idle",
@@ -264,6 +265,7 @@ export function KupiChatSheet({
   open: boolean;
   onClose: () => void;
   onOpenForm: () => void;
+  onOpenKupiSettings?: () => void;
   profileId: string;
   initialMessage?: string;
   initialMood?: Mood;
@@ -323,6 +325,7 @@ export function KupiChatSheet({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceTimeoutRef = useRef<number | null>(null);
   const voiceBaseTextRef = useRef("");
   const voiceTranscriptRef = useRef("");
   const undoTimerRef = useRef<number | null>(null);
@@ -340,6 +343,8 @@ export function KupiChatSheet({
     if (open) return;
     const recognition = speechRecognitionRef.current;
     speechRecognitionRef.current = null;
+    if (voiceTimeoutRef.current !== null) window.clearTimeout(voiceTimeoutRef.current);
+    voiceTimeoutRef.current = null;
     if (recognition) {
       recognition.onresult = null;
       recognition.onerror = null;
@@ -457,6 +462,8 @@ export function KupiChatSheet({
 
   useEffect(() => () => {
     if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
+    if (voiceTimeoutRef.current !== null) window.clearTimeout(voiceTimeoutRef.current);
+    speechRecognitionRef.current?.abort();
   }, []);
 
   const scopedTransactions = transactions ?? [];
@@ -1335,8 +1342,20 @@ export function KupiChatSheet({
 
   const toggleVoiceInput = () => {
     if (voiceListening) {
-      speechRecognitionRef.current?.stop();
+      const recognition = speechRecognitionRef.current;
+      recognition?.stop();
       setVoiceStatus("Finishing voice input…");
+      if (voiceTimeoutRef.current !== null) window.clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = window.setTimeout(() => {
+        if (!recognition || speechRecognitionRef.current !== recognition) return;
+        speechRecognitionRef.current = null;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        try { recognition.abort(); } catch { /* Recognition may already have stopped. */ }
+        setVoiceListening(false);
+        setVoiceStatus("Voice input stopped. You can review the draft or keep typing.");
+      }, 2_000);
       return;
     }
 
@@ -1365,6 +1384,11 @@ export function KupiChatSheet({
       };
       recognition.onerror = (event) => {
         failed = true;
+        if (voiceTimeoutRef.current !== null) window.clearTimeout(voiceTimeoutRef.current);
+        voiceTimeoutRef.current = null;
+        if (speechRecognitionRef.current === recognition) speechRecognitionRef.current = null;
+        setVoiceListening(false);
+        try { recognition.abort(); } catch { /* Recognition may already have stopped. */ }
         setVoiceStatus(
           event.error === "not-allowed" || event.error === "service-not-allowed"
             ? "Microphone access was denied. Check your browser permissions and try again."
@@ -1374,6 +1398,8 @@ export function KupiChatSheet({
         );
       };
       recognition.onend = () => {
+        if (voiceTimeoutRef.current !== null) window.clearTimeout(voiceTimeoutRef.current);
+        voiceTimeoutRef.current = null;
         setVoiceListening(false);
         if (speechRecognitionRef.current === recognition) speechRecognitionRef.current = null;
         if (!failed) {
@@ -1388,7 +1414,19 @@ export function KupiChatSheet({
       setVoiceStatus("Listening… Speak now.");
       setVoiceListening(true);
       recognition.start();
+      voiceTimeoutRef.current = window.setTimeout(() => {
+        if (speechRecognitionRef.current !== recognition) return;
+        speechRecognitionRef.current = null;
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        try { recognition.abort(); } catch { /* Recognition may already have stopped. */ }
+        setVoiceListening(false);
+        setVoiceStatus("Voice input timed out. You can type your message or try the microphone again.");
+      }, 30_000);
     } catch (error) {
+      if (voiceTimeoutRef.current !== null) window.clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = null;
       speechRecognitionRef.current = null;
       setVoiceListening(false);
       setVoiceStatus("Could not start voice input. Check your microphone permission and try again.");
@@ -1696,6 +1734,9 @@ export function KupiChatSheet({
           )}
           {nluModelStatus && <p className="kupi-data-loading" role="status">{nluModelStatus}</p>}
           {!dataReady && <p className="kupi-data-loading" role="status">Loading this profile’s local data…</p>}
+          <button type="button" className="kupi-smart-unlock" onClick={onOpenKupiSettings}>
+            Unlock smarter Kupi
+          </button>
         </div>
         <form className="chat-composer kupi-chat-composer" onSubmit={(event) => {
           event.preventDefault();
@@ -1714,7 +1755,7 @@ export function KupiChatSheet({
             placeholder="Ask Kupi or describe a transaction"
             rows={1}
             aria-label="Message Kupi"
-            disabled={busy || typing || !dataReady || voiceListening}
+            disabled={busy || typing || !dataReady}
           />
           <button
             type="button"

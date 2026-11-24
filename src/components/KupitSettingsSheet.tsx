@@ -46,6 +46,7 @@ import type { SmartCapability } from "@/kupi/nlu/capability";
 
 interface KupitSettingsSheetProps {
   open: boolean;
+  initialDetail?: "kupi" | null;
   onClose: () => void;
   profileId: string;
   themePreference: ThemePreference;
@@ -109,14 +110,9 @@ function Toggle({
   );
 }
 
-function formatStorage(bytes: number): string {
-  return bytes >= 1_000_000_000
-    ? `${(bytes / 1_000_000_000).toFixed(1)} GB`
-    : `${Math.round(bytes / 1_000_000)} MB`;
-}
-
 export function KupitSettingsSheet({
   open,
+  initialDetail = null,
   onClose,
   profileId,
   themePreference,
@@ -142,6 +138,18 @@ export function KupitSettingsSheet({
   const modelOperationRef = useRef(0);
   const modelActionRef = useRef<"embedding" | "smart" | "delete" | null>(null);
   const customColorRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open && initialDetail) setDetail(initialDetail);
+  }, [open, initialDetail]);
+
+  useEffect(() => {
+    if (!open || detail !== "kupi" || !initialDetail) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("kupi-offline-models")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, detail, initialDetail]);
 
   const profile = useLiveQuery(() => db.profiles.get(profileId), [profileId]);
   const profileSetting = useLiveQuery(
@@ -185,12 +193,22 @@ export function KupitSettingsSheet({
     if (settings.kupiSmartAssist) {
       setModelAvailability((current) => ({ ...current, embedding: null }));
       void import("@/kupi/nlu/embedder").then(({ isEmbeddingModelCached }) => isEmbeddingModelCached())
-        .then((available) => { if (active) setModelAvailability((current) => ({ ...current, embedding: available })); });
+        .then((available) => { if (active) setModelAvailability((current) => ({ ...current, embedding: available })); })
+        .catch(() => {
+          if (!active) return;
+          setModelAvailability((current) => ({ ...current, embedding: false }));
+          setModelProgress({ model: "embedding", progress: 0, status: "Couldn’t load model status. Reload Kupi and try again." });
+        });
     }
     if (settings.kupiSmartMode) {
       setModelAvailability((current) => ({ ...current, smart: null }));
       void import("@/kupi/nlu/llmParser").then(({ isLocalLlmModelCached }) => isLocalLlmModelCached(settings.kupiSmartModelSize ?? "0.6B"))
-        .then((available) => { if (active) setModelAvailability((current) => ({ ...current, smart: available })); });
+        .then((available) => { if (active) setModelAvailability((current) => ({ ...current, smart: available })); })
+        .catch(() => {
+          if (!active) return;
+          setModelAvailability((current) => ({ ...current, smart: false }));
+          setModelProgress({ model: "smart", progress: 0, status: "Couldn’t load model status. Reload Kupi and try again." });
+        });
     }
     return () => { active = false; };
   }, [settings.kupiSmartAssist, settings.kupiSmartMode, settings.kupiSmartModelSize]);
@@ -214,7 +232,9 @@ export function KupitSettingsSheet({
         }
       }
     } catch (error) {
-      if (modelOperationRef.current === operationId) setModelProgress({ model: "embedding", progress: 0, status: error instanceof Error ? error.message : "Model could not be loaded" });
+      const detail = error instanceof Error ? error.message : "Model could not be loaded";
+      const status = /module script failed/i.test(detail) ? "Kupi couldn’t load the model files. Reload the app and try again." : detail;
+      if (modelOperationRef.current === operationId) setModelProgress({ model: "embedding", progress: 0, status });
     } finally {
       if (modelOperationRef.current === operationId) {
         modelActionRef.current = null;
@@ -243,7 +263,9 @@ export function KupitSettingsSheet({
         }
       }
     } catch (error) {
-      if (modelOperationRef.current === operationId) setModelProgress({ model: "smart", progress: 0, status: error instanceof Error ? error.message : "Smart mode model could not be loaded" });
+      const detail = error instanceof Error ? error.message : "Smart mode model could not be loaded";
+      const status = /module script failed/i.test(detail) ? "Kupi couldn’t load the model files. Reload the app and try again." : detail;
+      if (modelOperationRef.current === operationId) setModelProgress({ model: "smart", progress: 0, status });
     } finally {
       if (modelOperationRef.current === operationId) {
         modelActionRef.current = null;
@@ -386,6 +408,7 @@ export function KupitSettingsSheet({
     onClick,
     trailing,
     disabled,
+    className,
   }: {
     icon: React.ReactNode;
     title: string;
@@ -393,12 +416,13 @@ export function KupitSettingsSheet({
     onClick?: () => void;
     trailing?: React.ReactNode;
     disabled?: boolean;
+    className?: string;
   }) => {
     if (!matches(title, description)) return null;
     return (
       <button
         type="button"
-        className="kupit-settings-row"
+        className={`kupit-settings-row ${className ?? ""}`}
         onClick={disabled ? undefined : onClick}
         disabled={disabled}
       >
@@ -728,7 +752,7 @@ export function KupitSettingsSheet({
                 </>
               )}
               {detail === "kupi" && (
-                <div className="kupit-preference-list">
+                <div className="kupi-detail-stack">
                   <p className="eyebrow">Personality</p>
                   <div className="kupit-settings-segment">
                     {(["chill", "classic", "dramatic"] as const).map((personality) => (
@@ -743,43 +767,40 @@ export function KupitSettingsSheet({
                     ))}
                   </div>
                   <small className="kupit-muted">Personality changes Kupi's flavor, never the numbers or write decisions.</small>
-                  <p className="eyebrow">Offline language models</p>
-                  {smartCapability?.storageAvailableBytes !== undefined && (
-                    <small className="kupit-muted" role="status">About {formatStorage(smartCapability.storageAvailableBytes)} of browser storage is currently available.</small>
-                  )}
+                  <p className="eyebrow" id="kupi-offline-models">Unlock smarter Kupi</p>
                   <Row
+                    className="kupi-model-row"
                     icon={<Download size={18} />}
                     title="Smart assist"
-                    description="Optional multilingual suggestions. About 118 MB, plus tokenizer and runtime files."
+                    description="Better suggestions for short or mixed-language messages."
                     trailing={<Toggle checked={Boolean(settings.kupiSmartAssist)} disabled={modelAction !== null} onChange={(checked) => updateSettings({ kupiSmartAssist: checked })} label="Enable offline Smart assist" />}
                   />
                   {settings.kupiSmartAssist && (
-                    <div className="kupit-preference-list">
-                      <small className="kupit-muted" role="status">{modelAvailability.embedding === null ? "Checking this device…" : modelAvailability.embedding ? "Suggestion model is downloaded on this device." : "Suggestion model is not downloaded yet."}</small>
-                      <button type="button" className="kupit-primary-button" disabled={modelAction !== null} onClick={() => void downloadEmbeddingModel()}>{modelAvailability.embedding ? "Load suggestion model" : "Download suggestion model"}</button>
-                      <small className="kupit-muted">Only used when the rules are unsure. Text and profile names stay on this device.</small>
+                    <div className="kupi-model-controls">
+                      <small className="kupit-muted" role="status">{modelAvailability.embedding === null ? "Checking model…" : modelAvailability.embedding ? "Ready on this device" : "Not downloaded"}</small>
+                      <button type="button" className="kupit-primary-button" disabled={modelAction !== null} onClick={() => void downloadEmbeddingModel()}>{modelAvailability.embedding ? "Load model" : "Download model"}</button>
                       {modelProgress?.model === "embedding" && <small role="status" className="kupit-muted">{modelProgress.status}{modelProgress.progress > 0 && modelProgress.progress < 1 ? ` (${Math.round(modelProgress.progress * 100)}%)` : ""}</small>}
                       {modelAction === "embedding" && <button type="button" className="chat-clear-learning" onClick={() => void cancelModelDownload()}>Cancel download</button>}
                     </div>
                   )}
                   <Row
+                    className="kupi-model-row"
                     icon={<Smartphone size={18} />}
                     title="Smart mode"
-                    description={smartCapability?.reason ?? "Optional local Qwen parser. WebGPU is required; first use downloads a large model."}
+                    description={smartCapability?.supported === false ? "Smart mode isn’t available in this browser or on this device." : "Understand more ways of asking, on this device."}
                     trailing={<Toggle checked={Boolean(settings.kupiSmartMode)} disabled={modelAction !== null || (smartCapability !== null && !smartCapability.supported && !settings.kupiSmartMode)} onChange={(checked) => updateSettings({ kupiSmartMode: checked, kupiSmartAssist: checked || settings.kupiSmartAssist })} label="Enable local Smart mode" />}
                   />
                   {settings.kupiSmartMode && (
-                    <div className="kupit-preference-list">
-                      <label className="kupit-muted">Local model size
+                    <div className="kupi-model-controls">
+                      <label className="kupit-muted">Model size
                         <select value={settings.kupiSmartModelSize ?? "0.6B"} onChange={(event) => updateSettings({ kupiSmartModelSize: event.target.value as "0.6B" | "1.7B" })}>
-                          <option value="0.6B">Qwen3 0.6B · model files about 352 MB</option>
-                          <option value="1.7B">Qwen3 1.7B · model files about 984 MB</option>
+                          <option value="0.6B">Small · about 350 MB</option>
+                          <option value="1.7B">Large · about 1 GB</option>
                         </select>
                       </label>
-                      <small className="kupit-muted">WebLLM estimates about 1.4 GB GPU memory for 0.6B and 2.0 GB for 1.7B. Models download on first use, then work offline from browser cache.</small>
-                      <small className="kupit-muted">Smart mode suggestions are checked against this profile and still require review and confirmation.</small>
-                      <small className="kupit-muted" role="status">{modelAvailability.smart === null ? "Checking this device…" : modelAvailability.smart ? "Selected model is downloaded on this device." : "Selected model is not downloaded yet."}</small>
-                      <button type="button" className="kupit-primary-button" disabled={!smartCapability?.supported || modelAction !== null} onClick={() => void downloadSmartModel()}>{modelAvailability.smart ? "Load selected Smart model" : "Download selected Smart mode model"}</button>
+                      <small className="kupit-muted">Works offline after download. You review every change before saving.</small>
+                      <small className="kupit-muted" role="status">{modelAvailability.smart === null ? "Checking model…" : modelAvailability.smart ? "Ready on this device" : "Not downloaded"}</small>
+                      <button type="button" className="kupit-primary-button" disabled={!smartCapability?.supported || modelAction !== null} onClick={() => void downloadSmartModel()}>{modelAvailability.smart ? "Load model" : "Download model"}</button>
                       {modelProgress?.model === "smart" && <small role="status" className="kupit-muted">{modelProgress.status}{modelProgress.progress > 0 && modelProgress.progress < 1 ? ` (${Math.round(modelProgress.progress * 100)}%)` : ""}</small>}
                       {modelAction === "smart" && <button type="button" className="chat-clear-learning" onClick={() => void cancelModelDownload()}>Cancel download</button>}
                     </div>
