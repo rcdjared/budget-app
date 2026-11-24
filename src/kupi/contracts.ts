@@ -122,7 +122,13 @@ export interface ParseResult {
 
 export interface SessionContext {
   lastTxnId?: string;
-  pending?: { kind: "confirmAction" | "slot" | "disambiguation"; slot?: string; draft?: Partial<DraftTxn>; actionId?: string };
+  pending?: {
+    kind: "confirmAction" | "slot" | "disambiguation";
+    slot?: string;
+    intent?: KupiIntent;
+    draft?: Partial<DraftTxn>;
+    actionId?: string;
+  };
   recentTemplateIds: string[]; // last N rendered, for anti-repeat
   personality: Personality;
   rngSeed: number;

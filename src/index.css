@@ -3141,6 +3141,222 @@ button {
   font-size: 10px;
 }
 
+.kupi-chat-screen {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+
+.kupi-chat-header {
+  gap: 10px;
+  grid-template-columns: 38px 38px minmax(0, 1fr) 38px;
+}
+
+.kupi-chat-backdrop {
+  bottom: auto;
+}
+
+.kupi-chat-avatar {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.kupi-chat-avatar-thinking {
+  animation: kupi-think 1.2s ease-in-out infinite;
+}
+
+.kupi-chat-composer {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+.kupi-chat-composer textarea {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.kupi-chat-composer > small {
+  font-size: 11px;
+}
+
+.kupi-starter-chips button,
+.kupi-candidate-chips button {
+  min-height: 38px;
+  font-size: 14px;
+}
+
+.kupi-candidate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 8px;
+  max-width: min(92%, 460px);
+}
+
+.kupi-candidate-chips button {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px 12px;
+  color: var(--primary);
+  background: var(--card);
+  text-align: left;
+}
+
+.kupi-action-card {
+  display: grid;
+  gap: 10px;
+  width: min(92%, 460px);
+  align-self: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+}
+
+.kupi-action-card article {
+  padding: 12px;
+  border-radius: 13px;
+  background: var(--background);
+}
+
+.kupi-action-card h3 {
+  margin: 0 0 9px;
+  font-size: 14px;
+}
+
+.kupi-action-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.kupi-action-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.kupi-action-card dt {
+  color: var(--muted-foreground);
+}
+
+.kupi-action-card dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.kupi-delete-card {
+  border: 1px solid color-mix(in oklch, #dc2626 35%, var(--border));
+}
+
+.kupi-delete-card p,
+.kupi-action-warning {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.kupi-action-warning {
+  color: #a16207;
+}
+
+.kupi-action-buttons {
+  display: grid;
+  gap: 4px;
+}
+
+.kupi-action-buttons .save-button {
+  min-height: 46px;
+}
+
+.kupi-action-buttons .chat-clear-learning {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.kupi-undo-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(92%, 460px);
+  align-self: flex-start;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  font-size: 13px;
+}
+
+.kupi-undo-toast button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  font-weight: 700;
+}
+
+.kupi-chat-error {
+  align-self: flex-start;
+  max-width: min(92%, 460px);
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.kupi-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  color: var(--muted-foreground);
+}
+
+.kupi-typing-indicator img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.kupi-typing-indicator span {
+  display: flex;
+  gap: 3px;
+}
+
+.kupi-typing-indicator i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: kupi-dot 1s ease-in-out infinite;
+}
+
+.kupi-typing-indicator i:nth-child(2) { animation-delay: 120ms; }
+.kupi-typing-indicator i:nth-child(3) { animation-delay: 240ms; }
+
+.kupi-typing-indicator small {
+  font-size: 12px;
+}
+
+@keyframes kupi-think {
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes kupi-dot {
+  50% { opacity: 0.3; transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kupi-chat-avatar-thinking,
+  .kupi-typing-indicator i {
+    animation: none;
+  }
+}
+
 .sheet-grabber {
   width: 36px;
   height: 4.5px;

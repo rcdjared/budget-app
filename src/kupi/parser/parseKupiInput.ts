@@ -481,35 +481,32 @@ function parsePendingReply(
   }
 
   if (pending.kind !== "slot" || !pending.slot) return undefined;
-  const draft = (pending.draft ?? {}) as Record<string, unknown>;
-  const currentAmount = typeof draft.amount === "number"
-    ? draft.amount
-    : typeof draft.amountCentavos === "number"
-      ? draft.amountCentavos
-      : undefined;
-  const currentCategory = typeof draft.category === "string" ? draft.category : undefined;
-  const currentAccount = typeof draft.account === "string" ? draft.account : undefined;
+  const savedDraft = pending.draft ?? {};
+  const savedType = savedDraft.type;
+  const type: DraftTxn["type"] = savedType === "income" || savedType === "transfer" ? savedType : "expense";
+  const intent = pending.intent
+    ?? (type === "income" ? "LOG_INCOME" : type === "transfer" ? "TRANSFER" : "LOG_EXPENSE");
   const confidence = KUPI_CONFIG.parser.explicitCueConfidence;
-  const result = emptyResult("LOG_EXPENSE", confidence, "auto");
-  const txn: DraftTxn = { type: "expense" };
+  const result = emptyResult(intent, confidence, "auto");
+  const txn: DraftTxn = { ...savedDraft, type };
 
   if (pending.slot === "amount") {
     const amount = extractMoneyCandidates(text).candidates.at(-1);
     const value = amount?.amountCentavos ?? (Number.isFinite(Number(text)) ? Math.round(Number(text) * 100) : undefined);
     if (!value || value <= 0 || !Number.isSafeInteger(value)) return undefined;
     txn.amount = makeSlot(value, "text", confidence, amount ? [amount.start, amount.end] : undefined);
-  } else if (pending.slot === "account") {
+  } else if (pending.slot === "account" || pending.slot === "fromAccount") {
     const account = accountMentions(text, db)[0];
     if (!account) return undefined;
     txn.account = makeSlot(account.name, "text", confidence);
-    if (currentAmount !== undefined) txn.amount = makeSlot(currentAmount, "context", confidence);
-    if (currentCategory) txn.category = makeSlot(currentCategory, "context", confidence);
+  } else if (pending.slot === "toAccount") {
+    const account = accountMentions(text, db).at(-1);
+    if (!account) return undefined;
+    txn.toAccount = makeSlot(account.name, "text", confidence);
   } else if (pending.slot === "category") {
-    const category = resolveCategory(text, db, false);
+    const category = resolveCategory(text, db, txn.type === "income");
     if (!category) return undefined;
     txn.category = makeSlot(category.value, category.source, category.confidence);
-    if (currentAmount !== undefined) txn.amount = makeSlot(currentAmount, "context", confidence);
-    if (currentAccount) txn.account = makeSlot(currentAccount, "context", confidence);
   } else if (pending.slot === "date") {
     const date = resolveDateForTarget(text, now);
     if (!date) return undefined;
@@ -518,9 +515,16 @@ function parsePendingReply(
     return undefined;
   }
 
-  if (currentAmount !== undefined && !txn.amount) txn.amount = makeSlot(currentAmount, "context", confidence);
-  if (currentCategory && !txn.category) txn.category = makeSlot(currentCategory, "context", confidence);
+  if (txn.type === "transfer") {
+    if (!txn.amount) result.missing.push("amount");
+    if (!txn.account) result.missing.push("fromAccount");
+    if (!txn.toAccount) result.missing.push("toAccount");
+  } else {
+    if (!txn.amount) result.missing.push("amount");
+    if (!txn.category) result.missing.push("category");
+  }
   result.drafts = [txn];
+  result.tier = result.missing.length ? "ask" : "auto";
   return result;
 }
 

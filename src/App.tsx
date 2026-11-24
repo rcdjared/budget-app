@@ -96,6 +96,7 @@ import { useSheetGestures } from "@/hooks/useSheetGestures";
 import { useCollapsingNav } from "@/hooks/useCollapsingNav";
 import { KupitSettingsSheet } from "@/components/KupitSettingsSheet";
 import { NotificationsSheet } from "@/components/NotificationsSheet";
+import { KupiChatSheet } from "@/components/kupi/KupiChatSheet";
 import { insertDueNotifications } from "@/db/repositories/notifications";
 import { getProfileNotificationPreferences } from "@/db/repositories/profiles";
 import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
@@ -772,7 +773,7 @@ function App() {
         profileId={profileId}
       />
 
-      <ChatLogSheet
+      <KupiChatSheet
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         onOpenForm={() => { setFormInitialType("expense"); setChatOpen(false); setAddOpen(true); }}

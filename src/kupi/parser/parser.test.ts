@@ -58,6 +58,58 @@ describe("parseKupiInput", () => {
     });
   });
 
+  it("preserves an income draft when a missing amount arrives as a follow-up", () => {
+    const pendingContext: SessionContext = {
+      ...context,
+      pending: {
+        kind: "slot",
+        slot: "amount",
+        intent: "LOG_INCOME",
+        draft: {
+          type: "income",
+          category: { value: "Salary", source: "text", confidence: 1 },
+        },
+      },
+    };
+
+    expect(parseKupiInput("30k", pendingContext, db, now)).toMatchObject({
+      intent: "LOG_INCOME",
+      missing: [],
+      drafts: [{
+        type: "income",
+        amount: { value: 3_000_000 },
+        category: { value: "Salary" },
+      }],
+    });
+  });
+
+  it("fills a missing transfer destination without losing its source or amount", () => {
+    const pendingContext: SessionContext = {
+      ...context,
+      pending: {
+        kind: "slot",
+        slot: "toAccount",
+        intent: "TRANSFER",
+        draft: {
+          type: "transfer",
+          amount: { value: 50_000, source: "text", confidence: 1 },
+          account: { value: "GCash", source: "text", confidence: 1 },
+        },
+      },
+    };
+
+    expect(parseKupiInput("gotyme", pendingContext, db, now)).toMatchObject({
+      intent: "TRANSFER",
+      missing: [],
+      drafts: [{
+        type: "transfer",
+        amount: { value: 50_000 },
+        account: { value: "GCash" },
+        toAccount: { value: "GoTyme Bank" },
+      }],
+    });
+  });
+
   it("confirms uncategorized merchants instead of silently assigning them", () => {
     expect(parseKupiInput("unlisted merchant 50", context, db, now)).toMatchObject({
       intent: "LOG_EXPENSE",
