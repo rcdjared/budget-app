@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { MessageCircle, Plus, Send, X } from "lucide-react";
+import { Plus, Send, X } from "lucide-react";
 import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
 import { createAccount } from "@/db/repositories/accounts";
@@ -1087,7 +1087,6 @@ export function KupiChatSheet({
             <X size={20} />
           </button>
           <div className="chat-heading">
-            <img className={`kupi-chat-avatar${typing ? " kupi-chat-avatar-thinking" : ""}`} src={avatarSrc} alt={`Kupi ${typing ? "thinking" : avatarMood}`} />
             <div>
               <b>Kupi</b>
               <small>Offline assistant · your data stays on this device</small>
@@ -1099,9 +1098,9 @@ export function KupiChatSheet({
         </header>
         <div className="chat-messages" ref={messagesRef} aria-live="polite" aria-relevant="additions text">
           {!conversation.length && (
-            <div className="assistant-message">
-              <span className="assistant-mark"><MessageCircle size={17} /></span>
-              <div>
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <div className="assistant-message">
                 {scopedAccounts.length === 0 ? (
                   <>
                     <b>Welcome! Let’s set up your budget.</b>
@@ -1151,9 +1150,20 @@ export function KupiChatSheet({
             </div>
           )}
           {conversation.map((entry, index) => (
-            <div key={`${entry.role}-${index}`} className={`chat-message ${entry.role}`}>
-              {entry.text}
-            </div>
+            entry.role === "assistant" ? (
+              <div key={`assistant-${index}`} className="chat-turn assistant">
+                <img
+                  className="chat-kupi-avatar"
+                  src={entry.mood === "happy" ? "/icons/happy.png" : entry.mood === "worried" ? "/icons/worried.png" : "/icons/idle.png"}
+                  alt={`Kupi ${entry.mood}`}
+                />
+                <div className="chat-message assistant">{entry.text}</div>
+              </div>
+            ) : (
+              <div key={`user-${index}`} className="chat-turn user">
+                <div className="chat-message user">{entry.text}</div>
+              </div>
+            )
           ))}
           {pendingCandidates && (
             <div className="kupi-candidate-chips" aria-label="Matching transactions">
@@ -1281,7 +1291,7 @@ export function KupiChatSheet({
           {error && <p className="kupi-chat-error" role="alert">{error}</p>}
           {typing && (
             <div className="kupi-typing-indicator" role="status" aria-label="Kupi is thinking">
-              <img src="/icons/idle.png" alt="" />
+              <img src={avatarSrc} alt="Kupi thinking" />
               <span><i /><i /><i /></span>
               <small>Kupi is thinking…</small>
             </div>

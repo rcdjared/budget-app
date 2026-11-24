@@ -437,6 +437,17 @@ button {
 
 .home-first-record__guide {
   position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.home-first-record__bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--pulse-bubble-border, var(--border));
   border-radius: 16px;
   background: var(--pulse-bubble, var(--card));
@@ -444,7 +455,7 @@ button {
   box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
-.home-first-record__guide::before {
+.home-first-record__bubble::before {
   content: "";
   position: absolute;
   top: 24px;
@@ -455,6 +466,11 @@ button {
   border-bottom: 1px solid var(--pulse-bubble-border, var(--border));
   background: var(--pulse-bubble, var(--card));
   transform: rotate(45deg);
+}
+
+.home-account-onboarding[data-reduce-motion="true"] .home-account-onboarding__mascot,
+.home-first-record[data-reduce-motion="true"] .home-first-record__mascot {
+  animation: none;
 }
 
 @keyframes kupi-guide-float {
@@ -3061,6 +3077,44 @@ button {
   display: flex;
   gap: 10px;
   align-self: flex-start;
+}
+
+.chat-turn {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chat-turn.assistant {
+  justify-content: flex-start;
+}
+
+.chat-turn.user {
+  justify-content: flex-end;
+}
+
+.chat-kupi-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  object-fit: contain;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 4px 7px color-mix(in srgb, var(--foreground) 12%, transparent));
+}
+
+.chat-turn.assistant .chat-message,
+.chat-turn.assistant .assistant-message {
+  max-width: calc(88% - 50px);
+}
+
+.chat-turn.assistant .assistant-message {
+  display: block;
+}
+
+.chat-turn.assistant .assistant-message > b {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .assistant-message p {

@@ -830,7 +830,10 @@ export function FinsightsPage({
   return (
     <div className="home-dashboard" aria-busy={!homeIsLoaded}>
       {!homeIsLoaded ? null : accounts.length === 0 ? (
-        <section className="home-account-onboarding">
+        <section
+          className="home-account-onboarding"
+          data-reduce-motion={sectionSettings.reduceMotion || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)}
+        >
           <div className="home-account-onboarding__message">
             <span className="home-account-onboarding__mascot">
               <Kupi mood="calm" size={76} />
@@ -854,10 +857,13 @@ export function FinsightsPage({
           </button>
         </section>
       ) : homeHasNoTransactions ? (
-        <section className="home-first-record">
+        <section
+          className="home-first-record"
+          data-reduce-motion={sectionSettings.reduceMotion || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)}
+        >
           <div className="home-first-record__guide">
             <span className="home-first-record__mascot"><Kupi mood="calm" size={64} /></span>
-            <span>
+            <span className="home-first-record__bubble">
               <b>Kupi</b>
               <h2>{tForLanguage("homeFirstRecordTitle", language)}</h2>
               <p>{tForLanguage("homeFirstRecordBody", language)}</p>
