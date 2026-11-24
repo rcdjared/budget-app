@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, withoutOutbox } from "@/db/schema";
 import type { Account, Category, Transaction } from "@/domain/types";
@@ -43,6 +43,38 @@ const existingTransaction: Transaction = {
   updatedAt: timestamp,
 };
 
+type MockRecognitionEvent = Event & {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+class MockSpeechRecognition {
+  static latest: MockSpeechRecognition | null = null;
+
+  lang = "";
+  continuous = false;
+  interimResults = false;
+  started = false;
+  onresult: ((event: MockRecognitionEvent) => void) | null = null;
+  onerror: ((event: Event & { error: string }) => void) | null = null;
+  onend: (() => void) | null = null;
+
+  constructor() {
+    MockSpeechRecognition.latest = this;
+  }
+
+  start() {
+    this.started = true;
+  }
+
+  stop() {
+    this.onend?.();
+  }
+
+  abort() {
+    this.onend?.();
+  }
+}
+
 async function resetDatabase(transaction?: Transaction) {
   await db.delete();
   await db.open();
@@ -54,9 +86,9 @@ async function resetDatabase(transaction?: Transaction) {
   await db.outbox.clear();
 }
 
-function renderChat() {
+function renderChat(profileId = "profile") {
   const view = render(
-    <KupiChatSheet open onClose={vi.fn()} onOpenForm={vi.fn()} profileId="profile" />
+    <KupiChatSheet open onClose={vi.fn()} onOpenForm={vi.fn()} profileId={profileId} />
   );
   const input = screen.getByRole("textbox", { name: "Message Kupi" });
   const send = screen.getByRole("button", { name: "Send message" });
@@ -78,10 +110,92 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   await db.close();
 });
 
 describe("Kupi chat action flow", () => {
+  it("uses a simple Chat header and lets users load editable guide examples", async () => {
+    await resetDatabase(existingTransaction);
+    const { container } = renderChat();
+
+    expect(screen.getByText("Chat")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Chat" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close chat" })).toBeTruthy();
+    expect(screen.queryByText("Offline assistant · your data stays on this device")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open transaction form" })).toBeNull();
+    await waitFor(() => expect((screen.getByRole("textbox", { name: "Message Kupi" }) as HTMLTextAreaElement).disabled).toBe(false));
+
+    fireEvent.click(screen.getByRole("button", { name: "Guide" }));
+    expect(screen.getByRole("heading", { name: "Move money" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Edit an expense or income" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Ask about your money" })).toBeTruthy();
+    expect(screen.getByText("Goals, debts, and collections are managed in Plan for now; Chat can’t create or edit them yet.")).toBeTruthy();
+    expect(screen.getByText(/Chat text and finance data are processed on this device/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Spent ₱180 on coffee today" }));
+    const input = screen.getByRole("textbox", { name: "Message Kupi" }) as HTMLTextAreaElement;
+    expect(input.value).toBe("Spent ₱180 on coffee today");
+    expect(container.querySelector(".chat-message.user")).toBeNull();
+  });
+
+  it("turns voice input into an editable draft without sending it", async () => {
+    await resetDatabase(existingTransaction);
+    vi.stubGlobal("SpeechRecognition", MockSpeechRecognition);
+    const { container } = renderChat();
+
+    const input = screen.getByRole("textbox", { name: "Message Kupi" }) as HTMLTextAreaElement;
+    const send = screen.getByRole("button", { name: "Send message" });
+    await waitFor(() => expect(input.disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Start voice input" }));
+    expect(MockSpeechRecognition.latest?.started).toBe(true);
+
+    const resultEvent = Object.assign(new Event("result"), {
+      results: [[{ transcript: "Spent 180 on coffee today" }]],
+    });
+    act(() => {
+      MockSpeechRecognition.latest?.onresult?.(resultEvent);
+      MockSpeechRecognition.latest?.onend?.();
+    });
+
+    expect(input.value).toBe("Spent 180 on coffee today");
+    expect(input.disabled).toBe(false);
+    expect(send.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByText("Voice draft ready. Review and edit it before sending.")).toBeTruthy();
+    expect(container.querySelector(".chat-message.user")).toBeNull();
+  });
+
+  it("answers spending totals and top-category questions with the matching facts", async () => {
+    await resetDatabase({
+      ...existingTransaction,
+      date: new Date().toISOString().slice(0, 10),
+    });
+    const { send } = renderChat();
+
+    await send("How much did I spend this month?");
+    expect(await screen.findByText("You spent ₱180.00 this month across 1 transaction.")).toBeTruthy();
+
+    await send("What was my top spending category this month?");
+    expect(await screen.findByText("Food was your top spending category this month at ₱180.00.")).toBeTruthy();
+  });
+
+  it("clears conversational focus when the active profile changes", async () => {
+    await resetDatabase(existingTransaction);
+    const view = renderChat();
+    await view.send("How much did I spend this month?");
+    expect(await screen.findByText(/You spent/)).toBeTruthy();
+
+    view.rerender(
+      <KupiChatSheet open onClose={vi.fn()} onOpenForm={vi.fn()} profileId="other-profile" />
+    );
+    const input = screen.getByRole("textbox", { name: "Message Kupi" }) as HTMLTextAreaElement;
+    const send = screen.getByRole("button", { name: "Send message" });
+    await waitFor(() => expect(input.disabled).toBe(false));
+    fireEvent.change(input, { target: { value: "last month" } });
+    fireEvent.click(send);
+    expect(await screen.findByText(/Could you say what you want to do/)).toBeTruthy();
+  });
+
   it("answers account-management questions without confusing them as transactions", async () => {
     await resetDatabase();
     const { send } = renderChat();

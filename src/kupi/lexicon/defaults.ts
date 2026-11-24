@@ -50,7 +50,7 @@ export const MERCHANT_CATEGORY_ALIASES = [
     ],
   },
   { category: "Phone", aliases: ["mobile load", "load", "phone bill", "postpaid", "globe load"] },
-  { category: "Shopping", aliases: ["shopee", "lazada", "uniqlo", "zalora", "shopping"] },
+  { category: "Shopping", aliases: ["shop", "shops", "shopee", "lazada", "uniqlo", "zalora", "shopping"] },
   { category: "Fun", aliases: ["netflix", "spotify", "steam", "cinema", "movies", "games", "hobbies"] },
   { category: "Health", aliases: ["mercury drug", "watsons", "gamot", "medicine", "pharmacy", "clinic", "doctor"] },
   { category: "Fees", aliases: ["atm fee", "bank fee", "service fee", "transfer fee"] },

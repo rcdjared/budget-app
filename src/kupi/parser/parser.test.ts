@@ -83,6 +83,74 @@ describe("parseKupiInput", () => {
     });
   });
 
+  it("understands short transaction fragments with category and account shorthand", () => {
+    expect(parseKupiInput("shop 200 gcash", context, db, now)).toMatchObject({
+      intent: "LOG_EXPENSE",
+      drafts: [{
+        amount: { value: 20_000 },
+        category: { value: "Shopping" },
+        account: { value: "GCash" },
+      }],
+      missing: [],
+    });
+  });
+
+  it("merges all details from a fragment reply into the requested slot draft", () => {
+    const pendingContext: SessionContext = {
+      ...context,
+      pending: {
+        kind: "slot",
+        slot: "category",
+        intent: "LOG_EXPENSE",
+        draft: {
+          type: "expense",
+          note: "lunch",
+        },
+      },
+    };
+
+    expect(parseKupiInput("200 food gcash", pendingContext, db, now)).toMatchObject({
+      intent: "LOG_EXPENSE",
+      missing: [],
+      drafts: [{
+        type: "expense",
+        amount: { value: 20_000 },
+        category: { value: "Food" },
+        account: { value: "GCash" },
+        note: "lunch",
+      }],
+    });
+  });
+
+  it("reuses the last query focus for short period, category, type, and account follow-ups", () => {
+    const focused: SessionContext = {
+      ...context,
+      focus: {
+        lastQuery: { metric: "total", period: "this_month" },
+        recent: { account: "GCash", category: "Food", type: "expense" },
+        turnsRemaining: 4,
+      },
+    };
+    expect(parseKupiInput("last month", focused, db, now)).toMatchObject({
+      intent: "QUERY_STATS", query: { metric: "total", period: "last_month" },
+    });
+    expect(parseKupiInput("and for transport?", focused, db, now)).toMatchObject({
+      intent: "QUERY_STATS", query: { filters: { category: "Transport" } },
+    });
+    expect(parseKupiInput("how about income?", focused, db, now)).toMatchObject({
+      intent: "QUERY_STATS", query: { filters: { type: "income" } },
+    });
+    expect(parseKupiInput("same account", focused, db, now)).toMatchObject({
+      intent: "QUERY_STATS", query: { filters: { account: "GCash" } },
+    });
+  });
+
+  it("asks for clarification when a focus fragment has no session context", () => {
+    expect(parseKupiInput("last month", context, db, now)).toMatchObject({
+      intent: "CLARIFY", tier: "ask",
+    });
+  });
+
   it("fills a missing transfer destination without losing its source or amount", () => {
     const pendingContext: SessionContext = {
       ...context,
@@ -123,6 +191,26 @@ describe("parseKupiInput", () => {
       intent: "UNKNOWN",
       tier: "fallback",
       unsupported: "multi_currency",
+    });
+  });
+
+  it("routes top-spending questions to category queries instead of transaction logging", () => {
+    for (const phrase of ["top spend", "top spending", "what did I spend the most on?"]) {
+      expect(parseKupiInput(phrase, context, db, now)).toMatchObject({
+        intent: "QUERY_STATS",
+        query: { metric: "top_category" },
+      });
+    }
+  });
+
+  it("filters income questions as income rather than expense totals", () => {
+    expect(parseKupiInput("How much income did I receive this month?", context, db, now)).toMatchObject({
+      intent: "QUERY_STATS",
+      query: {
+        metric: "total",
+        period: "this_month",
+        filters: { type: "income" },
+      },
     });
   });
 });

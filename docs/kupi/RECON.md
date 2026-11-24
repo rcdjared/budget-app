@@ -1,140 +1,169 @@
-# Kupi Assistant Recon and Phase 6 Status
+# Kupi roadmap and current state
 
-**Date:** 2026-11-24  
-**Scope:** record the application and supplied data pack, then track the Kupi core and Home integration through Phase 6.
+**Last reviewed:** 2026-11-25
+**Status:** Kupi Phases 0–7 remain implemented. The separate [Kupi NLU roadmap](../../KUPI_NLU_ROADMAP.md) has rules-only focus work implemented and optional embedding/Smart mode paths in code; release validation is incomplete and these model paths are not approved to ship yet.
+**Scope:** Kupi assistant behavior, its UI, and release validation. Cloud sync and shared-profile work have a separate roadmap in [`docs/profiles-sync-roadmap.md`](../profiles-sync-roadmap.md).
 
 ## Executive summary
 
-The app began with an offline “Money assistant” inside `src/App.tsx`, implemented as a small rule-based quick-log and local-question flow. Phases 1–4 added a pure text foundation, parser, confirmed action layer, dialogue reducer, structured query engine, and response/mood generator. Phase 5 mounts the Kupi chat sheet in `src/components/kupi/` and routes transaction writes and statistics questions through that core. Phase 6 adds profile-scoped, locally computed Kupi nudges to Home and opens chat with the selected nudge as its first assistant message.
+Kupit is an offline-first PWA. Kupi parses requests and computes insights from the active profile's local data; transaction changes require review and use the local action/repository path. Default chat needs no model or API key. Optional on-device models can be downloaded after profile-level opt-in; chat text is not sent to model hosts.
 
-The persistence foundation is suitable for the planned action layer: Dexie is the local source of truth, transaction writes are generally routed through repositories, and synced updates are timestamped and queued by table hooks. Before assistant-driven writes are added, the direct hard-delete path, incomplete cloud table coverage, profile-scope checks, and timezone assumptions need deliberate treatment.
+## NLU roadmap progress and release status
 
-## Current architecture and data contracts
+| NLU phase | State | Evidence / remaining gate |
+|---|---|---|
+| 1. Frozen eval harness | Implemented, limited | Holdout v1 is hash-locked at 45 cases / 49 turns, below the ~300-message target and not independently blind. |
+| 2. Rules-only focus | Implemented | Last query/recent action focus expires after six turns and resets on profile change. Four development focus cases pass; holdout v1 has no query-focus follow-up. |
+| 3. E5 embedding fallback | Code implemented, not release-validated | Lazy worker, opt-in, suggestion-only behavior, browser-cache eviction and mocked tests exist. No actual model/device evaluation yet. |
+| 4. WebLLM Smart mode | Code implemented, not release-validated | WebGPU gate, opt-in Qwen worker, constrained JSON, profile-name validation, timeout fallback and confirmation review exist. No model/device evaluation yet. |
+| 5. Hardening | Incomplete | Need installed-PWA airplane-mode tests, phone latency/memory checks, browser cache-eviction verification, and final profile/undo/idempotency regression. |
 
-- **App/runtime:** Vite + React + TypeScript PWA. `src/main.tsx` mounts `src/App.tsx`; the assistant lives as a sheet/component in that file rather than an isolated feature package.
-- **Local persistence:** `src/db/schema.ts` defines Dexie database `PesoPulseDB`, currently schema version 7. Tables include profiles, accounts, categories, transactions, budgets, recurring rules, and finance/social records. Versions 2–7 add indexes/tables and perform targeted migrations.
-- **Profiles:** profile-owned entities carry `profileId`. `src/db/profileScope.ts` provides `profileRecords` and `getProfileRecord` to scope reads and lookups. Some settings are device-level (`profileId` is optional).
-- **Types:** `src/domain/types.ts` is the current source for `Account`, `Category`, `Transaction`, and `Budget`. Transactions include expenses, income, transfers, and friend payments; they support soft deletion through `deletedAt`, cancellation through `cancelledAt`, and optional split/recurrence/transfer metadata.
-- **Money:** money is an integer count of centavos throughout the domain. `src/domain/money.ts` converts typed values to centavos, formats for display, and parses decimal, comma-separated, `k`, and `m` amounts. `formatMoney` formats centavos as PHP by default.
-- **Dates:** persisted transaction dates are date strings (`YYYY-MM-DD`); timestamps such as `createdAt`/`updatedAt` are ISO strings. `src/lib/format.ts` builds date keys from local date parts and documents the assumption that local time is Manila. The current assistant passes `new Date()` into parsing; it does not inject a timezone-aware clock or force Asia/Manila.
+**Shipping verdict for the NLU roadmap: no-go.** This is an implementation candidate, not a shippable release. Frozen v1 does not demonstrate Phase 2 focus improvement; model gates have not run with real weights; no installed-PWA airplane-mode or mid-range phone tests have been performed. Keep both model modes disabled by default until these gates pass.
 
-## Transaction write paths
+The current rules-only regression run is recorded in [`eval-baseline.md`](./eval-baseline.md). Its false-write proposal rate is 2.2%, but its small, non-blind corpus cannot validate model paths.
 
-1. **Ordinary create:** `createTransaction` in `src/db/repositories/transactions.ts` validates finite, non-zero amounts, makes the stored amount a positive rounded centavo value, and sets `createdAt`/`updatedAt`.
-2. **Transfer create/update:** `createTransfer` and `updateTransfer` write the transfer and, when needed, a separate expense transaction for its fee inside a Dexie transaction. They reject invalid endpoints and same-account internal transfers. `updateTransaction` handles profile ownership and special friend-payment/split constraints.
-3. **Cancel, restore, soft-delete:** `cancelTransaction`, `restoreTransaction`, and `softDeleteTransaction` update timestamps and related transfer fees, split/shared-bill state, or friend-ledger state. Recurring-occurrence cancel/delete wrappers in `src/db/repositories/historyActions.ts` create a skip record before applying the transaction action.
-4. **Recurring create:** `processDueRecurringTransactions` in `src/db/repositories/recurring.ts` materializes due expense occurrences with an `occurrenceKey` and skips existing occurrences. It updates the recurring rule in the same Dexie transaction.
-5. **Split/shared-bill bookkeeping:** `src/db/repositories/localFinance.ts` can update a transaction’s split/share fields and write related ledger records. It uses Dexie transactions and explicit `updatedAt` values.
-6. **Assistant create:** the legacy sheet used `createTransaction` directly. The mounted Phase 5 Kupi sheet now stages transaction create/edit/delete actions and commits them through the repository-backed Kupi action service after confirmation.
-7. **Hard delete:** the transaction detail UI first soft-deletes, exposes an undo window for about six seconds, then directly calls `db.transactions.delete` and deletes related local records. This bypasses the repository and has no Dexie deleting hook. The earlier soft-delete has already queued a tombstone; the later physical deletion itself is not represented in the outbox.
+The implemented phases are:
 
-Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.ts` installs `creating` and `updating` hooks on syncable tables; the update hook sets `updatedAt` and queues create/update/delete outbox records based on `deletedAt`. There is no corresponding deleting hook. `applyRemoteChanges` ignores an incoming record only when the local `updatedAt` is strictly newer, so equal timestamps are resolved in favor of the remote record.
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Repository recon and baseline | Complete |
+| 1 | Text, amount, and date foundation | Complete |
+| 2 | Structured pure parser and evaluation | Complete |
+| 3 | Validated action proposals, commit, and undo | Complete |
+| 4 | Dialogue, statistics queries, response templates, and mood | Complete |
+| 5 | Chat UI integration | Complete |
+| 6 | Home nudges and proactive insights | Complete |
+| 7 | Local learning and personalization | Complete |
+| 8 | Contextual Q&A and conversation continuity | Partial: ephemeral query/action focus implemented; broader entity references and blind evaluation remain |
+| 9 | Additional finance actions | Optional; not started |
 
-## Sync and isolation
+**Release gate:** finish real-device iOS/PWA checks in [Release readiness](#release-readiness) before calling the experience production-validated. Final local verification: `pnpm test` (30 files, 191 tests passed) and `pnpm build` (passed; large optional worker/runtime chunks trigger Vite size warnings). The main entry is 1,054.03 kB (307.27 kB gzip); the ~6.1 MB model runtime workers and 26.9 MB ONNX WASM are separate, dynamically loaded assets excluded from the default PWA precache. The generated precache remains 50 entries. These checks do not replace model-on-device or airplane-mode validation.
 
-- Local mutations for tables in the schema’s syncable set are queued through `outbox`; remote writes use `withoutOutbox`.
-- `src/sync/sync.ts` pushes pending outbox entries, calls the `apply_cloud_record` RPC, pulls records, and applies remote rows. Both client merge and Supabase RPC use last-write-wins timestamp comparisons.
-- The sync client’s `SYNC_TABLES` and the RPC allowlist cover the core account/transaction tables, but omit several newer social-finance tables (for example `friends`, `friendLedger`, `localSplits`, `sharedBills`, and `sharedBillMembers`) that are present in the Dexie schema. The schema hooks can queue these writes, but the cloud sync path does not currently sync them.
-- `supabase/migrations/20261119223000_cloud_sync.sql` defines `cloud_records`, RLS, and the authenticated `apply_cloud_record` RPC; `20261120100000_cloud_sync_grants.sql` grants the necessary table/function privileges. The cloud key is `(user_id, table_name, record_id)`.
-- Assistant context should be built from the active profile’s live accounts, categories, and transactions. The current chat queries them with `profileRecords`; account/category names are user-defined and cannot safely be treated as a fixed global seed list.
+## Current product behavior
 
-## Existing assistant and Home behavior
+- **Setup and navigation:** first-run guidance points to Wallet, the Wallet Plus button, then Add. When the Add menu opens for the first transaction, Kupi points to both Expense and Income. The duplicate empty-Wallet account CTA is hidden during the Plus tutorial.
+- **Chat:** the mounted chat uses profile-scoped accounts, categories, transactions, and budgets. Kupi can parse supported expense/income/transfer requests, ask follow-up questions, answer supported statistics questions, and stage supported transaction changes for review. Optional offline E5 hints and local Qwen Smart mode are opt-in and not yet release-validated.
+- **Safety:** transaction changes are validated against the active profile and require explicit review. Undo uses repository-backed compensating actions. Ambiguous or unsupported writes should not be guessed.
+- **Home:** one Kupi mascot and dialogue bubble carries the current nudge/insight. Nudges include budget overruns and pacing, daily and combined category-budget pacing, micro-spending, safe-to-spend, no-spend streaks, and no activity. The duplicate category-insight card below Categories was removed.
+- **Learning:** merchant-to-category rules, account aliases, most-used-account suggestions, and personality settings are local and profile-scoped.
+- **Motion and notifications:** the Reduce Motion & Effects preference and OS reduced-motion preference are supported by the relevant tutorial and Home animations. Notification permission is requested through an explicit user action; the exact iOS installed-PWA behavior still needs device verification.
 
-- **Transaction parsing:** `src/domain/parser.ts` exports `parseTransactionPhrase`, `parseMultipleTransactions`, and `parseNaturalDate`. It returns a transaction draft (`type`, centavo `amount`, date, account/category hints, note), not a `KupiIntent`, confidence, tier, flags, alternatives, or action proposal.
-- **Chat routing:** `src/components/kupi/KupiChatSheet.tsx` builds parser and query snapshots from the active profile’s live Dexie records. Account and budget setup remain explicit review flows. Transaction create, transfer, edit, and soft-delete proposals go through `proposeAction` and `commitAction`; query responses go through `executeStatsQuery`. The older sheet implementation remains in `src/App.tsx` but is no longer mounted.
-- **Money questions:** `src/domain/localAssistant.ts` computes answers from local transactions and balances. It supports a limited English question vocabulary; it does not implement the roadmap’s structured query contract.
-- **Responses/persona:** the mounted Kupi chat uses the Phase 4 template generator, seeded session state, and five-turn anti-repeat window for responses with fully available facts. The avatar uses idle, happy, and worried assets; thinking reuses the idle asset with a reduced-motion-aware animation because `public/icons/thinking.png` is not present.
-- **Home:** `src/domain/homeInsights.ts` computes budget/category/top-category/largest-expense insight candidates, using thresholds from `src/lib/homeConfig.ts`; `src/components/FinsightsPage.tsx` consumes them. Phase 6 adds a separate Kupi nudge flow powered by `src/kupi/nudges/computeKupiNudge.ts`, with dismissals scoped to the active profile in local storage and mood/intensity from the shared response engine.
+## Completed phase details
 
-## Tests and baseline
+### Phase 0 — Recon and baseline
 
-- Unit tests use Vitest with jsdom (`vite.config.ts`); persistence tests opt into `fake-indexeddb/auto`. Existing parser coverage is in `src/__tests__/parser.test.ts`; Kupi-core text, parser, training, and action tests live under `src/kupi/`.
-- E2E tests are under `e2e/` and use Playwright Chromium against the Vite preview server.
-- Phase 0 baseline run on the then-current working tree:
-  - `pnpm test` — **13 files passed, 70 tests passed**.
-  - `pnpm build` — **TypeScript check and Vite production build passed**.
-  - The build emits a pre-existing chunk-size warning: main JS **921.06 kB minified / 270.61 kB gzip** (threshold 500 kB); PWA precache reports 48 entries / 11,657.89 KiB.
-- These are measurements of the current, already-modified working tree, not a clean-branch baseline. Existing user changes were preserved.
-- Latest Phase 3 verification: `pnpm test` — **17 files / 123 tests passed**; `pnpm build` — TypeScript and production build passed. The pre-existing large-bundle warning remains.
+- Mapped the app's local persistence, transaction write paths, profiles, assistant entry points, and supplied parser/template data.
+- Established Vitest and build checks. The current baseline is not a clean pre-Kupi baseline; use present-day runs for regression checks rather than comparing to early counts.
 
-## Supplied `updates/` pack audit
+### Phase 1 — Text foundation
 
-- `updates/golden.jsonl`: **211 valid JSONL rows, 211 unique IDs**; 41 `seed`, 170 `hand`, and 34 rows marked `legacy: "gap"`. No synthetic or `llm-paraphrase` cases are present yet. The pack’s stated 20% hold-out hashes and pinned IDs are internally consistent (42 of 211 currently fall in the hold-out).
-- `updates/kupi_templates.json`: **148 templates, all IDs unique**, split between 92 `en` and 56 `en-tl`; the placeholder lists match their text in a structural audit.
-- `updates/contracts.ts` describes a future pure Kupi core; it is not the same contract as the current `ParsedTransaction` or database entities. In particular, future confidence tiers and structured intents do not exist in the current parser.
-- Runtime/test copies now live at `fixtures/golden.jsonl` and `src/kupi/responses/templates/kupi_templates.json`; the supplied originals under `updates/` remain unchanged.
-- The copied training harness now compares compound `items`, transfer destination/fee, edit/delete targets/candidates, query details, and alternatives, in addition to intent/tier and core slots.
-- The pack is evaluation and response-copy data, not a trained model. Its examples—especially the `x*` cases—still need a human review before treating the corpus as representative of real users.
+- Added normalization, money extraction, bounded fuzzy matching, and date parsing in `src/kupi/text/`.
+- Money is handled as integer centavos. Ambiguous quantities, future dates, and uncertain relative dates are represented explicitly instead of silently guessed.
+- Kupi date parsing uses Asia/Manila and includes the configured `kanina` cutoff behavior.
 
-## Phase 1 text foundation
+### Phase 2 — Structured parser
 
-- Added pure TypeScript utilities under `src/kupi/text/` for input normalization, money extraction, date parsing, and bounded fuzzy ranking. The new parser consumes these utilities; neither they nor the parser are wired into the existing chat.
-- Normalized tokens and parsed money candidates retain spans into the original input. Money uses integer centavos and rejects unsafe magnitudes; time/date strings, explicit quantities, negatives, merchant digits, and ambiguous leading quantities are reported rather than silently treated as amounts.
-- Date parsing takes an injected instant, derives the calendar day/hour with `Asia/Manila`, and supports relative dates, weekdays, and month/day forms. `kanina` before the configured 04:00 cutoff exposes both date choices; future dates and ambiguous weekday readings are flagged.
-- Fuzzy ranking accepts caller-provided candidates, so account/category matching can be scoped to live profile records. The default lexicon names are checked against the current seeded category names, but the aliases are not yet integrated with runtime resolution.
-- Focused coverage lives in `src/kupi/text/foundation.test.ts`. The foundation is used by the pure parser, while action/response integration remains a later phase.
+- `src/kupi/parser/parseKupiInput.ts` produces structured intents, transaction drafts, alternatives, missing slots, and flags without performing writes.
+- It supports common expense/income/transfer requests, compounds, edits/deletes, questions, confirmations, cancellations, and follow-up answers.
+- `fixtures/golden.jsonl` contains the parser evaluation corpus. The strict gate can also run deterministic fuzz inputs.
 
-## Phase 2 pure parser
+### Phase 3 — Safe action layer
 
-- Implemented `src/kupi/parser/parseKupiInput.ts` against the structured contracts. It handles transaction drafts, income, transfers and fees, compounds, queries, follow-up replies, edits/deletes, confirmations, cancellations, unsupported intents, and profile-snapshot matching without performing writes.
-- Resolution uses the caller-provided account/category/transaction snapshot. Unknown merchants are explicitly categorized as null and require confirmation; foreign-currency symbols/codes are rejected instead of being interpreted as PHP. These rules still need validation through a future UI/action layer.
-- Installed the supplied 211-case golden corpus and extended its scorer to check structured fields instead of only broad intent/tier. The latest run scored **211/211**; tune and nominal hold-out were both 100%. This is not an unbiased generalization estimate: the parser was iterated against the full corpus, including its nominal hold-out.
-- `KUPI_GATES=1` enables the stricter corpus thresholds and 10,000 deterministic fuzz inputs. The fuzz test has a longer timeout only in strict mode so this release gate can complete without weakening its iteration count.
-- Strict gate result: **passed** with the corpus thresholds and all 10,000 deterministic fuzz inputs.
-- Template lint is passing but reports **49 of 66** mood/intensity/language combinations below its non-blocking three-variant target. The mounted chat uses only templates whose declared facts are available and falls back to computed factual text when no matching template is eligible.
-- The parser and action service are wired into the mounted Phase 5 chat component; the original `ChatLogSheet` function remains unmounted in `src/App.tsx`.
+- Typed proposals cover supported create, transfer, edit, and soft-delete flows.
+- `proposeAction` validates the active profile's current records; `commitAction` revalidates before repository-backed writes and requires confirmation.
+- Idempotency receipts and undo protect against duplicate writes and stale reversals. Specialized finance records remain outside the supported Kupi write surface; see Phase 9.
 
-## Phase 3 action layer
+### Phase 4 — Dialogue, queries, responses, and mood
 
-- Added typed action proposals and validation for expense/income creation, transfers, edits, and soft deletion. Validation checks integer-centavo amounts, profile-owned active accounts/categories, future dates, same-account transfers, and unusually large amounts against a category median.
-- `commitAction` requires explicit confirmation, revalidates against the current profile snapshot inside one Dexie transaction, and delegates every ledger mutation to the existing transaction repositories. Persistent local receipts make action IDs idempotent; reusing an ID for a different action is rejected.
-- `undoAction` applies repository-level compensating operations. It refuses to overwrite a transaction changed after the original action, restores transfer fees with their parent transfer, and retains idempotency receipts while limiting available undo history to the configured 20 actions per profile.
-- Dexie schema version 7 adds a local-only `kupiActions` receipt table. Syncable record updates now preserve monotonic `updatedAt` values even if the device clock is behind; the sync hook returns that timestamp to Dexie so it is actually persisted. `createTransaction` now opens the outbox store in its write transaction so direct repository creates are queued for sync.
-- Fake-IndexedDB coverage verifies explicit confirmation, profile isolation, create/idempotency, unusual-amount warnings, transfer-fee deletion/undo, soft-delete restoration, outbox records, monotonic timestamps, undo limits, and stale remote updates not overwriting a newer local undo.
-- The proposal API accepts already resolved IDs and before/after snapshots; automatic conversion of parser results into proposals, confirmation UI, action cards, and chat integration remain for later phases. Undo receipts are local to the device and are not synced.
+- A dialogue reducer handles missing slots, confirmation, disambiguation, cancellation, and interrupted requests.
+- The structured query engine computes supported totals, categories, largest expenses, counts, averages, budget remaining, safe-to-spend, comparisons, and net worth from a caller-scoped snapshot.
+- Mood and response templates use explicit facts, configured thresholds, deterministic seeds, and an anti-repeat window. They do not invent facts when a required value is unavailable.
 
-## Phase 4 dialogue, queries, responses, and mood
+### Phase 5 — Chat UI
 
-- `src/kupi/dialogue/reducer.ts` models idle, slot, confirmation, and disambiguation states. New parsed topics replace pending dialogue; confirm/cancel controls resolve a pending confirmation. After two unanswered slot turns it marks `questionLimitReached`; Phase 5 offers a review-only uncategorized guess when the amount is already known, but never guesses an amount or transaction target.
-- `src/kupi/queries/executeStatsQuery.ts` evaluates typed `StatsQuery` values against a caller-provided, already profile-scoped snapshot. It supports totals, category breakdown/top category, biggest expense, count, daily average, budget remaining, safe-to-spend, equal-length prior-period comparisons, and net worth. Results stay numeric in integer centavos; date periods use Asia/Manila.
-- Budget remaining uses the active budget cycle and category spending-to-date. Safe-to-spend divides positive remaining budget by days left in that cycle. It does not forecast upcoming bills or carry historical rollover: budget records do not preserve prior limit versions, so including rollover would require additional history.
-- `src/kupi/responses/generateResponse.ts` ports the mood/template selection path to TypeScript. It uses configured thresholds, supplied facts only, personality/sensitive-intent caps, an injected seed, and recent template IDs; rendering fails explicitly on missing or invalid facts rather than leaking placeholders.
-- Focused tests cover dialogue transitions/interruption/question limits, query period and budget behavior, mood thresholds, sensitive responses, deterministic variation, anti-repeat, and strict fact rendering. The Phase 5 chat now consumes these pure-core modules.
-- Phase 4 verification: `pnpm test` — **20 files / 138 tests passed**; `pnpm build` — TypeScript and production build passed with the existing bundle-size warning. The strict parser gate passed: **211 corpus cases and 10,000 deterministic fuzz inputs**.
+- `src/components/kupi/KupiChatSheet.tsx` is the mounted chat UI. It integrates the parser, action service, query engine, reducer, response generator, and local profile data.
+- Create/transfer, edit, and delete flows show review or confirmation UI. The UI includes undo, clarification prompts, starter chips, accessible announcements, keyboard/safe-area handling, and mascot states.
+- Account and budget setup remain explicit review flows; they are not silently committed as transaction actions.
 
-## Phase 5 chat UI
+### Phase 6 — Home nudges
 
-- Added `src/components/kupi/KupiChatSheet.tsx` and mounted it from `src/App.tsx`. It uses profile-scoped live account/category/transaction/budget data and calls the Phase 2 parser, Phase 3 action service, Phase 4 query engine, dialogue reducer, and response/mood generator.
-- Transaction create/transfer proposals require review before `commitAction`; edits render a before/after diff, deletes are soft-deleted after a separate confirmation, and committed action IDs are available through an eight-second Undo toast. Query facts are computed locally from the selected profile.
-- Added candidate transaction chips, starter chips (including an edit prompt), a 400 ms thinking indicator, avatar mood states, `aria-live` message announcements, 16 px composer text, safe-area padding, and `visualViewport` sizing for the on-screen keyboard. Thinking motion is disabled under `prefers-reduced-motion`.
-- Preserved chat-based account and monthly-budget setup as separate explicit review cards. These are not ledger transactions and therefore do not use the Kupi transaction undo stack.
-- Slot follow-ups now retain the parsed draft type and existing slots, including transfer account slots. Component tests cover staged create, edit, delete, confirm, and undo flows; parser tests cover income and transfer slot continuation.
-- Verification: **22 test files / 148 tests passed**, including the strict 211-case corpus and 10,000-input fuzz gate. `pnpm build` passed; the existing main-bundle-size warning remains (about **1,020 kB minified / 297 kB gzip**).
-- **Manual iOS Safari verification remains outstanding:** install via Add to Home Screen; verify keyboard/visual viewport and safe-area behavior in portrait and landscape; verify VoiceOver announcements and reduced motion; then enable airplane mode, relaunch the installed PWA, and exercise a query, confirmed transaction, and undo.
+- `src/kupi/nudges/computeKupiNudge.ts` computes profile-scoped, time-aware nudges for budget overruns and pacing, micro-spending, daily safe-to-spend, no-spend streaks, and no activity.
+- Daily and combined same-period category budgets can surface a worried pacing nudge; Home shows the nudge in Kupi's bubble and opens chat with that message.
+- Nudges use the shared mood engine and Asia/Manila date keys. Rule tests cover priority, cooldown metadata, dates, and deleted/cancelled records.
 
-## Phase 6 Home nudges
+### Phase 7 — Learning and personalization
 
-- Added the pure `computeKupiNudge(transactions, budgets, now)` rules in `src/kupi/nudges/computeKupiNudge.ts`. It derives budget-cycle spend and days remaining, critical budget pacing, budget overruns, sub-₱50 micro-spend velocity, daily safe-to-spend, a bounded completed-day no-spend streak, and the no-activity-today fallback from fixed inputs and an Asia/Manila date key.
-- Each candidate contains a stable ID, priority, cooldown, computed facts, and mood/intensity/tags from the Phase 4 mood engine. Priorities surface overruns and pacing first, then micro-spending, streak/no-activity nudges, and daily safe-to-spend.
-- Home reads active-profile transactions and budgets, shows one candidate at a time, and stores dismissals in profile-keyed local storage for each nudge's cooldown. Selecting a nudge opens the existing chat with that message and mood as the initial assistant turn.
-- Focused fixed-clock tests cover each rule, priority/cooldown metadata, Manila date handling, deleted/cancelled records, and mood. The chat component test verifies the nudge is the opening message.
-- Verification: `pnpm test` — **23 files / 154 tests passed**, including the strict parser corpus and fuzz gate; `pnpm build` passed with the existing main-bundle-size warning (about **1,027 kB minified / 300 kB gzip**).
+- Dexie schema version 8 adds the profile-scoped, local-only `kupiMerchantRules` table.
+- Learning helpers support merchant/category rules, account aliases, and most-used-account suggestions. Category edits ask before remembering a merchant rule.
+- Settings exposes Kupi personality and learned-rule management; profile deletion removes that profile's rules.
 
-## Phase 7 Learning and personalization
+## Roadmap: remaining Kupi work
 
-- Added a profile-scoped `kupiMerchantRules` Dexie table in schema version 8. Rules cover merchant-to-category mappings and account aliases, with soft-delete and enabled fields; they are intentionally local-only rather than added to the cloud-sync table set.
-- Added pure learning helpers for source normalization, merchant/category lookup, account-alias lookup, most-used-account defaults, and rule creation.
-- Kupi uses learned merchant categories in the parser snapshot and learned account aliases in account mention resolution. Confirmed transaction writes use the most-used account as the suggested default when no account is named.
-- Category edits now offer an explicit "Remember this category?" confirmation before storing a merchant rule. Settings provides profile personality selection (Chill / Classic / Dramatic), account-alias creation, rule deletion, and clear-all.
-- Profile deletion removes all profile-owned learning rules.
-- Verification: `pnpm test` — **24 files / 157 tests passed**; `pnpm build` passed with the existing main-bundle-size warning (about **1,033 kB minified / 301 kB gzip**).
+### Release readiness — required before production validation
 
-## Open questions and implementation risks
+1. **iPhone installation:** install from Safari with Add to Home Screen and test the installed PWA, not only the browser tab.
+2. **Layout and input:** check safe areas, keyboard/`visualViewport` resizing, and portrait/landscape behavior on a real device.
+3. **Accessibility and motion:** verify VoiceOver announcements, focus, touch targets, and both app-level and OS-level Reduce Motion behavior.
+4. **Offline behavior:** enable airplane mode, relaunch, ask a supported local question, stage and confirm a transaction, then test undo. Verify unsynced changes remain local.
+5. **Notifications:** test permission, denial, unsupported states, and delivery from an installed iOS PWA. Browser permission prompts require a user gesture.
+6. **Kupi budget scenario:** use synthetic data to verify a high daily/combined budget ratio produces the worried Kupi nudge, the matching amount/remaining balance, and a useful chat opening message.
+7. **Production check:** run `pnpm test` and `pnpm build`; record the known bundle warning separately from functional failures.
 
-1. **Clock/timezone integration:** the Phase 1 date utility now uses Asia/Manila and tests the 04:00 `kanina` cutoff. The existing app still follows browser-local date parts; integrate the policy only when the new parser path is introduced and verify target browsers.
-2. **Live aliases:** the pure parser matches against the snapshot supplied by its caller. The future integration must build that snapshot from the active profile and must not silently map a global alias to a missing profile account.
-3. **Ambiguous language:** the parser can represent clarify/confirm outcomes for terms such as `baon`, `padala`, `deposit`, and `allowance`. The chat presents intent alternatives and keeps all resulting writes behind a review card; continue adding focused component tests for less common ambiguity combinations.
-4. **Writes and undo:** the Phase 3 service uses repositories and handles transfer fees, linked split/shared-bill delete restoration, tombstones, and monotonic timestamps. The Phase 5 UI preserves confirmation and profile scope; Kupi edits to friend-payment, split, and shared-bill transactions are intentionally rejected, and recurring-occurrence deletes require their dedicated history action.
-5. **Golden evaluation:** retain a frozen hold-out for future work and avoid tuning against it. The current perfect score is a regression result against the supplied corpus, not an unbiased accuracy measurement.
-6. **Phase boundary:** Phases 0–6 are implemented. The iOS Safari Add to Home Screen/airplane-mode checklist remains a device-level manual gate; complete it before release.
-7. **Account and general Q&A:** account creation and review now use the same left-aligned Kupi chat pattern as normal answers. Account-management questions should clarify that account names/details are edited in Wallet, while future Q&A work should preserve conversational context and distinguish “change account” from “change my last transaction” instead of falling into a transaction fallback.
+### Phase 8 — Contextual Q&A and conversation continuity (partially implemented)
+
+**Goal:** make Kupi reliably understand follow-up questions and references to the user's own records without guessing.
+
+- Preserve the active topic and relevant account/category/transaction candidates across turns; expire or replace context safely when the user changes topics or profiles.
+- A first slice is implemented: last stats query and recent action focus live in memory for six turns, parser follow-ups merge supported time/category/type/account fragments, and profile changes reset focus. See the [chat architecture](./CHAT_ARCHITECTURE.md).
+- Distinguish account-management questions from transaction edits (for example, “change my account” versus “change my last transaction”). Route account details to Wallet and ask a clarifying question when the target is unclear.
+- Expand supported questions using `StatsQuery` and computed local facts: clarify the time range, account, category, budget, or comparison when more than one interpretation is plausible.
+- Add reviewed English, Filipino, and Taglish examples for ambiguous terms such as `baon`, `padala`, `deposit`, and `allowance`. Do not silently interpret an uncertain amount or target.
+- Keep all answers profile-scoped and local. Continue to require review for any write action.
+- Add cross-turn parser/reducer/component tests for topic changes, missing slots, profile switches, uncertain references, and unsupported questions.
+
+**Evaluation setup:** the existing 211-case corpus is regression coverage, not an unbiased measure. The new 45-case holdout v1 is hash-locked but is below the ~300-message target, was not created blind, and contains no query-focus follow-up. Use `KUPI_NLU_ROADMAP.md` and [`eval-baseline.md`](./eval-baseline.md) for phase-specific gates; create a separate human-reviewed blind holdout before making accuracy claims.
+
+### Phase 9 — Additional finance actions (optional, gated)
+
+Only start this phase if users need Kupi to modify more than ordinary transactions.
+
+- Consider friend payments, split/shared-bill changes, and recurring occurrences as separate action types with entity-specific before/after snapshots.
+- Reuse repository operations and domain-specific history actions; do not write directly to Dexie tables from chat.
+- Specify confirmation, profile ownership, atomicity, undo/restore, and sync-tombstone behavior for each action before enabling it.
+- Add failure, stale-data, duplicate-request, undo, and profile-isolation tests. Keep unsupported actions as explicit refusals until their full safety path exists.
+
+## Known constraints and decisions
+
+- **Date consistency:** Kupi's parser/nudges use Asia/Manila, while some general app date helpers use browser-local date parts. Make a single date policy and verify it across browser time zones before expanding date-sensitive queries.
+- **Training quality:** the supplied examples are useful regression data, not proof of generalization. Review the corpus for coverage and keep any new holdout separate from tuning.
+- **Response variety:** the historical template audit found multiple mood/intensity/language combinations below the three-variant target. This is a copy-quality improvement, not a blocker for deterministic correctness.
+- **Supported writes:** Kupi does not currently edit every finance entity. Friend-payment, split/shared-bill, and recurring-occurrence actions need dedicated action flows rather than falling through to ordinary transaction editing.
+- **No hosted model requirement:** Phase 8 is designed around the local parser, reducer, query engine, and reviewed response templates. Any future hosted model would require a separate privacy, consent, security, cost, and offline-behavior decision.
+- **Cloud sync:** do not infer that this Kupi roadmap completes profile sync or sharing. Follow [`docs/profiles-sync-roadmap.md`](../profiles-sync-roadmap.md) for sync, shared profiles, and portability; the cloud backup setting is not equivalent to a fully validated sync service.
+
+## Development and release setup
+
+### Local development
+
+```powershell
+pnpm install
+pnpm dev
+pnpm test
+pnpm build
+```
+
+For the strict parser evaluation in PowerShell:
+
+```powershell
+$env:KUPI_GATES = "1"
+pnpm test
+```
+
+The strict gate covers the configured parser corpus and deterministic fuzz inputs. No Supabase credentials or external AI API key are needed for local Kupi development and tests.
+
+### Optional production services
+
+- **PWA hosting:** serve the Vite build over HTTPS; the service worker and install flow require a secure origin.
+- **Supabase auth/sync:** follow the environment, migration, and redirect URL steps in [`README.md`](../../README.md). Use only the frontend publishable/anon key in `VITE_SUPABASE_ANON_KEY`; never put a service-role key in the app.
+- **Cloud account deletion:** deploy `supabase/functions/delete-account` separately and configure its service-role secret in the Edge Function environment. Test it in a disposable Supabase project before relying on it.
+- **Sync validation:** before enabling broader sync, test row-level security, supported-table coverage, conflicts, profile switching, and receipt access on two devices. Shared profiles and multi-user roles remain out of scope until the separate sync roadmap is completed.

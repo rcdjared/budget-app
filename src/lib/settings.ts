@@ -30,6 +30,9 @@ export interface AppSettings {
   includeFriendReceivables: boolean;
   notifications: NotificationPreferences;
   kupiPersonality: "chill" | "classic" | "dramatic";
+  kupiSmartAssist?: boolean;
+  kupiSmartMode?: boolean;
+  kupiSmartModelSize?: "0.6B" | "1.7B";
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -69,6 +72,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   includeFriendReceivables: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
   kupiPersonality: "classic",
+  kupiSmartAssist: false,
+  kupiSmartMode: false,
+  kupiSmartModelSize: "0.6B",
 };
 
 const STORAGE_KEY = "kupit-app-settings";

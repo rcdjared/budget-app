@@ -1,5 +1,6 @@
 import {
   KUPI_CONFIG,
+  type KupiFocus,
   type DraftTxn,
   type KupiDbSnapshot,
   type KupiIntent,
@@ -66,7 +67,8 @@ const INCOME_CUES = [
 
 const QUERY_CUES = [
   "how much", "magkano", "budget left", "budget remaining", "spending", "nagastos",
-  "natitira", "top spending", "biggest expense", "how many transactions", "daily average",
+  "natitira", "top spend", "top spending", "top category", "where did i spend the most",
+  "what did i spend the most on", "biggest expense", "how many transactions", "daily average",
   "safe to spend", "compare to", "net worth", "total income",
 ];
 
@@ -280,7 +282,9 @@ function resolveQuery(text: string, db: KupiDbSnapshot): StatsQuery | undefined 
   else if (containsPhrase(text, "daily average")) metric = "daily_average";
   else if (containsPhrase(text, "how many transactions")) metric = "count";
   else if (containsPhrase(text, "biggest expense")) metric = "biggest_expense";
-  else if (containsPhrase(text, "top spending") || containsPhrase(text, "top category")) metric = "top_category";
+  else if (containsAny(text, ["top spending", "top spend", "top category", "where did i spend the most", "what did i spend the most on"])) {
+    metric = "top_category";
+  }
   else if (containsPhrase(text, "compare to")) metric = "vs_last_period";
   else if (containsPhrase(text, "budget left") || containsPhrase(text, "budget remaining") || containsPhrase(text, "natitira")) {
     metric = "remaining_budget";
@@ -289,7 +293,9 @@ function resolveQuery(text: string, db: KupiDbSnapshot): StatsQuery | undefined 
   const query: StatsQuery = { metric };
   const period = periodFromText(text);
   if (period) query.period = metric === "vs_last_period" && period === "last_month" ? "this_month" : period;
-  if (containsPhrase(text, "income")) query.filters = { type: "income" };
+  if (containsAny(text, ["income", "earnings", "earned", "received", "salary", "sahod", "sweldo", "remittance"])) {
+    query.filters = { type: "income" };
+  }
 
   const explicitCategory = (db.categories ?? [])
     .map(({ name }) => name)
@@ -334,8 +340,8 @@ function intentScores(
     if (pending?.kind === "confirmAction") add(["cancel", "no", "nope", "wag", "wag na"].includes(bare) ? "CANCEL" : "CONFIRM", 7);
     else add("CLARIFY", 4);
   }
-  if (/^(?:hi|hello|hello kupi|good (?:morning|afternoon|evening)|kumusta|sino ka|thanks|thank you|salamat|help|what can you do|ano kaya mo gawin)$/u.test(bare)) {
-    add(["help", "what can you do", "ano kaya mo gawin"].includes(bare) ? "HELP" : "SMALLTALK", 4);
+  if (/^(?:hey|hey kupi|hi|hi there|hello|hello kupi|yo|good (?:morning|afternoon|evening)|kumusta|sino ka|thanks|thank you|salamat|help|what can you do|what logs|what can i log|ano kaya mo gawin)$/u.test(bare)) {
+    add(["help", "what can you do", "what logs", "what can i log", "ano kaya mo gawin"].includes(bare) ? "HELP" : "SMALLTALK", 4);
   }
   return [...scores].map(([intent, score]) => ({ intent, score })).sort((a, b) => b.score - a.score);
 }
@@ -402,7 +408,7 @@ function resolveTarget(
 ): { target?: TargetRef; candidates?: string[]; ambiguous: boolean } {
   const normalized = normalizeKupiInput(text).text;
   const mentionsLast = /\b(?:last|that|it)\b/u.test(normalized);
-  if (mentionsLast && !category && context.lastTxnId) return { target: { kind: "last" }, ambiguous: false };
+  if (mentionsLast && context.lastTxnId) return { target: { kind: "last" }, ambiguous: false };
 
   const matches = matchingTransactions(text, db.txns ?? [], category, amountCandidate);
   if (matches.length === 1) return { target: { kind: "id", id: matches[0].id }, ambiguous: false };
@@ -483,6 +489,14 @@ function parsePendingReply(
   const normalized = normalizedPhrase(text);
   if (containsAny(text, QUERY_CUES)) return undefined;
 
+  if (pending.kind === "slot" && pending.slot === "editCategory") {
+    const category = resolveCategory(text, db, false);
+    if (!category || !context.lastTxnId) return undefined;
+    const result = emptyResult("EDIT_TXN", KUPI_CONFIG.parser.explicitCueConfidence, "auto");
+    result.edit = { target: { kind: "last" }, field: "category", value: category.value };
+    return result;
+  }
+
   if (pending.kind === "confirmAction") {
     if (/^(?:oo|sige|yes|y|confirm)$/u.test(normalized)) {
       return emptyResult("CONFIRM", KUPI_CONFIG.parser.explicitCueConfidence, "auto");
@@ -502,15 +516,30 @@ function parsePendingReply(
   const result = emptyResult(intent, confidence, "auto");
   const txn: DraftTxn = { ...savedDraft, type };
 
+  // A reply can answer the requested slot and add other transaction details too
+  // (for example, “200 food gcash” after Kupi asked for a category).
+  const fragment = parseTransaction(text, db, context, now).result.drafts[0];
+  if (fragment) {
+    txn.amount = fragment.amount ?? txn.amount;
+    txn.category = fragment.category?.value !== null && fragment.category !== undefined
+      ? fragment.category
+      : txn.category;
+    txn.account = fragment.account ?? txn.account;
+    txn.toAccount = fragment.toAccount ?? txn.toAccount;
+    txn.date = fragment.date?.source === "text" ? fragment.date : txn.date;
+    txn.note = fragment.note ?? txn.note;
+  }
+
   if (pending.slot === "amount") {
     const amount = extractMoneyCandidates(text).candidates.at(-1);
     const value = amount?.amountCentavos ?? (Number.isFinite(Number(text)) ? Math.round(Number(text) * 100) : undefined);
     if (!value || value <= 0 || !Number.isSafeInteger(value)) return undefined;
     txn.amount = makeSlot(value, "text", confidence, amount ? [amount.start, amount.end] : undefined);
   } else if (pending.slot === "account" || pending.slot === "fromAccount") {
-    const account = accountMentions(text, db)[0];
+    const account = accountMentions(text, db)[0]?.name
+      ?? (/^same account$/u.test(normalized) ? context.focus?.recent?.account : undefined);
     if (!account) return undefined;
-    txn.account = makeSlot(account.name, "text", confidence);
+    txn.account = makeSlot(account, "context", confidence);
   } else if (pending.slot === "toAccount") {
     const account = accountMentions(text, db).at(-1);
     if (!account) return undefined;
@@ -805,7 +834,9 @@ function parseIntentCommand(
       result.edit = { target: target.target!, field: "account", value: account.name };
     } else if (amount) {
       result.edit = { target: target.target!, field: "amount", value: amount.amountCentavos };
-    } else if (date && /kahapon|kanina|kagabi|yesterday|last night/iu.test(normalized)) {
+    } else if (category && /\b(?:category|set)\b/iu.test(normalized)) {
+      result.edit = { target: target.target!, field: "category", value: category.value };
+    } else if (date && /kahapon|kanina|kagabi|yesterday|last night|\bdate\b|\btoday\b|\btomorrow\b/iu.test(normalized)) {
       result.edit = { target: target.target!, field: "date", value: date.date };
     }
     if (!result.edit || result.edit.value === 0) {
@@ -829,8 +860,15 @@ function parseContextEdit(
   const amount = extractMoneyCandidates(text).candidates.at(-1);
   const account = accountMentions(text, db).at(-1);
   const date = resolveDateForTarget(text, now);
+  const category = resolveCategory(text, db, false);
 
-  if (account && /(?:change that to|put it on|account)/iu.test(normalized)) {
+  if (
+    category
+    && /\b(?:categor(?:y|ies)|set|change|edit|forgot|forgotten)\b/iu.test(normalized)
+    && /\b(?:last|transaction|it)\b/iu.test(normalized)
+  ) {
+    result.edit = { target, field: "category", value: category.value };
+  } else if (account && /(?:change that to|put it on|account)/iu.test(normalized)) {
     result.edit = { target, field: "account", value: account.name };
   } else if (amount && /(?:na lang|pala|mali|wrong)/iu.test(normalized)) {
     result.edit = { target, field: "amount", value: amount.amountCentavos };
@@ -852,6 +890,67 @@ function parseQuery(text: string, db: KupiDbSnapshot, context: SessionContext): 
     result.confidence = KUPI_CONFIG.parser.ambiguousCueConfidence;
     result.tier = "confirm";
   }
+  return result;
+}
+
+function isFocusFollowup(text: string): boolean {
+  const normalized = normalizedPhrase(text);
+  return /^(?:(?:and\s+)?for\b|(?:what|how) about\b|same account\b|last month\b|this month\b|last week\b|this week\b|today\b|yesterday\b|kahapon\b|income\b|expenses?\b|spending\b)/u.test(normalized);
+}
+
+function parseFocusFollowup(
+  text: string,
+  context: SessionContext,
+  db: KupiDbSnapshot
+): ParseResult | undefined {
+  if (!isFocusFollowup(text)) return undefined;
+  const focus: KupiFocus | undefined = context.focus;
+  const base = focus?.lastQuery ?? (focus?.recent ? { metric: "total" as const, period: "this_month" as const } : undefined);
+  if (!base) return emptyResult("CLARIFY", KUPI_CONFIG.parser.ambiguousCueConfidence, "ask");
+
+  const query: StatsQuery = {
+    ...base,
+    filters: base.filters ? { ...base.filters } : undefined,
+  };
+  let updated = false;
+  const period = periodFromText(text);
+  if (period) {
+    query.period = period;
+    updated = true;
+  }
+
+  const category = resolveCategory(text, db, false);
+  if (category && /^(?:(?:and\s+)?for\b|(?:what|how) about\b)/u.test(normalizedPhrase(text))) {
+    query.filters = { ...query.filters, category: category.value };
+    delete query.filters.text;
+    updated = true;
+  }
+
+  const accounts = accountMentions(text, db);
+  const normalized = normalizedPhrase(text);
+  if (accounts.length && /^(?:(?:and\s+)?for\b|(?:what|how) about\b)/u.test(normalized)) {
+    query.filters = { ...query.filters, account: accounts.at(-1)!.name };
+    updated = true;
+  } else if (/^same account$/u.test(normalized)) {
+    const account = base.filters?.account ?? focus?.recent?.account;
+    if (account) {
+      query.filters = { ...query.filters, account };
+      updated = true;
+    }
+  }
+
+  if (containsAny(text, ["income", "earnings", "received", "salary", "sahod", "sweldo"])) {
+    query.filters = { ...query.filters, type: "income" };
+    updated = true;
+  } else if (containsAny(text, ["expense", "expenses", "spending", "spent", "gastos"])) {
+    query.filters = { ...query.filters, type: "expense" };
+    updated = true;
+  }
+
+  if (!updated) return emptyResult("CLARIFY", KUPI_CONFIG.parser.ambiguousCueConfidence, "ask");
+  const result = emptyResult("QUERY_STATS", KUPI_CONFIG.parser.explicitCueConfidence, "auto");
+  result.query = query;
+  if (context.pending) result.flags.push("interrupts_pending");
   return result;
 }
 
@@ -912,6 +1011,9 @@ export function parseKupiInput(
   const pendingReply = parsePendingReply(text, sessionContext, dbSnapshot, now);
   if (pendingReply) return pendingReply;
 
+  const focusFollowup = parseFocusFollowup(text, sessionContext, dbSnapshot);
+  if (focusFollowup) return focusFollowup;
+
   const query = parseQuery(text, dbSnapshot, sessionContext);
   if (query) return query;
 
@@ -930,7 +1032,7 @@ export function parseKupiInput(
   if (compound) return compound;
 
   const single = parseTransaction(text, dbSnapshot, sessionContext, now).result;
-  if (single.intent === "LOG_EXPENSE" && /^(?:hi|hello|hello kupi|good morning|kumusta|thanks|thank you|salamat|sino ka)$/u.test(normalized)) {
+  if (single.intent === "LOG_EXPENSE" && /^(?:hey|hey kupi|hi|hi there|hello|hello kupi|yo|good morning|kumusta|thanks|thank you|salamat|sino ka)$/u.test(normalized)) {
     return emptyResult("SMALLTALK", KUPI_CONFIG.parser.explicitCueConfidence, "auto");
   }
   if (single.intent === "LOG_EXPENSE" && !single.drafts.length) return single;

@@ -47,7 +47,7 @@ export const KUPI_CONFIG = {
 } as const;
 
 /** Where a slot value came from. The confirm card must show non-"text" sources. */
-export type SlotSource = "text" | "default" | "learned" | "context" | "fuzzy";
+export type SlotSource = "text" | "default" | "learned" | "context" | "fuzzy" | "model";
 
 export interface Slot<T> {
   value: T;
@@ -111,6 +111,20 @@ export type TargetRef =
   | { kind: "last" }
   | { kind: "match"; category?: string; amount?: Centavos; note?: string; date?: string };
 
+export interface KupiRecentContext {
+  category?: string;
+  account?: string;
+  period?: StatsQuery["period"];
+  type?: "expense" | "income" | "transfer";
+}
+
+export interface KupiFocus {
+  lastQuery?: StatsQuery;
+  recent?: KupiRecentContext;
+  /** Remaining user turns for which this ephemeral focus may be used. */
+  turnsRemaining?: number;
+}
+
 export interface ParseResult {
   intent: KupiIntent;
   confidence: number;
@@ -124,10 +138,12 @@ export interface ParseResult {
   missing: Array<"amount" | "category" | "account" | "fromAccount" | "toAccount" | "date" | "target">;
   flags: ParseFlag[];
   unsupported?: "utang" | "split_bill" | "bulk_delete" | "recurring" | "multi_currency";
+  interpretedByModel?: true;
 }
 
 export interface SessionContext {
   lastTxnId?: string;
+  focus?: KupiFocus;
   pending?: {
     kind: "confirmAction" | "slot" | "disambiguation";
     slot?: string;

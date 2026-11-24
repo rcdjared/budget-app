@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus, Send, X } from "lucide-react";
+import { BookOpen, Mic, MicOff, Send, X } from "lucide-react";
 import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
 import { createAccount } from "@/db/repositories/accounts";
@@ -11,11 +11,13 @@ import {
   type KupiAction,
   type KupiActionProposal,
   type KupiDbSnapshot,
+  type KupiFocus,
   type KupiIntent,
   type DraftTxn,
   type Mood,
   type ParseResult,
   type SessionContext,
+  type StatsQuery,
   type TargetRef,
   type Template,
 } from "@/kupi/contracts";
@@ -23,6 +25,7 @@ import { commitAction, undoAction } from "@/kupi/actions/commit";
 import { proposeAction } from "@/kupi/actions/propose";
 import { validateAction } from "@/kupi/actions/validate";
 import { reduceDialogue, type DialogueState } from "@/kupi/dialogue/reducer";
+import { advanceFocus } from "@/kupi/dialogue/focus";
 import { executeStatsQuery } from "@/kupi/queries/executeStatsQuery";
 import { generateResponse, type ResponseFacts } from "@/kupi/responses/generateResponse";
 import type { StatsQueryResult } from "@/kupi/queries/executeStatsQuery";
@@ -35,6 +38,35 @@ import {
 import { KupiActionReviewCard, KupiUndoToast } from "./KupiActionReviewCard";
 
 type ChatMessage = { role: "user" | "assistant"; text: string; mood?: Mood };
+
+interface SpeechRecognitionResultLike extends ArrayLike<{ transcript: string }> {}
+
+interface SpeechRecognitionEventLike extends Event {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionErrorEventLike extends Event {
+  error: string;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 interface PendingCandidates {
   result: ParseResult;
@@ -49,101 +81,73 @@ type SetupDraft =
   | { kind: "account"; name: string; type: AccountType; amount: number }
   | { kind: "budget"; category: Category; amount: number };
 
+type EditClarification =
+  | { stage: "target"; candidateIds?: string[] }
+  | { stage: "field"; transactionId: string }
+  | { stage: "value"; transactionId: string; field: "amount" | "category" | "account" | "date" };
+
 const STARTER_MESSAGES = [
   "Coffee 180 today",
   "Salary 30k",
   "How much did I spend this month?",
 ];
 
+const CHAT_GUIDE_SECTIONS = [
+  {
+    title: "Log expenses and income",
+    examples: ["Spent ₱180 on coffee today", "Received ₱30,000 salary today"],
+  },
+  {
+    title: "Move money",
+    examples: ["Transfer ₱500 from Cash to Maya"],
+  },
+  {
+    title: "Edit an expense or income",
+    examples: ["Change coffee to ₱250", "Change salary to ₱30,000"],
+  },
+  {
+    title: "Ask about your money",
+    examples: [
+      "How much did I spend this month?",
+      "What is my safe-to-spend today?",
+      "What was my biggest expense this month?",
+    ],
+  },
+];
+
 function moneyFact(amount: number): string {
   return formatMoney(amount).replace(/^[^\d-]*/u, "");
 }
 
-function factsForQuery(result: StatsQueryResult): ResponseFacts {
-  const facts: Record<string, string | number> = {};
+function summaryForQuery(result: StatsQueryResult, query: StatsQuery): string {
+  const isIncome = query.filters?.type === "income";
   switch (result.metric) {
-    case "total":
+    case "total": {
+      if (!result.transactionCount) return `No ${isIncome ? "income" : "expenses"} found ${result.period.label}.`;
+      const description = isIncome
+        ? `income transaction${result.transactionCount === 1 ? "" : "s"}`
+        : `transaction${result.transactionCount === 1 ? "" : "s"}`;
+      return `You ${isIncome ? "received" : "spent"} ${formatMoney(result.amountCentavos)} ${result.period.label} across ${result.transactionCount} ${description}.`;
+    }
     case "daily_average":
-      facts.periodTotal = moneyFact(result.amountCentavos);
-      facts.periodLabel = result.period.label;
-      facts.count = result.transactionCount;
-      if (result.metric === "daily_average") facts.dailyAverage = moneyFact(result.amountCentavos);
-      if (result.groups?.[0]) {
-        facts.topCategory = result.groups[0].name;
-        facts.topAmount = moneyFact(result.groups[0].amountCentavos);
-      }
-      break;
-    case "by_category":
-      facts.periodTotal = moneyFact(result.amountCentavos);
-      facts.periodLabel = result.period.label;
-      facts.count = result.groups.reduce((sum, group) => sum + group.transactionCount, 0);
-      if (result.groups[0]) {
-        facts.topCategory = result.groups[0].name;
-        facts.topAmount = moneyFact(result.groups[0].amountCentavos);
-      }
-      if (result.groups[1]) {
-        facts.secondCategory = result.groups[1].name;
-        facts.secondAmount = moneyFact(result.groups[1].amountCentavos);
-      }
-      break;
-    case "top_category":
-      facts.periodTotal = moneyFact(result.amountCentavos);
-      facts.periodLabel = result.period.label;
-      facts.topCategory = result.top?.name ?? "No spending";
-      facts.topAmount = moneyFact(result.top?.amountCentavos ?? 0);
-      facts.count = result.top?.transactionCount ?? 0;
-      break;
-    case "biggest_expense":
-      facts.periodLabel = result.period.label;
-      facts.biggestAmount = moneyFact(result.transaction?.amountCentavos ?? 0);
-      facts.biggestNote = result.transaction?.note || result.transaction?.category || "No expense";
-      facts.biggestDate = result.transaction?.date ?? "—";
-      break;
-    case "count":
-      facts.periodLabel = result.period.label;
-      facts.count = result.transactionCount;
-      break;
-    case "remaining_budget":
-      facts.catRemaining = moneyFact(result.amountCentavos);
-      facts.periodTotal = moneyFact(result.amountCentavos);
-      break;
-    case "safe_to_spend":
-      facts.dailySafe = moneyFact(result.dailyAmountCentavos);
-      facts.periodTotal = moneyFact(result.dailyAmountCentavos);
-      break;
-    case "vs_last_period":
-      facts.periodTotal = moneyFact(result.currentAmountCentavos);
-      facts.periodLabel = result.period.label;
-      facts.comparePeriodLabel = result.previousPeriod.label;
-      facts.diffAmount = moneyFact(Math.abs(result.changeCentavos));
-      break;
-    case "net_worth":
-      facts.netWorth = moneyFact(result.netWorthCentavos);
-      facts.periodTotal = moneyFact(result.netWorthCentavos);
-      break;
-  }
-  return facts;
-}
-
-function summaryForQuery(result: StatsQueryResult): string {
-  switch (result.metric) {
-    case "total":
-      return `You spent ${formatMoney(result.amountCentavos)} ${result.period.label} across ${result.transactionCount} transactions.`;
-    case "daily_average":
-      return `Your daily average was ${formatMoney(result.amountCentavos)} ${result.period.label}.`;
+      if (!result.transactionCount) return `No expenses were recorded ${result.period.label}, so there’s no daily average yet.`;
+      return isIncome
+        ? `Your average daily income was ${formatMoney(result.amountCentavos)} ${result.period.label}.`
+        : `Your daily average spending was ${formatMoney(result.amountCentavos)} ${result.period.label}.`;
     case "by_category":
       return result.groups.length
-        ? `Spending ${result.period.label}: ${result.groups.slice(0, 3).map((group) => `${group.name} ${formatMoney(group.amountCentavos)}`).join(", ")}.`
-        : `No spending found ${result.period.label}.`;
+        ? `${isIncome ? "Income" : "Spending"} ${result.period.label}: ${result.groups.slice(0, 3).map((group) => `${group.name} ${formatMoney(group.amountCentavos)}`).join(", ")}.`
+        : `No ${isIncome ? "income" : "spending"} found ${result.period.label}.`;
     case "top_category":
       return result.top
-        ? `${result.top.name} was your top category ${result.period.label} at ${formatMoney(result.top.amountCentavos)}.`
-        : `No spending found ${result.period.label}.`;
+        ? `${result.top.name} was your top ${isIncome ? "income source" : "spending category"} ${result.period.label} at ${formatMoney(result.top.amountCentavos)}.`
+        : `No ${isIncome ? "income" : "spending"} found ${result.period.label} to rank by category.`;
     case "biggest_expense":
       return result.transaction
         ? `Your biggest expense ${result.period.label} was ${formatMoney(result.transaction.amountCentavos)} for ${result.transaction.note || result.transaction.category} on ${result.transaction.date}.`
         : `No expenses found ${result.period.label}.`;
     case "count":
+      if (!result.transactionCount) return `No transactions were recorded ${result.period.label}.`;
       return `You have ${result.transactionCount} transactions ${result.period.label}.`;
     case "remaining_budget":
       return result.budgetsFound
@@ -154,8 +158,11 @@ function summaryForQuery(result: StatsQueryResult): string {
         ? `Your safe-to-spend estimate is ${formatMoney(result.dailyAmountCentavos)} per day for the current budget cycle.`
         : "There are no active budgets to calculate safe-to-spend.";
     case "vs_last_period": {
+      if (!result.currentAmountCentavos && !result.previousAmountCentavos) {
+        return `No ${isIncome ? "income" : "spending"} was recorded in either period.`;
+      }
       const direction = result.changeCentavos > 0 ? "more" : result.changeCentavos < 0 ? "less" : "the same";
-      return `You spent ${formatMoney(result.currentAmountCentavos)} ${result.period.label}, ${direction} than ${result.previousPeriod.label} by ${formatMoney(Math.abs(result.changeCentavos))}.`;
+      return `Your ${isIncome ? "income" : "spending"} was ${formatMoney(result.currentAmountCentavos)} ${result.period.label}, ${direction} than ${result.previousPeriod.label} by ${formatMoney(Math.abs(result.changeCentavos))}.`;
     }
     case "net_worth":
       return `Your net worth is ${formatMoney(result.netWorthCentavos)}.`;
@@ -288,6 +295,9 @@ export function KupiChatSheet({
   );
 
   const [message, setMessage] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("");
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [pendingActions, setPendingActions] = useState<KupiAction[]>([]);
   const [actionWarnings, setActionWarnings] = useState<string[]>([]);
@@ -295,6 +305,7 @@ export function KupiChatSheet({
   const [pendingIntentChoice, setPendingIntentChoice] = useState<PendingIntentChoice | null>(null);
   const [bestGuessResult, setBestGuessResult] = useState<ParseResult | null>(null);
   const [setupDraft, setSetupDraft] = useState<SetupDraft | null>(null);
+  const [editClarification, setEditClarification] = useState<EditClarification | null>(null);
   const [dialogue, setDialogue] = useState<DialogueState>({ status: "idle" });
   const [typing, setTyping] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -306,15 +317,48 @@ export function KupiChatSheet({
     categoryName: string;
   } | null>(null);
   const [avatarMood, setAvatarMood] = useState<Mood>("idle");
+  const [semanticHint, setSemanticHint] = useState<string | null>(null);
+  const [nluModelStatus, setNluModelStatus] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ height: 0, top: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceBaseTextRef = useRef("");
+  const voiceTranscriptRef = useRef("");
   const undoTimerRef = useRef<number | null>(null);
+  const nluCleanupRef = useRef<(() => void) | null>(null);
   const sessionRef = useRef<SessionContext>({
     recentTemplateIds: [],
     personality: "classic",
     rngSeed: 984_271,
   });
+  const activeProfileIdRef = useRef(profileId);
+  activeProfileIdRef.current = profileId;
+  const chatGenerationRef = useRef(0);
+
+  useEffect(() => {
+    if (open) return;
+    const recognition = speechRecognitionRef.current;
+    speechRecognitionRef.current = null;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      recognition.abort();
+    }
+    setVoiceListening(false);
+    setVoiceStatus("");
+    setGuideOpen(false);
+    setTyping(false);
+    setEditClarification(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) return;
+    chatGenerationRef.current++;
+    nluCleanupRef.current?.();
+    nluCleanupRef.current = null;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -350,6 +394,9 @@ export function KupiChatSheet({
   }, [profileSetting?.value]);
 
   useEffect(() => {
+    chatGenerationRef.current++;
+    nluCleanupRef.current?.();
+    nluCleanupRef.current = null;
     sessionRef.current = {
       recentTemplateIds: [],
       personality: sessionRef.current.personality,
@@ -362,11 +409,15 @@ export function KupiChatSheet({
     setPendingIntentChoice(null);
     setBestGuessResult(null);
     setSetupDraft(null);
+    setEditClarification(null);
     setDialogue({ status: "idle" });
     setUndoActionIds([]);
     setMessage("");
     setError("");
     setAvatarMood("idle");
+    setTyping(false);
+    setSemanticHint(null);
+    setNluModelStatus(null);
     if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
   }, [profileId]);
 
@@ -384,6 +435,7 @@ export function KupiChatSheet({
     setPendingIntentChoice(null);
     setBestGuessResult(null);
     setSetupDraft(null);
+    setEditClarification(null);
     setDialogue({ status: "idle" });
     setTyping(false);
     setBusy(false);
@@ -654,6 +706,27 @@ export function KupiChatSheet({
     return chooseResponse(intent, stage, facts, moodState);
   };
 
+  const rememberRecentAction = (action: KupiAction) => {
+    const transaction = action.kind === "create" ? action.after
+      : action.kind === "transfer" ? null
+      : action.kind === "update" ? action.after
+      : action.before;
+    const accountId = action.kind === "transfer" ? action.after.accountId : transaction?.accountId;
+    const categoryId = transaction?.categoryId;
+    const recent: NonNullable<KupiFocus["recent"]> = {
+      account: scopedAccounts.find(({ id }) => id === accountId)?.name,
+      category: scopedCategories.find(({ id }) => id === categoryId)?.name,
+      type: action.kind === "transfer" ? "transfer"
+        : transaction?.type === "expense" || transaction?.type === "income" || transaction?.type === "transfer"
+          ? transaction.type
+          : undefined,
+    };
+    sessionRef.current = {
+      ...sessionRef.current,
+      focus: { ...sessionRef.current.focus, recent, turnsRemaining: 6 },
+    };
+  };
+
   const commitPending = async (actions: readonly KupiAction[]) => {
     if (!actions.length) return;
     setBusy(true);
@@ -666,6 +739,7 @@ export function KupiChatSheet({
       setDialogue({ status: "idle" });
       sessionRef.current = { ...sessionRef.current, pending: undefined };
       sessionRef.current.lastTxnId = result[result.length - 1]?.transactionId;
+      for (const action of actions) rememberRecentAction(action);
       const generated = actions.length === 1 ? responseForAction(actions[0], "done") : null;
       addAssistant(
         generated?.text ?? `Saved ${actions.length} ${actions.length === 1 ? "transaction" : "transactions"} to your ledger.`,
@@ -723,7 +797,7 @@ export function KupiChatSheet({
     setBestGuessResult(null);
     if (result.intent !== "CONFIRM" && result.intent !== "CANCEL" && result.intent !== "UNDO") {
       setPendingActions([]);
-      setActionWarnings([]);
+      setActionWarnings(result.interpretedByModel ? ["Kupi interpreted this using the optional offline model. Review every detail before confirming."] : []);
       if (
         sessionRef.current.pending?.kind === "confirmAction"
         || sessionRef.current.pending?.intent !== result.intent
@@ -815,7 +889,11 @@ export function KupiChatSheet({
       try {
         const review = proposeForResult(result);
         setPendingActions(review.actions);
-        setActionWarnings(review.warnings);
+        setActionWarnings([
+          ...review.warnings,
+          ...(result.interpretedByModel ? ["Kupi interpreted this using the optional offline model. Review every detail before confirming."] : []),
+        ]);
+        for (const action of review.actions) rememberRecentAction(action);
         sessionRef.current = {
           ...sessionRef.current,
           pending: { kind: "confirmAction", actionId: review.actions[0]?.id },
@@ -841,14 +919,15 @@ export function KupiChatSheet({
         transactions: scopedTransactions,
         now: new Date(),
       });
-      const facts = factsForQuery(queryResult);
-      const response = chooseResponse("QUERY_STATS", undefined, facts, { intent: "QUERY_STATS" });
-      addAssistant(response?.text ?? summaryForQuery(queryResult), response?.mood ?? "idle");
+      sessionRef.current = {
+        ...sessionRef.current,
+        focus: { ...sessionRef.current.focus, lastQuery: result.query, turnsRemaining: 6 },
+      };
+      addAssistant(summaryForQuery(queryResult, result.query));
       return;
     }
     if (result.intent === "HELP") {
-      const response = chooseResponse("HELP", undefined, {}, { intent: "HELP" });
-      addAssistant(response?.text ?? "I can log expenses or income, move money between accounts, edit or delete a transaction, and answer questions about your budget.", "idle");
+      addAssistant("I can log expenses or income, transfer money, edit or delete a transaction, and answer spending or budget questions. For example: ‘coffee 180’, ‘change my last transaction to 200’, or ‘how much did I spend this month?’ What would you like to do?");
       return;
     }
     if (result.unsupported) {
@@ -861,11 +940,11 @@ export function KupiChatSheet({
       return;
     }
     if (result.intent === "CLARIFY") {
-      addAssistant("Could you say what you want to do? For example, “log coffee 180” or “change my last expense to 45.”");
+      addAssistant("I’m not sure what you want to do yet. Are you trying to log spending or income, edit a transaction, move money, or ask about your budget? Tell me which one and I’ll ask for any missing detail.");
       return;
     }
     const response = chooseResponse("UNKNOWN", undefined, {}, { intent: "UNKNOWN" });
-    addAssistant(response?.text ?? "I didn't catch that. Try a transaction, an edit, or a money question. Your ledger hasn't changed.", "idle");
+    addAssistant("I didn’t catch that. Are you trying to log spending or income, edit a transaction, move money, or ask about your budget? Your ledger hasn’t changed.", response?.mood ?? "idle");
   };
 
   const saveSetupDraft = async (draft: SetupDraft) => {
@@ -976,13 +1055,111 @@ export function KupiChatSheet({
   const processMessage = async (rawText: string) => {
     const text = rawText.trim();
     if (!text || busy || typing) return;
+    const processingProfileId = profileId;
+    const processingGeneration = chatGenerationRef.current;
     setMessage("");
     setError("");
     setConversation((current) => [...current, { role: "user", text }]);
     setTyping(true);
     await new Promise((resolve) => window.setTimeout(resolve, 400));
+    if (activeProfileIdRef.current !== processingProfileId || chatGenerationRef.current !== processingGeneration) {
+      if (chatGenerationRef.current === processingGeneration) setTyping(false);
+      return;
+    }
     try {
       if (!dataReady) throw new Error("Your profile data is still loading. Please try again in a moment.");
+      const normalizedText = text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+      const transactionLabel = (transaction: Transaction) => {
+        const category = scopedCategories.find(({ id }) => id === transaction.categoryId)?.name ?? "Uncategorized";
+        const account = scopedAccounts.find(({ id }) => id === transaction.accountId)?.name ?? "Unknown account";
+        return `${transaction.note || category} · ${formatMoney(transaction.amount)} · ${account} · ${transaction.date}`;
+      };
+      if (editClarification && /^(?:cancel|never mind|nevermind|stop)$/u.test(normalizedText)) {
+        setEditClarification(null);
+        addAssistant("Okay, I cancelled the edit. Nothing was changed.");
+        return;
+      }
+      if (editClarification?.stage === "target") {
+        const mostRecent = [...scopedTransactions].sort((a, b) => b.date.localeCompare(a.date))[0];
+        let candidates = /^\d+$/u.test(normalizedText) && editClarification.candidateIds
+          ? [scopedTransactions.find(({ id }) => id === editClarification.candidateIds?.[Number(normalizedText) - 1])].filter((item): item is Transaction => Boolean(item))
+          : /\b(?:last|latest|most recent|that)\b/u.test(normalizedText)
+          ? [scopedTransactions.find(({ id }) => id === sessionRef.current.lastTxnId) ?? mostRecent].filter((item): item is Transaction => Boolean(item))
+          : scopedTransactions.filter((transaction) => {
+              const category = scopedCategories.find(({ id }) => id === transaction.categoryId)?.name ?? "";
+              const account = scopedAccounts.find(({ id }) => id === transaction.accountId)?.name ?? "";
+              const amount = (transaction.amount / 100).toFixed(2);
+              const searchable = [transaction.note ?? "", category, account, transaction.date, amount]
+                .join(" ")
+                .toLocaleLowerCase();
+              const terms = normalizedText.split(/\s+/u).filter((term) => !["the", "a", "an", "my", "last", "transaction", "transactions", "one", "please"].includes(term));
+              return terms.length > 0 && terms.every((term) => searchable.includes(term));
+            });
+        candidates = candidates.slice(0, 3);
+        if (candidates.length === 1) {
+          setEditClarification({ stage: "field", transactionId: candidates[0].id });
+          addAssistant(`Which detail should I change for ${transactionLabel(candidates[0])}: amount, category, account, or date?`);
+        } else if (candidates.length > 1) {
+          setEditClarification({ stage: "target", candidateIds: candidates.map(({ id }) => id) });
+          addAssistant(`I found a few matches: ${candidates.map((transaction, index) => `${index + 1}) ${transactionLabel(transaction)}`).join("; ")}. Reply with 1, 2, or 3, or send a distinguishing name, amount, or date.`);
+        } else {
+          const recent = [...scopedTransactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+          addAssistant(`I couldn't find that transaction. Which one should I edit?${recent.length ? ` Recent transactions: ${recent.map(transactionLabel).join("; ")}.` : " There are no transactions in this profile yet."}`);
+        }
+        return;
+      }
+      if (editClarification?.stage === "field") {
+        const field = /\b(?:amount|price|cost)\b/u.test(normalizedText) ? "amount"
+          : /\bcategory\b/u.test(normalizedText) ? "category"
+          : /\baccount\b/u.test(normalizedText) ? "account"
+          : /\bdate|day\b/u.test(normalizedText) ? "date"
+          : undefined;
+        if (!field) {
+          addAssistant("Which detail should I change: amount, category, account, or date?");
+          return;
+        }
+        setEditClarification({ ...editClarification, stage: "value", field });
+        addAssistant(`What should the new ${field} be?`);
+        return;
+      }
+      if (editClarification?.stage === "value") {
+        const transactionId = editClarification.transactionId;
+        sessionRef.current = { ...sessionRef.current, lastTxnId: transactionId };
+        const command = editClarification.field === "category"
+          ? `change last transaction category to ${text}`
+          : editClarification.field === "account"
+            ? `change that to ${text}`
+            : editClarification.field === "date"
+              ? `change last transaction date to ${text}`
+              : `change last transaction to ${text}`;
+        const edited = parseKupiInput(command, sessionRef.current, getSnapshot(), new Date());
+        if (edited.intent === "EDIT_TXN" && edited.edit) {
+          setEditClarification(null);
+          handleParsedResult(edited, command);
+        } else {
+          addAssistant(`I couldn't match that ${editClarification.field}. Please try a different ${editClarification.field} value.`);
+        }
+        return;
+      }
+      if (/^(?:edit|change)\s+(?:(?:a|the|my)\s+)?transactions?$/iu.test(normalizedText)) {
+        setEditClarification({ stage: "target" });
+        const recent = [...scopedTransactions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+        addAssistant(`Which transaction would you like to edit?${recent.length ? ` Recent ones: ${recent.map(transactionLabel).join("; ")}.` : " You have no transactions in this profile yet."}`);
+        return;
+      }
+      const draftAmountEdit = text.match(/^\s*(?:change|make) that to\s+([\d,.]+(?:\.\d+)?\s*[km]?)\s*[.!]?\s*$/i);
+      if (draftAmountEdit && pendingActions.length === 1 && pendingActions[0].kind === "create") {
+        const amount = parseMoney(draftAmountEdit[1]);
+        if (amount > 0) {
+          const updated = { ...pendingActions[0], after: { ...pendingActions[0].after, amount } };
+          const validation = validateAction(updated, { accounts: scopedAccounts, categories: scopedCategories, txns: scopedTransactions, now: new Date() });
+          if (!validation.valid) throw new Error(validation.errors.join(" "));
+          setPendingActions([updated]);
+          setActionWarnings(validation.warnings);
+          addAssistant(`Updated the draft to ${formatMoney(amount)}. Review it before saving.`);
+          return;
+        }
+      }
       if (setupDraft && /^(?:yes|y|yes save|confirm|save it|looks good|correct)[.! ]*$/i.test(text)) {
         setSetupDraft(null);
         await saveSetupDraft(setupDraft);
@@ -1005,15 +1182,85 @@ export function KupiChatSheet({
         return;
       }
       const now = new Date();
-      const context = sessionRef.current;
-      const result = parseKupiInput(text, context, getSnapshot(), now);
+      const context = advanceFocus(sessionRef.current);
+      sessionRef.current = context;
+      const snapshot = getSnapshot();
+      const rulesResult = parseKupiInput(text, context, snapshot, now);
+      const categoryChoicesFor = (transactionId?: string) => {
+        const transaction = scopedTransactions.find(({ id }) => id === transactionId);
+        const type = transaction?.type === "income" ? "income" : "expense";
+        return scopedCategories
+          .filter((category) => category.type === type && !category.deletedAt)
+          .map(({ name }) => name)
+          .slice(0, 8);
+      };
+      const categoryQuestion = (unknown?: string) => {
+        const choices = categoryChoicesFor(context.lastTxnId);
+        return `${unknown ? `I couldn't match “${unknown}” to a category. ` : ""}Which category should I use for your last transaction?${choices.length ? ` Choose from: ${choices.join(", ")}.` : ""}`;
+      };
+      if (context.pending?.kind === "slot" && context.pending.slot === "editCategory") {
+        if (rulesResult.intent === "EDIT_TXN" && rulesResult.edit?.field === "category") {
+          setSemanticHint(null);
+          handleParsedResult(rulesResult, text);
+        } else {
+          addAssistant(categoryQuestion(text));
+        }
+        return;
+      }
+      const categoryEditRequest = /\b(?:last|my last)\s+transaction\b/iu.test(text)
+        && /\bcategor(?:y|ies)\b/iu.test(text)
+        && /\b(?:change|edit|set|forgot|forgotten)\b/iu.test(text);
+      if (context.lastTxnId && categoryEditRequest && rulesResult.intent !== "EDIT_TXN") {
+        sessionRef.current = {
+          ...sessionRef.current,
+          pending: { kind: "slot", slot: "editCategory", intent: "EDIT_TXN" },
+        };
+        const unknown = text.match(/\b(?:to|for)\s+(.+?)[.!?]*$/iu)?.[1]
+          ?.replace(/\s+categor(?:y|ies)\s*$/iu, "")
+          .trim();
+        addAssistant(categoryQuestion(unknown));
+        return;
+      }
+      if (rulesResult.tier === "ask" || rulesResult.intent === "UNKNOWN" || rulesResult.intent === "CLARIFY") {
+        // Ask the user a focused follow-up immediately; uncertain turns must not wait for model startup.
+        setSemanticHint(null);
+        setNluModelStatus(null);
+        handleParsedResult(rulesResult, text);
+        return;
+      }
+      let profileSettings: { kupiSmartAssist?: boolean; kupiSmartMode?: boolean; kupiSmartModelSize?: "0.6B" | "1.7B" } = {};
+      try { if (profileSetting?.value) profileSettings = JSON.parse(profileSetting.value) as typeof profileSettings; } catch { /* Ignore malformed optional settings. */ }
+      let result: ParseResult;
+      if (profileSettings.kupiSmartAssist || profileSettings.kupiSmartMode) {
+        setNluModelStatus("Checking the optional offline model…");
+        const { releaseNluResources, resolveWithFallback } = await import("@/kupi/nlu/resolve");
+        nluCleanupRef.current = releaseNluResources;
+        const resolved = await resolveWithFallback(text, context, snapshot, now, {
+          smartAssist: profileSettings.kupiSmartAssist,
+          smartMode: profileSettings.kupiSmartMode,
+          modelSize: profileSettings.kupiSmartModelSize,
+          onProgress: (_progress, status) => {
+            if (activeProfileIdRef.current === processingProfileId && chatGenerationRef.current === processingGeneration) setNluModelStatus(status);
+          },
+        });
+        if (activeProfileIdRef.current !== processingProfileId || chatGenerationRef.current !== processingGeneration) return;
+        setSemanticHint(resolved.suggestion ? `Possible match: ${resolved.suggestion.label} (${Math.round(resolved.suggestion.score * 100)}% similarity). Kupi has not applied this suggestion.` : null);
+        result = resolved.result;
+      } else {
+        setSemanticHint(null);
+        result = rulesResult;
+      }
+      if (activeProfileIdRef.current !== processingProfileId || chatGenerationRef.current !== processingGeneration) return;
+      setNluModelStatus(null);
       handleParsedResult(result, text);
     } catch (processingError) {
+      if (activeProfileIdRef.current !== processingProfileId || chatGenerationRef.current !== processingGeneration) return;
       const detail = processingError instanceof Error ? processingError.message : "Message processing failed.";
       setError(detail);
+      setNluModelStatus(null);
       addAssistant(`I couldn't process that safely: ${detail}`, "idle");
     } finally {
-      setTyping(false);
+      if (chatGenerationRef.current === processingGeneration) setTyping(false);
     }
   };
 
@@ -1080,30 +1327,142 @@ export function KupiChatSheet({
         ? "/icons/worried.png"
         : "/icons/idle.png";
 
+  const insertGuideExample = (example: string) => {
+    setMessage(example);
+    setGuideOpen(false);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const toggleVoiceInput = () => {
+    if (voiceListening) {
+      speechRecognitionRef.current?.stop();
+      setVoiceStatus("Finishing voice input…");
+      return;
+    }
+
+    const speechWindow = window as SpeechRecognitionWindow;
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setVoiceStatus("Voice input isn’t supported here. Try your keyboard’s dictation microphone.");
+      return;
+    }
+
+    try {
+      const recognition = new Recognition();
+      let failed = false;
+      voiceBaseTextRef.current = message.trim();
+      voiceTranscriptRef.current = "";
+      recognition.lang = navigator.language || "en-US";
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map((result) => result[0]?.transcript ?? "")
+          .join("")
+          .trim();
+        voiceTranscriptRef.current = transcript;
+        setMessage([voiceBaseTextRef.current, transcript].filter(Boolean).join(" "));
+      };
+      recognition.onerror = (event) => {
+        failed = true;
+        setVoiceStatus(
+          event.error === "not-allowed" || event.error === "service-not-allowed"
+            ? "Microphone access was denied. Check your browser permissions and try again."
+            : event.error === "no-speech"
+              ? "No speech detected. Tap the microphone to try again."
+              : "Voice input failed. Check your connection and microphone permission."
+        );
+      };
+      recognition.onend = () => {
+        setVoiceListening(false);
+        if (speechRecognitionRef.current === recognition) speechRecognitionRef.current = null;
+        if (!failed) {
+          setVoiceStatus(
+            voiceTranscriptRef.current
+              ? "Voice draft ready. Review and edit it before sending."
+              : "No speech captured. Tap the microphone to try again."
+          );
+        }
+      };
+      speechRecognitionRef.current = recognition;
+      setVoiceStatus("Listening… Speak now.");
+      setVoiceListening(true);
+      recognition.start();
+    } catch (error) {
+      speechRecognitionRef.current = null;
+      setVoiceListening(false);
+      setVoiceStatus("Could not start voice input. Check your microphone permission and try again.");
+      console.error("Could not start Kupi voice input:", error);
+    }
+  };
+
   if (!open) return null;
   return (
     <div
       className="sheet-backdrop kupi-chat-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Kupi chat"
+      aria-label="Chat"
       style={viewport.height ? { height: viewport.height, top: viewport.top } : undefined}
     >
       <section className={`account-sheet chat-sheet chat-screen kupi-chat-screen${typing ? " is-thinking" : ""}`}>
         <header className="sheet-header kupi-chat-header">
-          <button type="button" onClick={onClose} aria-label="Close Kupi chat">
+          <button type="button" onClick={onClose} aria-label="Close chat">
             <X size={20} />
           </button>
           <div className="chat-heading">
             <div>
-              <b>Kupi</b>
-              <small>Offline assistant · your data stays on this device</small>
+              <b>Chat</b>
             </div>
           </div>
-          <button className="chat-form-shortcut" onClick={onOpenForm} aria-label="Open transaction form" title="Use transaction form">
-            <Plus size={19} />
+          <button
+            type="button"
+            className="kupi-chat-guide-toggle"
+            onClick={() => setGuideOpen((current) => !current)}
+            aria-label={guideOpen ? "Hide chat guide" : "Open chat guide"}
+            aria-expanded={guideOpen}
+            aria-controls="kupi-chat-guide"
+            title="Chat guide"
+          >
+            <BookOpen size={18} />
           </button>
         </header>
+        {guideOpen && (
+          <aside className="kupi-chat-guide" id="kupi-chat-guide" aria-label="Chat guide">
+            <div className="kupi-chat-guide-heading">
+              <div>
+                <b>What can I ask?</b>
+                <p>Choose an example to add it to your message. You can edit it before sending.</p>
+              </div>
+              <button type="button" onClick={() => setGuideOpen(false)} aria-label="Close chat guide">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="kupi-chat-guide-sections">
+              {CHAT_GUIDE_SECTIONS.map((section) => (
+                <section key={section.title}>
+                  <h3>{section.title}</h3>
+                  <div className="kupi-chat-guide-examples">
+                    {section.examples.map((example) => (
+                      <button type="button" key={example} onClick={() => insertGuideExample(example)}>
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+            <p className="kupi-chat-guide-note">
+              Goals, debts, and collections are managed in Plan for now; Chat can’t create or edit them yet.
+            </p>
+            <p className="kupi-chat-guide-note">
+              Text chat and finance data stay on this device. Optional model downloads contact model hosts; voice input may use browser services.
+            </p>
+            <p className="kupi-chat-guide-note">
+              Voice transcription may need internet. Your draft stays editable until you tap Send.
+            </p>
+          </aside>
+        )}
         <div className="chat-messages" ref={messagesRef} aria-live="polite" aria-relevant="additions text">
           {!conversation.length && (
             <div className="chat-turn assistant">
@@ -1214,6 +1573,12 @@ export function KupiChatSheet({
               </div>
             </div>
           )}
+          {semanticHint && (
+            <div className="chat-turn assistant" role="status">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <div className="kupi-candidate-chips" aria-label="Offline language suggestion">{semanticHint}</div>
+            </div>
+          )}
           {pendingActions.length > 0 && (
             <div className="chat-turn assistant">
               <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
@@ -1224,6 +1589,11 @@ export function KupiChatSheet({
                 warnings={actionWarnings}
                 busy={busy}
                 onConfirm={() => void commitPending(pendingActions)}
+                onEdit={(updated) => {
+                  setPendingActions((actions) => actions.map((action) => action.id === updated.id ? updated : action));
+                  const validation = validateAction(updated, { accounts: scopedAccounts, categories: scopedCategories, txns: scopedTransactions, now: new Date() });
+                  setActionWarnings(validation.valid ? validation.warnings : validation.errors);
+                }}
                 onCancel={() => {
                   setPendingActions([]);
                   setActionWarnings([]);
@@ -1324,6 +1694,7 @@ export function KupiChatSheet({
               <small>Kupi is thinking…</small>
             </div>
           )}
+          {nluModelStatus && <p className="kupi-data-loading" role="status">{nluModelStatus}</p>}
           {!dataReady && <p className="kupi-data-loading" role="status">Loading this profile’s local data…</p>}
         </div>
         <form className="chat-composer kupi-chat-composer" onSubmit={(event) => {
@@ -1343,12 +1714,24 @@ export function KupiChatSheet({
             placeholder="Ask Kupi or describe a transaction"
             rows={1}
             aria-label="Message Kupi"
-            disabled={busy || typing || !dataReady}
+            disabled={busy || typing || !dataReady || voiceListening}
           />
+          <button
+            type="button"
+            className={`kupi-voice-button${voiceListening ? " is-listening" : ""}`}
+            onClick={toggleVoiceInput}
+            aria-label={voiceListening ? "Stop voice input" : "Start voice input"}
+            aria-pressed={voiceListening}
+            disabled={busy || typing || !dataReady}
+            title={voiceListening ? "Stop voice input" : "Speak your message"}
+          >
+            {voiceListening ? <MicOff size={18} /> : <Mic size={18} />}
+          </button>
           <button type="submit" aria-label="Send message" disabled={!message.trim() || busy || typing || !dataReady}>
             <Send size={18} />
           </button>
-          <small>Enter to send · Shift + Enter for a new line</small>
+          <small>AI can make mistakes. Review important details.</small>
+          {voiceStatus && <small className="kupi-voice-status" role="status">{voiceStatus}</small>}
         </form>
       </section>
     </div>
