@@ -847,11 +847,6 @@ export function FinsightsPage({
               </span>
             </span>
           </div>
-          <ol className="home-onboarding-steps" aria-label="Getting started">
-            <li className="active"><span>1</span>{language === "fil" ? "Magdagdag ng account" : "Add an account"}</li>
-            <li><span>2</span>{language === "fil" ? "Maglog ng kita o gastos" : "Log income or expense"}</li>
-            <li><span>3</span>{language === "fil" ? "Tingnan ang iyong insights" : "Review your insights"}</li>
-          </ol>
           <button type="button" className="kupit-primary-button" onClick={onAddAccount}>
             {tForLanguage("addAccount", language)}
           </button>

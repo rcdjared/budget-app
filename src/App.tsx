@@ -104,6 +104,7 @@ import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, t
 import { loadAppSettings } from "@/lib/settings";
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
 import { t, tForLanguage } from "@/lib/localization";
+import { Kupi } from "@/features/spending-pulse/Kupi";
 
 type Tab = "home" | "wallet" | "plan" | "history";
 type ThemePreference = "system" | "light" | "dark" | "amoled";
@@ -199,6 +200,20 @@ function App() {
       return db.sharedBillMembers.toCollection().filter((member) => billIds.has(member.sharedBillId)).toArray();
     },
     [profileId]
+  );
+  const tutorialAccounts = useLiveQuery(
+    () => profileId
+      ? profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt && !account.isArchived).toArray()
+      : [],
+    [profileId],
+    undefined
+  );
+  const tutorialTransactions = useLiveQuery(
+    () => profileId
+      ? profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray()
+      : [],
+    [profileId],
+    undefined
   );
   const notificationDataReady = [
     notificationTransactions,
@@ -640,6 +655,18 @@ function App() {
     );
   }
 
+  const tutorialTarget: "wallet" | "add" | null =
+    tab !== "home" || tutorialAccounts === undefined || tutorialTransactions === undefined
+      ? null
+      : tutorialAccounts.length === 0
+        ? "wallet"
+        : tutorialTransactions.length === 0
+          ? "add"
+          : null;
+  const reduceTutorialMotion =
+    loadAppSettings().reduceMotion
+    || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
   return (
     <main className="app-shell">
       {!online && (
@@ -708,6 +735,7 @@ function App() {
         ref={navRef}
         className={`bottom-nav ${navCollapsed ? "collapsed" : ""} ${navEntering ? "nav-entering" : ""} ${navDragging ? "dragging" : ""} ${planPanelOpen ? "hidden-by-panel" : ""}`}
         data-active-tab={addMenuOpen ? "add" : tab}
+        data-tutorial-target={tutorialTarget || undefined}
         aria-label="Primary navigation"
         onPointerDown={handleNavPointerDown}
         onPointerMove={handleNavPointerMove}
@@ -722,6 +750,7 @@ function App() {
             active={tab === item.id || (item.id === "add" && addMenuOpen)}
             collapsed={navCollapsed}
             addMenuOpen={addMenuOpen}
+            tutorialTarget={tutorialTarget === item.id}
             onClick={() => navCollapsed
               ? setNavCollapsed(false)
               : item.id === "add"
@@ -730,6 +759,29 @@ function App() {
           />
         ))}
       </nav>
+
+      {tutorialTarget && (
+        <aside
+          className={`kupi-nav-tutorial kupi-nav-tutorial--${tutorialTarget}`}
+          data-reduce-motion={reduceTutorialMotion}
+          aria-live="polite"
+          aria-label={tutorialTarget === "wallet" ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
+        >
+          <span className="kupi-nav-tutorial__mascot">
+            <Kupi mood="calm" size={70} />
+          </span>
+          <div className="kupi-nav-tutorial__bubble">
+            <span className="kupi-nav-tutorial__speaker">Kupi</span>
+            <b>{tutorialTarget === "wallet" ? "First, add an account" : "Next, add your money"}</b>
+            <p>
+              {tutorialTarget === "wallet"
+                ? "Tap Wallet below, then open the add button to create your first account."
+                : "Tap Add below, then choose Expense or Income for your first transaction."}
+            </p>
+            <small>Step {tutorialTarget === "wallet" ? "1" : "2"} of 2</small>
+          </div>
+        </aside>
+      )}
 
       {addMenuOpen && (
         <AddActionsMenu
@@ -1208,17 +1260,24 @@ function TabButton({
   active,
   collapsed,
   addMenuOpen = false,
+  tutorialTarget = false,
   onClick,
 }: {
   item: (typeof tabItems)[number];
   active: boolean;
   collapsed: boolean;
   addMenuOpen?: boolean;
+  tutorialTarget?: boolean;
   onClick: () => void;
 }) {
   const Icon = item.id === "add" && addMenuOpen ? X : item.icon;
   return (
-    <button className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""}`} onClick={onClick} aria-label={item.id === "home" && collapsed ? "Expand navigation" : item.label} aria-expanded={item.id === "home" ? !collapsed : undefined}>
+    <button
+      className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""} ${tutorialTarget ? "tutorial-target" : ""}`}
+      onClick={onClick}
+      aria-label={item.id === "home" && collapsed ? "Expand navigation" : item.label}
+      aria-expanded={item.id === "home" ? !collapsed : undefined}
+    >
       <Icon size={20} />
       <span>{item.label}</span>
     </button>

@@ -2479,6 +2479,119 @@ button {
   font-weight: 750;
 }
 
+.nav-item.tutorial-target {
+  color: var(--primary);
+}
+
+.nav-item.tutorial-target::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -7px -10px;
+  border: 2px solid color-mix(in oklch, var(--primary) 78%, white);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 5px color-mix(in oklch, var(--primary) 14%, transparent),
+    0 8px 18px color-mix(in oklch, var(--primary) 18%, transparent);
+  animation: kupi-tutorial-pulse 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.kupi-nav-tutorial {
+  position: fixed;
+  z-index: 29;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  width: 280px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.kupi-nav-tutorial--wallet {
+  left: calc(50% - 20vw);
+}
+
+.kupi-nav-tutorial--add {
+  left: calc(50% + 20vw);
+}
+
+.kupi-nav-tutorial__mascot {
+  width: 70px;
+  height: 70px;
+  flex: 0 0 70px;
+  filter: drop-shadow(0 9px 12px color-mix(in srgb, var(--primary) 24%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+}
+
+.kupi-nav-tutorial__bubble {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-radius: 16px 16px 16px 5px;
+  padding: 10px 12px;
+  background: var(--card);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.kupi-nav-tutorial__bubble::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  bottom: 18px;
+  width: 10px;
+  height: 10px;
+  border-left: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-bottom: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  background: var(--card);
+  transform: rotate(45deg);
+}
+
+.kupi-nav-tutorial__speaker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kupi-nav-tutorial__bubble b {
+  display: block;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.kupi-nav-tutorial__bubble p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.kupi-nav-tutorial__bubble small {
+  display: block;
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.kupi-nav-tutorial[data-reduce-motion="true"] .kupi-nav-tutorial__mascot,
+.nav-item.tutorial-target[data-reduce-motion="true"]::before {
+  animation: none;
+}
+
+@keyframes kupi-tutorial-pulse {
+  50% {
+    opacity: 0.72;
+    transform: scale(1.06);
+  }
+}
+
 .nav-item svg {
   transition: transform 300ms cubic-bezier(.22,1,.36,1);
 }
@@ -6226,11 +6339,16 @@ button {
   .bottom-nav[data-active-tab="wallet"]::after { --active-offset: -86px; }
   .bottom-nav[data-active-tab="history"]::after { --active-offset: 86px; }
   .bottom-nav[data-active-tab="add"]::after { --active-offset: 172px; }
+
+  .kupi-nav-tutorial--wallet { left: calc(50% - 86px); }
+  .kupi-nav-tutorial--add { left: calc(50% + 172px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-nav.nav-entering::before,
   .bottom-nav.nav-entering .nav-item { animation: none !important; }
+  .nav-item.tutorial-target::before,
+  .kupi-nav-tutorial__mascot { animation: none !important; }
   .bottom-nav::before { transition: opacity 120ms ease, background-color 120ms ease; }
   .bottom-nav::after { transition: opacity 120ms ease; }
   .nav-item { transition: opacity 120ms ease, color 120ms ease, background 120ms ease; }
