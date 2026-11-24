@@ -6100,6 +6100,80 @@ button {
   line-height: 1.45;
 }
 
+.kupi-full-download {
+  display: grid;
+  gap: 9px;
+  margin: 0 4px 2px;
+  padding: 13px;
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in oklch, var(--primary) 5%, var(--background));
+}
+
+.kupi-full-download > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.kupi-full-download > div:first-child b {
+  font-size: 14px;
+}
+
+.kupi-full-download > div:first-child small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.kupi-download-progress {
+  display: grid;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.kupi-download-progress > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kupi-download-progress small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.kupi-download-progress progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  background: var(--muted);
+}
+
+.kupi-download-progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.kupi-download-progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width 180ms ease;
+}
+
+.kupi-download-progress progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.kupi-download-progress .chat-clear-learning {
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
 .kupit-model-row.kupit-settings-row {
   min-height: 76px;
   gap: 12px;

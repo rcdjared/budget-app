@@ -321,6 +321,7 @@ export function KupiChatSheet({
   const [avatarMood, setAvatarMood] = useState<Mood>("idle");
   const [semanticHint, setSemanticHint] = useState<string | null>(null);
   const [nluModelStatus, setNluModelStatus] = useState<string | null>(null);
+  const [smartKupiInstalled, setSmartKupiInstalled] = useState(false);
   const [viewport, setViewport] = useState({ height: 0, top: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -338,6 +339,37 @@ export function KupiChatSheet({
   const activeProfileIdRef = useRef(profileId);
   activeProfileIdRef.current = profileId;
   const chatGenerationRef = useRef(0);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    const refreshAvailability = async () => {
+      try {
+        let modelSize: "0.6B" | "1.7B" = "0.6B";
+        try {
+          const saved = JSON.parse(profileSetting?.value ?? "{}") as { kupiSmartModelSize?: "0.6B" | "1.7B" };
+          modelSize = saved.kupiSmartModelSize ?? "0.6B";
+        } catch { /* Use the default local model size. */ }
+        const [{ isEmbeddingModelCached }, { isLocalLlmModelCached }] = await Promise.all([
+          import("@/kupi/nlu/embedder"),
+          import("@/kupi/nlu/llmParser"),
+        ]);
+        const [embedding, smart] = await Promise.all([
+          isEmbeddingModelCached(),
+          isLocalLlmModelCached(modelSize),
+        ]);
+        if (active) setSmartKupiInstalled(embedding && smart);
+      } catch {
+        if (active) setSmartKupiInstalled(false);
+      }
+    };
+    void refreshAvailability();
+    window.addEventListener("kupit:smart-models-updated", refreshAvailability);
+    return () => {
+      active = false;
+      window.removeEventListener("kupit:smart-models-updated", refreshAvailability);
+    };
+  }, [open, profileSetting?.value]);
 
   useEffect(() => {
     if (open) return;
@@ -457,8 +489,10 @@ export function KupiChatSheet({
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (node) node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
-  }, [conversation, pendingActions, pendingCandidates, pendingIntentChoice, bestGuessResult, setupDraft, typing]);
+    if (!node) return;
+    const frame = window.requestAnimationFrame(() => { node.scrollTop = node.scrollHeight; });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, viewport.height, conversation, pendingActions, pendingCandidates, pendingIntentChoice, bestGuessResult, setupDraft, typing]);
 
   useEffect(() => () => {
     if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
@@ -1734,9 +1768,11 @@ export function KupiChatSheet({
           )}
           {nluModelStatus && <p className="kupi-data-loading" role="status">{nluModelStatus}</p>}
           {!dataReady && <p className="kupi-data-loading" role="status">Loading this profile’s local data…</p>}
-          <button type="button" className="kupi-smart-unlock" onClick={onOpenKupiSettings}>
-            Unlock smarter Kupi
-          </button>
+          {!smartKupiInstalled && (
+            <button type="button" className="kupi-smart-unlock" onClick={onOpenKupiSettings}>
+              Unlock smarter Kupi
+            </button>
+          )}
         </div>
         <form className="chat-composer kupi-chat-composer" onSubmit={(event) => {
           event.preventDefault();
@@ -1752,10 +1788,14 @@ export function KupiChatSheet({
                 void processMessage(message);
               }
             }}
-            placeholder="Ask Kupi or describe a transaction"
             rows={1}
             aria-label="Message Kupi"
-            disabled={busy || typing || !dataReady}
+            placeholder="Ask Kupi"
+            onFocus={() => window.requestAnimationFrame(() => {
+              const node = messagesRef.current;
+              if (node) node.scrollTop = node.scrollHeight;
+            })}
+            disabled={!dataReady}
           />
           <button
             type="button"
