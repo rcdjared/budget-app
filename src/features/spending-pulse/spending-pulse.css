@@ -352,6 +352,65 @@
   -webkit-line-clamp: 3;
 }
 
+.kupi-home-nudge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 4px 0 12px;
+  padding: 8px;
+  border: 1px solid var(--pulse-border);
+  border-radius: 16px;
+  background: var(--pulse-bg);
+}
+
+.kupi-home-nudge .spending-pulse__bubble {
+  min-height: 54px;
+  padding: 7px 9px;
+}
+
+.kupi-home-nudge__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.kupi-home-nudge__open,
+.kupi-home-nudge__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.kupi-home-nudge__open {
+  gap: 5px;
+  padding: 0 10px;
+  background: var(--pulse-green);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.kupi-home-nudge__dismiss {
+  width: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--pulse-muted);
+}
+
+.kupi-home-nudge__open:focus-visible,
+.kupi-home-nudge__dismiss:focus-visible {
+  outline: 2px solid var(--pulse-green);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .spending-pulse-widget * {
     animation: none !important;
@@ -373,6 +432,17 @@
 
   .spending-pulse__insight-row {
     gap: 6px;
+  }
+
+  .kupi-home-nudge {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .kupi-home-nudge__open {
+    gap: 3px;
+    padding: 0 7px;
+    font-size: 10px;
   }
 
   .spending-pulse__summary {

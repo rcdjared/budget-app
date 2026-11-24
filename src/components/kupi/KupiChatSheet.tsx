@@ -247,11 +247,15 @@ export function KupiChatSheet({
   onClose,
   onOpenForm,
   profileId,
+  initialMessage,
+  initialMood = "idle",
 }: {
   open: boolean;
   onClose: () => void;
   onOpenForm: () => void;
   profileId: string;
+  initialMessage?: string;
+  initialMood?: Mood;
 }) {
   const accounts = useLiveQuery(
     () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt && !account.isArchived).toArray(),
@@ -334,6 +338,28 @@ export function KupiChatSheet({
     setAvatarMood("idle");
     if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
   }, [profileId]);
+
+  useEffect(() => {
+    if (!open || !initialMessage) return;
+    sessionRef.current = {
+      recentTemplateIds: [],
+      personality: "classic",
+      rngSeed: 984_271,
+    };
+    setConversation([{ role: "assistant", text: initialMessage, mood: initialMood }]);
+    setPendingActions([]);
+    setActionWarnings([]);
+    setPendingCandidates(null);
+    setPendingIntentChoice(null);
+    setBestGuessResult(null);
+    setSetupDraft(null);
+    setDialogue({ status: "idle" });
+    setTyping(false);
+    setBusy(false);
+    setMessage("");
+    setError("");
+    setAvatarMood(initialMood);
+  }, [open, initialMessage, initialMood]);
 
   useEffect(() => {
     if (!open) return;

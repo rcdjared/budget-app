@@ -102,6 +102,24 @@ describe("Kupi chat action flow", () => {
     });
   });
 
+  it("opens from a Home nudge with that nudge as Kupi's first message", async () => {
+    await resetDatabase();
+    render(
+      <KupiChatSheet
+        open
+        onClose={vi.fn()}
+        onOpenForm={vi.fn()}
+        profileId="profile"
+        initialMessage="Food is over budget. Want to review it?"
+        initialMood="worried"
+      />
+    );
+
+    expect(await screen.findByText("Food is over budget. Want to review it?")).toBeTruthy();
+    expect(screen.queryByText("Hi! What would you like to do?")).toBeNull();
+    expect(await screen.findByAltText("Kupi worried")).toBeTruthy();
+  });
+
   it("shows a before-and-after card and commits an edit only after confirmation", async () => {
     await resetDatabase(existingTransaction);
     const { send } = renderChat();

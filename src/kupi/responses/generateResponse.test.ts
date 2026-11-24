@@ -23,6 +23,8 @@ describe("Kupi response generation", () => {
       .toMatchObject({ mood: "idle", intensity: 1 });
     expect(computeMood({ intent: "PROACTIVE", todayExpenseAmounts: [4_999, 3_000, 1_000] }, "classic"))
       .toMatchObject({ mood: "idle", intensity: 2, tags: ["micro_spend"] });
+    expect(computeMood({ intent: "PROACTIVE", streakDays: 3 }, "classic"))
+      .toMatchObject({ mood: "happy", intensity: 2, tags: ["streak"] });
     expect(computeMood({ intent: "PROACTIVE", todayExpenseAmounts: [5_000, 4_999] }, "classic").tags)
       .not.toContain("micro_spend");
   });

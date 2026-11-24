@@ -62,7 +62,7 @@ export function computeMood(state: MoodState, personality: Personality = "dramat
 
   if (state.isError) return { mood, intensity, tags };
 
-  if (state.intent === "LOG_INCOME") {
+  if (state.intent === "LOG_INCOME" || (state.intent === "PROACTIVE" && (state.streakDays ?? 0) >= 3)) {
     mood = "happy";
     intensity = 3;
     if (state.streakDays && state.streakDays >= 3) tags.push("streak");

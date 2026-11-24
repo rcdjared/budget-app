@@ -5,11 +5,13 @@ import {
   ChevronDown,
   Clock3,
   Landmark,
+  MessageCircle,
   ReceiptText,
   Repeat2,
   TrendingDown,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react";
 import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
@@ -36,6 +38,8 @@ import type {
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { Kupi } from "@/features/spending-pulse/Kupi";
 import { SpendingPulse } from "@/features/spending-pulse/SpendingPulse";
+import { computeKupiNudge, type KupiNudge } from "@/kupi/nudges/computeKupiNudge";
+import type { Mood } from "@/kupi/contracts";
 
 interface FinsightsPageProps {
   profileId: string;
@@ -50,6 +54,7 @@ interface FinsightsPageProps {
   onOpenRecurring: () => void;
   onOpenFriends: () => void;
   onOpenBudget: () => void;
+  onOpenKupi: (message: string, mood: Mood) => void;
 }
 
 type SectionId = "netBalance" | "totals" | "insight" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
@@ -61,6 +66,75 @@ const DEFAULT_SECTION_ORDER: SectionId[] = [
   "upcoming",
   "recent",
 ];
+
+interface DismissedKupiNudge {
+  id: string;
+  dismissedAt: number;
+}
+
+function readDismissedKupiNudges(profileId: string): DismissedKupiNudge[] {
+  try {
+    const saved = localStorage.getItem(`kupit-kupi-nudges-${profileId}`);
+    if (!saved) return [];
+    const parsed: unknown = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is DismissedKupiNudge =>
+      typeof item === "object"
+      && item !== null
+      && "id" in item
+      && typeof item.id === "string"
+      && "dismissedAt" in item
+      && typeof item.dismissedAt === "number"
+      && Number.isFinite(item.dismissedAt)
+    );
+  } catch (error) {
+    console.error("Could not load dismissed Kupi nudges.", error);
+    return [];
+  }
+}
+
+function messageForNudge(
+  nudge: KupiNudge,
+  categoryName: string | undefined,
+  formatProfileMoney: (amount: number) => string,
+  language: "en" | "fil",
+): string {
+  const category = categoryName || (language === "fil" ? "Kategorya" : "A category");
+  if (nudge.id.startsWith("budget-exceeded:")) {
+    return language === "fil"
+      ? `${category} ay lampas na sa budget sa ${nudge.facts.percent}%. Gusto mo bang suriin ang gastos?`
+      : `${category} is over budget at ${nudge.facts.percent}%. Want to review your spending?`;
+  }
+  if (nudge.id.startsWith("budget-pacing:")) {
+    return language === "fil"
+      ? `${category} ay gumamit na ng ${nudge.facts.percent}% ng budget kahit ${nudge.facts.daysLeft} araw pa ang natitira. Suriin natin?`
+      : `${category} has used ${nudge.facts.percent}% of its budget with ${nudge.facts.daysLeft} days left. Want to check the pace?`;
+  }
+  if (nudge.id.startsWith("micro-spend:")) {
+    return language === "fil"
+      ? `Nakapagtala ka ng ${nudge.facts.microSpendCount} maliliit na gastos na wala pang ${formatProfileMoney(5_000)} ngayong araw. Silipin natin?`
+      : `You logged ${nudge.facts.microSpendCount} small expenses under ${formatProfileMoney(5_000)} today. Want a quick spending check?`;
+  }
+  if (nudge.id.startsWith("daily-safe-to-spend:")) {
+    return language === "fil"
+      ? `May humigit-kumulang ${formatProfileMoney(Number(nudge.facts.dailySafeToSpendCentavos))} kada araw na natitira sa mga aktibong budget. Gusto mo bang tingnan?`
+      : `About ${formatProfileMoney(Number(nudge.facts.dailySafeToSpendCentavos))} per day remains across your active budgets. Want to review the details?`;
+  }
+  if (nudge.id.startsWith("zero-spend-streak:")) {
+    return language === "fil"
+      ? `${nudge.facts.streakDays}-araw nang walang gastos. Aprubado ni Kupi—ituloy natin?`
+      : `A ${nudge.facts.streakDays}-day no-spend streak. Kupi approves—want to keep it going?`;
+  }
+  return language === "fil"
+    ? "Wala pang naitatala ngayong araw. May gusto ka bang idagdag o itanong?"
+    : "Nothing logged today yet. Want to track an expense or ask me something?";
+}
+
+function kupiMascotMood(mood: Mood): "calm" | "smug" | "shook" {
+  if (mood === "happy") return "smug";
+  if (mood === "worried") return "shook";
+  return "calm";
+}
 
 function matchesAccount(transaction: Transaction, accountId: string) {
   if (accountId === "all") return true;
@@ -85,16 +159,19 @@ export function FinsightsPage({
   onOpenRecurring,
   onOpenFriends,
   onOpenBudget,
+  onOpenKupi,
 }: FinsightsPageProps) {
   const language = loadAppSettings().language;
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [period, setPeriod] = useState<SpendingPulsePeriod>("day");
   const [activeTab, setActiveTab] = useState<"expense" | "income">("expense");
   const [now, setNow] = useState(() => new Date());
+  const [dismissedNudges, setDismissedNudges] = useState(() => readDismissedKupiNudges(profileId));
 
   useEffect(() => {
     setSelectedAccountId("all");
     setPeriod("day");
+    setDismissedNudges(readDismissedKupiNudges(profileId));
   }, [profileId]);
 
   useEffect(() => {
@@ -187,17 +264,13 @@ export function FinsightsPage({
   );
 
   const budgets = useLiveQuery(
-    () => hiddenSections.has("budgets")
-      ? profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray()
-      : Promise.resolve([] as Budget[]),
-    [profileId, hiddenSections.has("budgets")],
+    () => profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray(),
+    [profileId],
     [] as Budget[]
   );
   const budgetTransactions = useLiveQuery(
-    () => hiddenSections.has("budgets")
-      ? profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray()
-      : Promise.resolve([] as Transaction[]),
-    [profileId, hiddenSections.has("budgets")],
+    () => profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray(),
+    [profileId],
     [] as Transaction[]
   );
 
@@ -373,6 +446,32 @@ export function FinsightsPage({
       .slice(0, 3),
     [budgets, budgetTransactions]
   );
+  const kupiNudges = useMemo(
+    () => computeKupiNudge(budgetTransactions, budgets, now),
+    [budgetTransactions, budgets, now],
+  );
+  const kupiNudge = kupiNudges.find((nudge) => {
+    const dismissed = dismissedNudges.find(({ id }) => id === nudge.id);
+    return !dismissed || now.getTime() - dismissed.dismissedAt >= nudge.cooldownMs;
+  });
+  const dismissKupiNudge = (nudge: KupiNudge) => {
+    const next = [
+      ...dismissedNudges.filter(({ dismissedAt }) => now.getTime() - dismissedAt < 30 * 24 * 60 * 60 * 1_000),
+      { id: nudge.id, dismissedAt: now.getTime() },
+    ].slice(-100);
+    setDismissedNudges(next);
+    try {
+      localStorage.setItem(`kupit-kupi-nudges-${profileId}`, JSON.stringify(next));
+    } catch (error) {
+      console.error("Could not save dismissed Kupi nudge.", error);
+    }
+  };
+  const kupiNudgeCategory = kupiNudge?.facts.categoryId
+    ? categories.find(({ id }) => id === kupiNudge.facts.categoryId)?.name
+    : undefined;
+  const kupiNudgeMessage = kupiNudge
+    ? messageForNudge(kupiNudge, kupiNudgeCategory, formatProfileMoney, language)
+    : "";
 
   const upcomingItems = useMemo(() => {
     if (!hiddenSections.has("upcoming")) return [];
@@ -774,6 +873,26 @@ export function FinsightsPage({
             language={language}
             reduceMotion={sectionSettings.reduceMotion}
           />
+          {kupiNudge && (
+            <section className="kupi-home-nudge" aria-label="Kupi suggestion">
+              <span className="spending-pulse__mascot-wrap">
+                <Kupi mood={kupiMascotMood(kupiNudge.mood)} size={48} />
+              </span>
+              <span className="spending-pulse__bubble">
+                <span className="spending-pulse__speaker">Kupi</span>
+                <span className="spending-pulse__message">{kupiNudgeMessage}</span>
+              </span>
+              <div className="kupi-home-nudge__actions">
+                <button type="button" className="kupi-home-nudge__open" onClick={() => onOpenKupi(kupiNudgeMessage, kupiNudge.mood)}>
+                  <MessageCircle size={15} aria-hidden="true" />
+                  Ask Kupi
+                </button>
+                <button type="button" className="kupi-home-nudge__dismiss" onClick={() => dismissKupiNudge(kupiNudge)} aria-label="Dismiss Kupi suggestion" title="Dismiss">
+                  <X size={17} aria-hidden="true" />
+                </button>
+              </div>
+            </section>
+          )}
           {renderSection("categories")}
         </>
       )}

@@ -1,11 +1,11 @@
-# Kupi Assistant Recon and Phase 4 Status
+# Kupi Assistant Recon and Phase 6 Status
 
 **Date:** 2026-11-24  
-**Scope:** record the application and supplied data pack, then track the pure Kupi core through Phase 4.
+**Scope:** record the application and supplied data pack, then track the Kupi core and Home integration through Phase 6.
 
 ## Executive summary
 
-The app began with an offline “Money assistant” inside `src/App.tsx`, implemented as a small rule-based quick-log and local-question flow. Phases 1–4 added a pure text foundation, parser, confirmed action layer, dialogue reducer, structured query engine, and response/mood generator. Phase 5 now mounts the Kupi chat sheet in `src/components/kupi/` and routes transaction writes and statistics questions through that core.
+The app began with an offline “Money assistant” inside `src/App.tsx`, implemented as a small rule-based quick-log and local-question flow. Phases 1–4 added a pure text foundation, parser, confirmed action layer, dialogue reducer, structured query engine, and response/mood generator. Phase 5 mounts the Kupi chat sheet in `src/components/kupi/` and routes transaction writes and statistics questions through that core. Phase 6 adds profile-scoped, locally computed Kupi nudges to Home and opens chat with the selected nudge as its first assistant message.
 
 The persistence foundation is suitable for the planned action layer: Dexie is the local source of truth, transaction writes are generally routed through repositories, and synced updates are timestamped and queued by table hooks. Before assistant-driven writes are added, the direct hard-delete path, incomplete cloud table coverage, profile-scope checks, and timezone assumptions need deliberate treatment.
 
@@ -44,7 +44,7 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 - **Chat routing:** `src/components/kupi/KupiChatSheet.tsx` builds parser and query snapshots from the active profile’s live Dexie records. Account and budget setup remain explicit review flows. Transaction create, transfer, edit, and soft-delete proposals go through `proposeAction` and `commitAction`; query responses go through `executeStatsQuery`. The older sheet implementation remains in `src/App.tsx` but is no longer mounted.
 - **Money questions:** `src/domain/localAssistant.ts` computes answers from local transactions and balances. It supports a limited English question vocabulary; it does not implement the roadmap’s structured query contract.
 - **Responses/persona:** the mounted Kupi chat uses the Phase 4 template generator, seeded session state, and five-turn anti-repeat window for responses with fully available facts. The avatar uses idle, happy, and worried assets; thinking reuses the idle asset with a reduced-motion-aware animation because `public/icons/thinking.png` is not present.
-- **Home:** `src/domain/homeInsights.ts` computes budget/category/top-category/largest-expense insight candidates, using thresholds from `src/lib/homeConfig.ts`; `src/components/FinsightsPage.tsx` consumes them. Home uses a separate insight flow, not Kupi nudges or the supplied mood engine.
+- **Home:** `src/domain/homeInsights.ts` computes budget/category/top-category/largest-expense insight candidates, using thresholds from `src/lib/homeConfig.ts`; `src/components/FinsightsPage.tsx` consumes them. Phase 6 adds a separate Kupi nudge flow powered by `src/kupi/nudges/computeKupiNudge.ts`, with dismissals scoped to the active profile in local storage and mood/intensity from the shared response engine.
 
 ## Tests and baseline
 
@@ -112,6 +112,14 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 - Verification: **22 test files / 148 tests passed**, including the strict 211-case corpus and 10,000-input fuzz gate. `pnpm build` passed; the existing main-bundle-size warning remains (about **1,020 kB minified / 297 kB gzip**).
 - **Manual iOS Safari verification remains outstanding:** install via Add to Home Screen; verify keyboard/visual viewport and safe-area behavior in portrait and landscape; verify VoiceOver announcements and reduced motion; then enable airplane mode, relaunch the installed PWA, and exercise a query, confirmed transaction, and undo.
 
+## Phase 6 Home nudges
+
+- Added the pure `computeKupiNudge(transactions, budgets, now)` rules in `src/kupi/nudges/computeKupiNudge.ts`. It derives budget-cycle spend and days remaining, critical budget pacing, budget overruns, sub-₱50 micro-spend velocity, daily safe-to-spend, a bounded completed-day no-spend streak, and the no-activity-today fallback from fixed inputs and an Asia/Manila date key.
+- Each candidate contains a stable ID, priority, cooldown, computed facts, and mood/intensity/tags from the Phase 4 mood engine. Priorities surface overruns and pacing first, then micro-spending, streak/no-activity nudges, and daily safe-to-spend.
+- Home reads active-profile transactions and budgets, shows one candidate at a time, and stores dismissals in profile-keyed local storage for each nudge's cooldown. Selecting a nudge opens the existing chat with that message and mood as the initial assistant turn.
+- Focused fixed-clock tests cover each rule, priority/cooldown metadata, Manila date handling, deleted/cancelled records, and mood. The chat component test verifies the nudge is the opening message.
+- Verification: `pnpm test` — **23 files / 154 tests passed**, including the strict parser corpus and fuzz gate; `pnpm build` passed with the existing main-bundle-size warning (about **1,027 kB minified / 300 kB gzip**).
+
 ## Open questions and implementation risks
 
 1. **Clock/timezone integration:** the Phase 1 date utility now uses Asia/Manila and tests the 04:00 `kanina` cutoff. The existing app still follows browser-local date parts; integrate the policy only when the new parser path is introduced and verify target browsers.
@@ -119,4 +127,4 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 3. **Ambiguous language:** the parser can represent clarify/confirm outcomes for terms such as `baon`, `padala`, `deposit`, and `allowance`. The chat presents intent alternatives and keeps all resulting writes behind a review card; continue adding focused component tests for less common ambiguity combinations.
 4. **Writes and undo:** the Phase 3 service uses repositories and handles transfer fees, linked split/shared-bill delete restoration, tombstones, and monotonic timestamps. The Phase 5 UI preserves confirmation and profile scope; Kupi edits to friend-payment, split, and shared-bill transactions are intentionally rejected, and recurring-occurrence deletes require their dedicated history action.
 5. **Golden evaluation:** retain a frozen hold-out for future work and avoid tuning against it. The current perfect score is a regression result against the supplied corpus, not an unbiased accuracy measurement.
-6. **Phase boundary:** Phases 0–5 are implemented. The iOS Safari Add to Home Screen/airplane-mode checklist remains a device-level manual gate; complete it before release.
+6. **Phase boundary:** Phases 0–6 are implemented. The iOS Safari Add to Home Screen/airplane-mode checklist remains a device-level manual gate; complete it before release.

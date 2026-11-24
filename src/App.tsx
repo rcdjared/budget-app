@@ -97,6 +97,7 @@ import { useCollapsingNav } from "@/hooks/useCollapsingNav";
 import { KupitSettingsSheet } from "@/components/KupitSettingsSheet";
 import { NotificationsSheet } from "@/components/NotificationsSheet";
 import { KupiChatSheet } from "@/components/kupi/KupiChatSheet";
+import type { Mood } from "@/kupi/contracts";
 import { insertDueNotifications } from "@/db/repositories/notifications";
 import { getProfileNotificationPreferences } from "@/db/repositories/profiles";
 import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
@@ -148,6 +149,8 @@ function App() {
   const [formInitialType, setFormInitialType] = useState<TransactionType>("expense");
   const [accountOpen, setAccountOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>();
+  const [chatInitialMood, setChatInitialMood] = useState<Mood>("idle");
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -659,6 +662,11 @@ function App() {
                 navigateToTab("history");
               }}
               onOpenHelp={() => setHelpOpen(true)}
+              onOpenKupi={(message, mood) => {
+                setChatInitialMessage(message);
+                setChatInitialMood(mood);
+                setChatOpen(true);
+              }}
               onAddAccount={() => setAccountOpen(true)}
               onAddTransaction={(type) => {
                 setFormInitialType(type);
@@ -729,6 +737,8 @@ function App() {
           onClose={() => closeAddMenu()}
           onAction={(action) => closeAddMenu(() => {
             if (action === "chat") {
+              setChatInitialMessage(undefined);
+              setChatInitialMood("idle");
               setChatOpen(true);
               return;
             }
@@ -778,6 +788,8 @@ function App() {
         onClose={() => setChatOpen(false)}
         onOpenForm={() => { setFormInitialType("expense"); setChatOpen(false); setAddOpen(true); }}
         profileId={profileId}
+        initialMessage={chatInitialMessage}
+        initialMood={chatInitialMood}
       />
 
       <ProfilesSheet
@@ -1291,6 +1303,7 @@ function HomePage({
   onNotifications,
   onHistory,
   onOpenHelp,
+  onOpenKupi,
   onAddAccount,
   onAddTransaction,
   onOpenTransaction,
@@ -1306,6 +1319,7 @@ function HomePage({
   onNotifications: () => void;
   onHistory: (filters?: { accountId?: string; categoryId?: string; startDate?: string; endDate?: string }) => void;
   onOpenHelp: () => void;
+  onOpenKupi: (message: string, mood: Mood) => void;
   onAddAccount: () => void;
   onAddTransaction: (type: "expense" | "income") => void;
   onOpenTransaction: (transactionId: string) => void;
@@ -1377,6 +1391,7 @@ function HomePage({
       <FinsightsPage
         profileId={profileId}
         onOpenHelp={onOpenHelp}
+        onOpenKupi={onOpenKupi}
         onAddAccount={onAddAccount}
         onAddTransaction={onAddTransaction}
         onHistory={onHistory}
