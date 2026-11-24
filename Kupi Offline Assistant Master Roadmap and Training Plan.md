@@ -151,7 +151,7 @@ Pure, heavily tested modules:
 
 ### Phase 5: Chat UI (about 1 week)
 
-Header "Kupi · Offline money assistant" with avatar states idle, thinking, happy, worried (respect `prefers-reduced-motion`). 16px minimum input font, safe-area and `visualViewport` handling, starter chips including an edit chip, ConfirmCard, DiffCard, delete card, candidate chips, Undo toast after every commit, a 300–600 ms typing indicator, `aria-live`.
+Header "Kupi" with avatar states idle(\public\icons\idle.png), thinking\public\icons\thinking.png, happy(\public\icons\happy.png), worried(\public\icons\worried.png) (respect `prefers-reduced-motion`). 16px minimum input font, safe-area and `visualViewport` handling, starter chips including an edit chip, ConfirmCard, DiffCard, delete card, candidate chips, Undo toast after every commit, a 300–600 ms typing indicator, `aria-live`.
 
 **Gate:** component tests for confirm, edit-diff, delete and undo flows; manual iOS Safari Add to Home Screen checklist including airplane mode.
 
