@@ -817,7 +817,7 @@ export function FinsightsPage({
                 aria-label="Tap Kupi to ask about this insight"
                 title="Tap to ask Kupi"
               >
-                <Kupi mood={kupiMascotMood(kupiInsightMood)} size={64} />
+                <Kupi mood={kupiMascotMood(kupiInsightMood)} size={84} />
               </button>
               <button
                 type="button"
@@ -832,7 +832,7 @@ export function FinsightsPage({
           <SpendingPulse
             profileId={profileId}
             accountId={selectedAccountId}
-            accountFilter={accountFilter}
+            accountFilter={null}
             period={period}
             onPeriodChange={setPeriod}
             budgetCycleStartDay={sectionSettings.budgetCycleStartDay}

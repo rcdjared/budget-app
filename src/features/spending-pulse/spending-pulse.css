@@ -356,33 +356,35 @@
 .kupi-home-nudge {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-  margin: 0 0 12px;
-  padding: 8px;
-  border: 1px solid var(--pulse-border);
-  border-radius: 16px;
-  background: var(--pulse-bg);
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.12));
 }
 
 .kupi-home-nudge .spending-pulse__bubble {
-  min-height: 54px;
-  padding: 7px 9px;
+  min-height: 64px;
+  padding: 10px 12px;
 }
 
 .kupi-home-nudge .spending-pulse__mascot-wrap {
-  flex-basis: 64px;
-  width: 64px;
-  height: 64px;
+  flex-basis: 84px;
+  width: 84px;
+  height: 84px;
 }
 
 .kupi-home-nudge .spending-pulse__mascot {
-  width: 64px;
-  height: 64px;
+  width: 84px;
+  height: 84px;
 }
 
 .kupi-home-nudge__bubble {
   border: 1px solid var(--pulse-bubble-border);
+  border-radius: 16px 16px 16px 5px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
   text-align: left;
   cursor: pointer;
 }
@@ -397,6 +399,12 @@
   padding: 0;
   background: transparent;
   cursor: pointer;
+  animation: kupi-home-float 3.2s ease-in-out infinite;
+}
+
+@keyframes kupi-home-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
 }
 
 .kupi-home-nudge__mascot:focus-visible {
