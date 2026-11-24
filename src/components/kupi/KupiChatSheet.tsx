@@ -917,6 +917,14 @@ export function KupiChatSheet({
   const prepareSetupDraft = (text: string): boolean => {
     const amountText = text.match(/(?:₱|php|\$)?\s*(\d[\d,]*(?:\.\d{1,2})?\s*[km]?)/i)?.[1];
     const amount = amountText ? parseMoney(amountText) : null;
+    const accountManagementQuestion =
+      /\b(?:change|edit|rename|manage)\b.*\baccounts?\b/i.test(text)
+      || /\baccounts?\b.*\b(change|edit|rename|manage)\b/i.test(text)
+      || /\bcan (?:you )?(?:change|edit|rename|manage) (?:my )?accounts?\b/i.test(text);
+    if (accountManagementQuestion && !/\b(?:create|add|set up)\b.*\b(account|wallet|bank)\b.*\b(?:opening|balance)\b/i.test(text)) {
+      addAssistant("Account names and details are managed from Wallet. Open Wallet, choose the account, and use its edit option. I can help you log spending, income, transfers, and budgets.");
+      return true;
+    }
     const accountIntent = /\b(?:create|add|set up|make)\b.*\b(account|wallet|bank)\b/i.test(text);
     if (accountIntent) {
       const name = text.match(/\b(?:account|wallet|bank)\s+(?:named|called)\s+["']?(.+?)["']?(?=\s+(?:with|and)\s+(?:an?\s+)?(?:opening\s+)?balance|[,;.]|$)/i)?.[1]?.trim();
@@ -1166,126 +1174,146 @@ export function KupiChatSheet({
             )
           ))}
           {pendingCandidates && (
-            <div className="kupi-candidate-chips" aria-label="Matching transactions">
-              {pendingCandidates.result.targetCandidates?.map((id) => {
-                const transaction = scopedTransactions.find(({ id: transactionId }) => transactionId === id);
-                if (!transaction) return null;
-                const category = scopedCategories.find(({ id: categoryId }) => categoryId === transaction.categoryId)?.name ?? "Uncategorized";
-                return (
-                  <button type="button" key={id} onClick={() => selectCandidate(id)}>
-                    {transaction.note || category} · {formatMoney(transaction.amount)} · {transaction.date}
-                  </button>
-                );
-              })}
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <div className="kupi-candidate-chips" aria-label="Matching transactions">
+                {pendingCandidates.result.targetCandidates?.map((id) => {
+                  const transaction = scopedTransactions.find(({ id: transactionId }) => transactionId === id);
+                  if (!transaction) return null;
+                  const category = scopedCategories.find(({ id: categoryId }) => categoryId === transaction.categoryId)?.name ?? "Uncategorized";
+                  return (
+                    <button type="button" key={id} onClick={() => selectCandidate(id)}>
+                      {transaction.note || category} · {formatMoney(transaction.amount)} · {transaction.date}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
           {pendingIntentChoice && (
-            <div className="kupi-candidate-chips" aria-label="Possible intents">
-              {[pendingIntentChoice.result.intent, ...pendingIntentChoice.result.alternatives.map(({ intent }) => intent)]
-                .filter((intent, index, list) => list.indexOf(intent) === index)
-                .map((intent) => (
-                  <button type="button" key={intent} onClick={() => selectIntent(intent)}>
-                    {intent.replaceAll("_", " ").toLowerCase()}
-                  </button>
-                ))}
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <div className="kupi-candidate-chips" aria-label="Possible intents">
+                {[pendingIntentChoice.result.intent, ...pendingIntentChoice.result.alternatives.map(({ intent }) => intent)]
+                  .filter((intent, index, list) => list.indexOf(intent) === index)
+                  .map((intent) => (
+                    <button type="button" key={intent} onClick={() => selectIntent(intent)}>
+                      {intent.replaceAll("_", " ").toLowerCase()}
+                    </button>
+                  ))}
+              </div>
             </div>
           )}
           {bestGuessResult && (
-            <div className="kupi-candidate-chips" aria-label="Suggested best guess">
-              <button type="button" onClick={() => handleParsedResult(bestGuessResult, "best guess")}>
-                Use best guess — leave category uncategorized
-              </button>
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <div className="kupi-candidate-chips" aria-label="Suggested best guess">
+                <button type="button" onClick={() => handleParsedResult(bestGuessResult, "best guess")}>
+                  Use best guess — leave category uncategorized
+                </button>
+              </div>
             </div>
           )}
-          <KupiActionReviewCard
-            actions={pendingActions}
-            accounts={scopedAccounts}
-            categories={scopedCategories}
-            warnings={actionWarnings}
-            busy={busy}
-            onConfirm={() => void commitPending(pendingActions)}
-            onCancel={() => {
-              setPendingActions([]);
-              setActionWarnings([]);
-              setDialogue({ status: "idle" });
-              sessionRef.current = { ...sessionRef.current, pending: undefined };
-              addAssistant("Cancelled. Nothing was saved.");
-            }}
-          />
+          {pendingActions.length > 0 && (
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <KupiActionReviewCard
+                actions={pendingActions}
+                accounts={scopedAccounts}
+                categories={scopedCategories}
+                warnings={actionWarnings}
+                busy={busy}
+                onConfirm={() => void commitPending(pendingActions)}
+                onCancel={() => {
+                  setPendingActions([]);
+                  setActionWarnings([]);
+                  setDialogue({ status: "idle" });
+                  sessionRef.current = { ...sessionRef.current, pending: undefined };
+                  addAssistant("Cancelled. Nothing was saved.");
+                }}
+              />
+            </div>
+          )}
           {setupDraft && (
-            <section className="kupi-action-card kupi-setup-card" aria-label="Review account or budget setup">
-              <article className="kupi-confirm-card">
-                <h3>{setupDraft.kind === "account" ? "Review new account" : "Review monthly budget"}</h3>
-                <dl>
-                  <div>
-                    <dt>{setupDraft.kind === "account" ? "Account" : "Category"}</dt>
-                    <dd>{setupDraft.kind === "account" ? setupDraft.name : setupDraft.category.name}</dd>
-                  </div>
-                  {setupDraft.kind === "account" && (
-                    <div><dt>Type</dt><dd>{setupDraft.type.replace("_", " ")}</dd></div>
-                  )}
-                  <div>
-                    <dt>{setupDraft.kind === "account" ? "Opening balance" : "Monthly limit"}</dt>
-                    <dd>{formatMoney(setupDraft.amount)}</dd>
-                  </div>
-                </dl>
-              </article>
-              <div className="kupi-action-buttons">
-                <button
-                  type="button"
-                  className="save-button"
-                  disabled={busy}
-                  onClick={() => {
-                    setBusy(true);
-                    void saveSetupDraft(setupDraft).finally(() => setBusy(false));
-                  }}
-                >
-                  {busy ? "Saving…" : "Yes, save"}
-                </button>
-                <button
-                  type="button"
-                  className="chat-clear-learning"
-                  disabled={busy}
-                  onClick={() => {
-                    setSetupDraft(null);
-                    addAssistant("Cancelled. Nothing was saved.");
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </section>
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <section className="kupi-action-card kupi-setup-card" aria-label="Review account or budget setup">
+                <article className="kupi-confirm-card">
+                  <h3>{setupDraft.kind === "account" ? "Review new account" : "Review monthly budget"}</h3>
+                  <dl>
+                    <div>
+                      <dt>{setupDraft.kind === "account" ? "Account" : "Category"}</dt>
+                      <dd>{setupDraft.kind === "account" ? setupDraft.name : setupDraft.category.name}</dd>
+                    </div>
+                    {setupDraft.kind === "account" && (
+                      <div><dt>Type</dt><dd>{setupDraft.type.replace("_", " ")}</dd></div>
+                    )}
+                    <div>
+                      <dt>{setupDraft.kind === "account" ? "Opening balance" : "Monthly limit"}</dt>
+                      <dd>{formatMoney(setupDraft.amount)}</dd>
+                    </div>
+                  </dl>
+                </article>
+                <div className="kupi-action-buttons">
+                  <button
+                    type="button"
+                    className="save-button"
+                    disabled={busy}
+                    onClick={() => {
+                      setBusy(true);
+                      void saveSetupDraft(setupDraft).finally(() => setBusy(false));
+                    }}
+                  >
+                    {busy ? "Saving…" : "Yes, save"}
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-clear-learning"
+                    disabled={busy}
+                    onClick={() => {
+                      setSetupDraft(null);
+                      addAssistant("Cancelled. Nothing was saved.");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </section>
+            </div>
           )}
           {learningSuggestion && (
-            <section className="kupi-action-card" aria-label="Remember category correction">
-              <article className="kupi-confirm-card">
-                <h3>Remember this category?</h3>
-                <p>Always file {learningSuggestion.merchant} under {learningSuggestion.categoryName}?</p>
-              </article>
-              <div className="kupi-action-buttons">
-                <button
-                  type="button"
-                  className="save-button"
-                  onClick={async () => {
-                    const rule = createRule(
-                      profileId,
-                      "merchant_category",
-                      learningSuggestion.merchant,
-                      learningSuggestion.categoryId,
-                      learningSuggestion.categoryName
-                    );
-                    await db.kupiMerchantRules.put(rule);
-                    setLearningSuggestion(null);
-                    addAssistant(`Remembered: ${rule.source} is ${rule.targetName}.`);
-                  }}
-                >
-                  Always
-                </button>
-                <button type="button" className="chat-clear-learning" onClick={() => setLearningSuggestion(null)}>
-                  Not always
-                </button>
-              </div>
-            </section>
+            <div className="chat-turn assistant">
+              <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
+              <section className="kupi-action-card" aria-label="Remember category correction">
+                <article className="kupi-confirm-card">
+                  <h3>Remember this category?</h3>
+                  <p>Always file {learningSuggestion.merchant} under {learningSuggestion.categoryName}?</p>
+                </article>
+                <div className="kupi-action-buttons">
+                  <button
+                    type="button"
+                    className="save-button"
+                    onClick={async () => {
+                      const rule = createRule(
+                        profileId,
+                        "merchant_category",
+                        learningSuggestion.merchant,
+                        learningSuggestion.categoryId,
+                        learningSuggestion.categoryName
+                      );
+                      await db.kupiMerchantRules.put(rule);
+                      setLearningSuggestion(null);
+                      addAssistant(`Remembered: ${rule.source} is ${rule.targetName}.`);
+                    }}
+                  >
+                    Always
+                  </button>
+                  <button type="button" className="chat-clear-learning" onClick={() => setLearningSuggestion(null)}>
+                    Not always
+                  </button>
+                </div>
+              </section>
+            </div>
           )}
           {undoActionIds.length > 0 && <KupiUndoToast busy={busy} onUndo={() => void undoLastCommit()} />}
           {error && <p className="kupi-chat-error" role="alert">{error}</p>}

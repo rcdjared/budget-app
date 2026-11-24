@@ -82,6 +82,14 @@ afterEach(async () => {
 });
 
 describe("Kupi chat action flow", () => {
+  it("answers account-management questions without confusing them as transactions", async () => {
+    await resetDatabase();
+    const { send } = renderChat();
+
+    await send("can you change accounts?");
+    expect(await screen.findByText(/Account names and details are managed from Wallet/)).toBeTruthy();
+  });
+
   it("shows setup guidance when the profile has no accounts", async () => {
     await db.delete();
     await db.open();

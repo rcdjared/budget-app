@@ -3117,6 +3117,14 @@ button {
   margin-bottom: 4px;
 }
 
+.chat-turn.assistant > .kupi-action-card,
+.chat-turn.assistant > .kupi-candidate-chips,
+.chat-turn.assistant > .kupi-confirm-card,
+.chat-turn.assistant > section {
+  width: min(calc(100% - 50px), 460px);
+  max-width: 460px;
+}
+
 .assistant-message p {
   margin: 5px 0 0;
   color: var(--muted-foreground);
