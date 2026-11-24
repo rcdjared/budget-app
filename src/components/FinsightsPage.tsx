@@ -5,12 +5,10 @@ import {
   ChevronDown,
   Clock3,
   Landmark,
-  MessageCircle,
   Repeat2,
   TrendingDown,
   TrendingUp,
   Wallet,
-  X,
 } from "lucide-react";
 import { db } from "@/db/schema";
 import { profileRecords } from "@/db/profileScope";
@@ -65,32 +63,6 @@ const DEFAULT_SECTION_ORDER: SectionId[] = [
   "upcoming",
   "recent",
 ];
-
-interface DismissedKupiNudge {
-  id: string;
-  dismissedAt: number;
-}
-
-function readDismissedKupiNudges(profileId: string): DismissedKupiNudge[] {
-  try {
-    const saved = localStorage.getItem(`kupit-kupi-nudges-${profileId}`);
-    if (!saved) return [];
-    const parsed: unknown = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is DismissedKupiNudge =>
-      typeof item === "object"
-      && item !== null
-      && "id" in item
-      && typeof item.id === "string"
-      && "dismissedAt" in item
-      && typeof item.dismissedAt === "number"
-      && Number.isFinite(item.dismissedAt)
-    );
-  } catch (error) {
-    console.error("Could not load dismissed Kupi nudges.", error);
-    return [];
-  }
-}
 
 function messageForNudge(
   nudge: KupiNudge,
@@ -165,12 +137,10 @@ export function FinsightsPage({
   const [period, setPeriod] = useState<SpendingPulsePeriod>("day");
   const [activeTab, setActiveTab] = useState<"expense" | "income">("expense");
   const [now, setNow] = useState(() => new Date());
-  const [dismissedNudges, setDismissedNudges] = useState(() => readDismissedKupiNudges(profileId));
 
   useEffect(() => {
     setSelectedAccountId("all");
     setPeriod("day");
-    setDismissedNudges(readDismissedKupiNudges(profileId));
   }, [profileId]);
 
   useEffect(() => {
@@ -449,28 +419,18 @@ export function FinsightsPage({
     () => computeKupiNudge(budgetTransactions, budgets, now),
     [budgetTransactions, budgets, now],
   );
-  const kupiNudge = kupiNudges.find((nudge) => {
-    const dismissed = dismissedNudges.find(({ id }) => id === nudge.id);
-    return !dismissed || now.getTime() - dismissed.dismissedAt >= nudge.cooldownMs;
-  });
-  const dismissKupiNudge = (nudge: KupiNudge) => {
-    const next = [
-      ...dismissedNudges.filter(({ dismissedAt }) => now.getTime() - dismissedAt < 30 * 24 * 60 * 60 * 1_000),
-      { id: nudge.id, dismissedAt: now.getTime() },
-    ].slice(-100);
-    setDismissedNudges(next);
-    try {
-      localStorage.setItem(`kupit-kupi-nudges-${profileId}`, JSON.stringify(next));
-    } catch (error) {
-      console.error("Could not save dismissed Kupi nudge.", error);
-    }
-  };
+  const kupiNudge = kupiNudges[0];
   const kupiNudgeCategory = kupiNudge?.facts.categoryId
     ? categories.find(({ id }) => id === kupiNudge.facts.categoryId)?.name
     : undefined;
   const kupiNudgeMessage = kupiNudge
     ? messageForNudge(kupiNudge, kupiNudgeCategory, formatProfileMoney, language)
-    : "";
+    : insightCandidates[0]?.text
+      || (language === "fil"
+        ? "Ang tala mo ay maayos. Gusto mo bang tingnan kung saan ka maganda makatipid?"
+        : "Your money picture looks steady. Want to see where you can save next?");
+  const kupiInsightMood: Mood = kupiNudge?.mood
+    ?? (insightCandidates[0]?.kind === "budget" ? "worried" : insightCandidates[0] ? "happy" : "idle");
 
   const upcomingItems = useMemo(() => {
     if (!hiddenSections.has("upcoming")) return [];
@@ -849,32 +809,26 @@ export function FinsightsPage({
         </section>
       ) : (
         <>
-          {kupiNudge && (
-            <section className="kupi-home-nudge" aria-label="Kupi suggestion">
+          <section className="kupi-home-nudge" aria-label="Kupi insight">
               <button
                 type="button"
                 className="spending-pulse__mascot-wrap kupi-home-nudge__mascot"
-                onClick={() => onOpenKupi(kupiNudgeMessage, kupiNudge.mood)}
-                aria-label="Tap Kupi to ask about this suggestion"
+                onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)}
+                aria-label="Tap Kupi to ask about this insight"
                 title="Tap to ask Kupi"
               >
-                <Kupi mood={kupiMascotMood(kupiNudge.mood)} size={48} />
+                <Kupi mood={kupiMascotMood(kupiInsightMood)} size={64} />
               </button>
-              <span className="spending-pulse__bubble">
+              <button
+                type="button"
+                className="spending-pulse__bubble kupi-home-nudge__bubble"
+                onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)}
+                aria-label="Tap Kupi chatbox to ask about this insight"
+              >
                 <span className="spending-pulse__speaker">Kupi · Tap me to ask</span>
                 <span className="spending-pulse__message">{kupiNudgeMessage}</span>
-              </span>
-              <div className="kupi-home-nudge__actions">
-                <button type="button" className="kupi-home-nudge__open" onClick={() => onOpenKupi(kupiNudgeMessage, kupiNudge.mood)}>
-                  <MessageCircle size={15} aria-hidden="true" />
-                  Ask Kupi
-                </button>
-                <button type="button" className="kupi-home-nudge__dismiss" onClick={() => dismissKupiNudge(kupiNudge)} aria-label="Dismiss Kupi suggestion" title="Dismiss">
-                  <X size={17} aria-hidden="true" />
-                </button>
-              </div>
+              </button>
             </section>
-          )}
           <SpendingPulse
             profileId={profileId}
             accountId={selectedAccountId}

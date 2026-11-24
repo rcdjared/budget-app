@@ -2506,6 +2506,11 @@ button {
 }
 
 .kupi-add-tutorial {
+  position: fixed;
+  z-index: 31;
+  left: 12px;
+  bottom: calc(330px + env(safe-area-inset-bottom));
+  width: min(290px, calc(100vw - 24px));
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2514,9 +2519,9 @@ button {
 }
 
 .kupi-add-tutorial__mascot {
-  width: 58px;
-  height: 58px;
-  flex: 0 0 58px;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
   filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 22%, transparent));
 }
 
@@ -2558,9 +2563,9 @@ button {
 }
 
 .kupi-nav-tutorial__mascot {
-  width: 70px;
-  height: 70px;
-  flex: 0 0 70px;
+  width: 84px;
+  height: 84px;
+  flex: 0 0 84px;
   filter: drop-shadow(0 9px 12px color-mix(in srgb, var(--primary) 24%, transparent));
   animation: kupi-guide-float 3.2s ease-in-out infinite;
 }

@@ -150,18 +150,6 @@ export function SpendingPulse({
       data-reduce-motion={reduceMotionActive}
     >
       <div className="spending-pulse__insight-row">
-        <div
-          role="group"
-          className="spending-pulse__insight"
-          aria-label="Kupi spending insight"
-        >
-          <span className="spending-pulse__bubble">
-            <span className="spending-pulse__speaker">Spending insight</span>
-            <span className="spending-pulse__message" aria-live="polite">
-              {insight?.text || (language === "fil" ? "Mag-ingat sa gastos at patuloy na magtala." : "Keep an eye on spending and keep tracking.")}
-            </span>
-          </span>
-        </div>
         {accountFilter}
       </div>
 

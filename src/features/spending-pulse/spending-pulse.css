@@ -213,6 +213,7 @@
 .spending-pulse__insight-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   min-width: 0;
   min-height: 62px;
@@ -367,6 +368,28 @@
 .kupi-home-nudge .spending-pulse__bubble {
   min-height: 54px;
   padding: 7px 9px;
+}
+
+.kupi-home-nudge .spending-pulse__mascot-wrap {
+  flex-basis: 64px;
+  width: 64px;
+  height: 64px;
+}
+
+.kupi-home-nudge .spending-pulse__mascot {
+  width: 64px;
+  height: 64px;
+}
+
+.kupi-home-nudge__bubble {
+  border: 1px solid var(--pulse-bubble-border);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kupi-home-nudge__bubble:focus-visible {
+  outline: 2px solid var(--pulse-green);
+  outline-offset: 3px;
 }
 
 .kupi-home-nudge__mascot {
