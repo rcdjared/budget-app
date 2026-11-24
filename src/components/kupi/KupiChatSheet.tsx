@@ -1102,16 +1102,50 @@ export function KupiChatSheet({
             <div className="assistant-message">
               <span className="assistant-mark"><MessageCircle size={17} /></span>
               <div>
-                <b>Hi! What would you like to do?</b>
-                <p>I can log and review transactions, or answer questions using this profile’s saved data.</p>
+                {scopedAccounts.length === 0 ? (
+                  <>
+                    <b>Welcome! Let’s set up your budget.</b>
+                    <p><strong>Step 1:</strong> Add an account so Kupi knows where your money lives.</p>
+                    <p><strong>Step 2:</strong> Log income or an expense.</p>
+                    <p><strong>Step 3:</strong> Review spending and ask Kupi for guidance.</p>
+                  </>
+                ) : scopedTransactions.length === 0 ? (
+                  <>
+                    <b>You’re ready for your first transaction.</b>
+                    <p>Log an expense or income, then Kupi can help you track, review, and understand it.</p>
+                  </>
+                ) : (
+                  <>
+                    <b>Hi! What would you like to do?</b>
+                    <p>I can log and review transactions, or answer questions using this profile’s saved data.</p>
+                  </>
+                )}
                 <div className="chat-examples kupi-starter-chips">
-                  {STARTER_MESSAGES.map((starter) => (
-                    <button type="button" key={starter} onClick={() => void processMessage(starter)}>{starter}</button>
-                  ))}
-                  <button type="button" onClick={() => {
-                    setMessage("Change last transaction to ");
-                    textareaRef.current?.focus();
-                  }}>Edit a transaction</button>
+                  {scopedAccounts.length === 0 ? (
+                    <>
+                      <button type="button" onClick={() => {
+                        setMessage("Add account named Cash with opening balance ");
+                        textareaRef.current?.focus();
+                      }}>Set up Cash</button>
+                      <button type="button" onClick={() => void processMessage("How do I set up an account?")}>How it works</button>
+                    </>
+                  ) : scopedTransactions.length === 0 ? (
+                    <>
+                      <button type="button" onClick={() => void processMessage("Coffee 180 today")}>Log Coffee 180</button>
+                      <button type="button" onClick={() => void processMessage("Salary 30000")}>Log income</button>
+                      <button type="button" onClick={() => onOpenForm()}>Use the form</button>
+                    </>
+                  ) : (
+                    <>
+                      {STARTER_MESSAGES.map((starter) => (
+                        <button type="button" key={starter} onClick={() => void processMessage(starter)}>{starter}</button>
+                      ))}
+                      <button type="button" onClick={() => {
+                        setMessage("Change last transaction to ");
+                        textareaRef.current?.focus();
+                      }}>Edit a transaction</button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

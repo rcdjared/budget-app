@@ -82,6 +82,16 @@ afterEach(async () => {
 });
 
 describe("Kupi chat action flow", () => {
+  it("shows setup guidance when the profile has no accounts", async () => {
+    await db.delete();
+    await db.open();
+    renderChat();
+
+    expect(await screen.findByText("Welcome! Let’s set up your budget.")).toBeTruthy();
+    expect(screen.getByText("Step 1:", { exact: false })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Set up Cash" })).toBeTruthy();
+  });
+
   it("previews a transaction, commits only after confirmation, and offers undo", async () => {
     await resetDatabase();
     const { send } = renderChat();

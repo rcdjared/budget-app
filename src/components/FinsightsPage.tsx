@@ -6,7 +6,6 @@ import {
   Clock3,
   Landmark,
   MessageCircle,
-  ReceiptText,
   Repeat2,
   TrendingDown,
   TrendingUp,
@@ -838,18 +837,32 @@ export function FinsightsPage({
             </span>
             <span className="spending-pulse__bubble">
               <span className="spending-pulse__speaker">Kupi</span>
-              <span className="spending-pulse__message">{tForLanguage("homeAccountRequired", language)}</span>
+              <span className="spending-pulse__message">
+                {language === "fil"
+                  ? "Magsimula sa Step 1: magdagdag ng account. Pagkatapos, puwede ka nang magtala ng kita at gastos."
+                  : "Start with Step 1: add an account. Then you can log income and expenses."}
+              </span>
             </span>
           </div>
+          <ol className="home-onboarding-steps" aria-label="Getting started">
+            <li className="active"><span>1</span>{language === "fil" ? "Magdagdag ng account" : "Add an account"}</li>
+            <li><span>2</span>{language === "fil" ? "Maglog ng kita o gastos" : "Log income or expense"}</li>
+            <li><span>3</span>{language === "fil" ? "Tingnan ang iyong insights" : "Review your insights"}</li>
+          </ol>
           <button type="button" className="kupit-primary-button" onClick={onAddAccount}>
             {tForLanguage("addAccount", language)}
           </button>
         </section>
       ) : homeHasNoTransactions ? (
         <section className="home-first-record">
-          <ReceiptText size={24} aria-hidden="true" />
-          <h2>{tForLanguage("homeFirstRecordTitle", language)}</h2>
-          <p>{tForLanguage("homeFirstRecordBody", language)}</p>
+          <div className="home-first-record__guide">
+            <span className="home-first-record__mascot"><Kupi mood="calm" size={64} /></span>
+            <span>
+              <b>Kupi</b>
+              <h2>{tForLanguage("homeFirstRecordTitle", language)}</h2>
+              <p>{tForLanguage("homeFirstRecordBody", language)}</p>
+            </span>
+          </div>
           <div className="home-first-record-actions">
             <button type="button" className="kupit-primary-button" onClick={() => onAddTransaction("expense")}>
               {tForLanguage("addExpense", language)}
