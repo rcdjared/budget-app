@@ -655,14 +655,22 @@ function App() {
     );
   }
 
-  const tutorialTarget: "wallet" | "add" | null =
-    tab !== "home" || tutorialAccounts === undefined || tutorialTransactions === undefined
+  const tutorialTarget: "wallet" | "wallet-plus" | "add" | "expense" | null =
+    tutorialAccounts === undefined || tutorialTransactions === undefined
       ? null
-      : tutorialAccounts.length === 0
-        ? "wallet"
-        : tutorialTransactions.length === 0
-          ? "add"
-          : null;
+      : addMenuOpen
+        ? tutorialAccounts.length > 0 && tutorialTransactions.length === 0
+          ? "expense"
+          : null
+        : tutorialAccounts.length === 0
+          ? tab === "wallet"
+            ? "wallet-plus"
+            : tab === "home"
+              ? "wallet"
+              : "wallet"
+          : tutorialTransactions.length === 0
+            ? "add"
+            : null;
   const reduceTutorialMotion =
     loadAppSettings().reduceMotion
     || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -709,7 +717,11 @@ function App() {
             />
           )}
           {tab === "wallet" && (
-            <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />
+            <AccountsPage
+              profileId={profileId}
+              onAdd={() => setAccountOpen(true)}
+              tutorialPlus={tutorialTarget === "wallet-plus"}
+            />
           )}
           {tab === "plan" && (
             <BudgetsPage
@@ -750,7 +762,7 @@ function App() {
             active={tab === item.id || (item.id === "add" && addMenuOpen)}
             collapsed={navCollapsed}
             addMenuOpen={addMenuOpen}
-            tutorialTarget={tutorialTarget === item.id}
+            tutorialTarget={(tutorialTarget === "wallet" && item.id === "wallet") || (tutorialTarget === "add" && item.id === "add")}
             onClick={() => navCollapsed
               ? setNavCollapsed(false)
               : item.id === "add"
@@ -760,25 +772,33 @@ function App() {
         ))}
       </nav>
 
-      {tutorialTarget && (
+      {tutorialTarget && tutorialTarget !== "expense" && (
         <aside
           className={`kupi-nav-tutorial kupi-nav-tutorial--${tutorialTarget}`}
           data-reduce-motion={reduceTutorialMotion}
           aria-live="polite"
-          aria-label={tutorialTarget === "wallet" ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
+          aria-label={tutorialTarget.includes("wallet") ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
         >
           <span className="kupi-nav-tutorial__mascot">
             <Kupi mood="calm" size={70} />
           </span>
           <div className="kupi-nav-tutorial__bubble">
             <span className="kupi-nav-tutorial__speaker">Kupi</span>
-            <b>{tutorialTarget === "wallet" ? "First, add an account" : "Next, add your money"}</b>
+            <b>
+              {tutorialTarget === "wallet" ? "First, tap Wallet"
+                : tutorialTarget === "wallet-plus" ? "Now tap the Plus"
+                : "Next, tap Add"}
+            </b>
             <p>
               {tutorialTarget === "wallet"
-                ? "Tap Wallet below, then open the add button to create your first account."
+                ? "Open Wallet below to create your first account."
+                : tutorialTarget === "wallet-plus"
+                  ? "Use the Plus button to add a wallet, bank, or cash account."
                 : "Tap Add below, then choose Expense or Income for your first transaction."}
             </p>
-            <small>Step {tutorialTarget === "wallet" ? "1" : "2"} of 2</small>
+            <small>
+              {tutorialTarget === "wallet" || tutorialTarget === "wallet-plus" ? "Step 1 of 2" : "Step 2 of 2"}
+            </small>
           </div>
         </aside>
       )}
@@ -786,6 +806,7 @@ function App() {
       {addMenuOpen && (
         <AddActionsMenu
           closing={addMenuClosing}
+          tutorialExpense={tutorialTarget === "expense"}
           onClose={() => closeAddMenu()}
           onAction={(action) => closeAddMenu(() => {
             if (action === "chat") {
@@ -964,10 +985,12 @@ function AddActionsMenu({
   onClose,
   onAction,
   closing,
+  tutorialExpense,
 }: {
   onClose: () => void;
   onAction: (action: AddAction) => void;
   closing: boolean;
+  tutorialExpense: boolean;
 }) {
   const actions: { id: AddAction; label: string; hint: string; icon: typeof Home }[] = [
     { id: "chat", label: "Chat", hint: "Log naturally with your assistant", icon: MessageCircle },
@@ -990,8 +1013,17 @@ function AddActionsMenu({
           <b>Quick actions</b>
           <small>Choose how you want to add something</small>
         </div>
+        {tutorialExpense && (
+          <div className="kupi-add-tutorial" role="status" aria-live="polite">
+            <span className="kupi-add-tutorial__mascot"><Kupi mood="calm" size={58} /></span>
+            <span className="kupi-add-tutorial__bubble">
+              <b>Kupi says: add your first expense</b>
+              <small>Tap Expense below, then enter an amount.</small>
+            </span>
+          </div>
+        )}
         {actions.map(({ id, label, hint, icon: Icon }) => (
-          <button key={id} className="add-menu-item" onClick={() => onAction(id)}>
+          <button key={id} className={`add-menu-item ${tutorialExpense && id === "expense" ? "tutorial-target" : ""}`} onClick={() => onAction(id)}>
             <span className={`add-menu-icon ${id}`}><Icon size={19} /></span>
             <span className="add-menu-copy"><b>{label}</b><small>{hint}</small></span>
             <ChevronRight size={17} className="add-menu-chevron" />
@@ -2263,9 +2295,11 @@ function TransactionsPage({ profileId }: { profileId: string }) {
 function AccountsPage({
   profileId,
   onAdd,
+  tutorialPlus,
 }: {
   profileId: string;
   onAdd: () => void;
+  tutorialPlus: boolean;
 }) {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const accounts = useLiveQuery(
@@ -2383,7 +2417,7 @@ function AccountsPage({
           <p className="eyebrow">My money</p>
           <h1>Wallet</h1>
         </div>
-        <button className="header-action" onClick={onAdd} aria-label="Add account">
+        <button className={`header-action ${tutorialPlus ? "tutorial-target" : ""}`} onClick={onAdd} aria-label="Add account">
           <Plus size={20} />
         </button>
       </header>
