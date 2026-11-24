@@ -3098,6 +3098,73 @@ button {
   -webkit-backdrop-filter: blur(8px);
 }
 
+.startup-notification-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.startup-notification-card {
+  width: min(360px, 100%);
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--primary) 26%, var(--border));
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--card);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.32);
+}
+
+.startup-notification-card > img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 18%, transparent));
+}
+
+.startup-notification-card > span {
+  min-width: 0;
+  align-self: center;
+}
+
+.startup-notification-card b {
+  display: block;
+  font-size: 15px;
+}
+
+.startup-notification-card p {
+  margin: 5px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.startup-notification-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--expense);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.startup-notification-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.startup-notification-actions .save-button {
+  min-height: 46px;
+}
+
+.startup-notification-later {
+  min-height: 40px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .add-sheet,
 .account-sheet,
 .add-menu,

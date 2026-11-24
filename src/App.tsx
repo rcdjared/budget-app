@@ -99,7 +99,7 @@ import { NotificationsSheet } from "@/components/NotificationsSheet";
 import { KupiChatSheet } from "@/components/kupi/KupiChatSheet";
 import type { Mood } from "@/kupi/contracts";
 import { insertDueNotifications } from "@/db/repositories/notifications";
-import { getProfileNotificationPreferences } from "@/db/repositories/profiles";
+import { getProfileNotificationPreferences, updateProfileNotificationPreferences } from "@/db/repositories/profiles";
 import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
 import { loadAppSettings } from "@/lib/settings";
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
@@ -156,6 +156,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsInitialPanel, setNotificationsInitialPanel] = useState<"inbox" | "settings">("inbox");
+  const [notificationPromptOpen, setNotificationPromptOpen] = useState(false);
+  const [notificationPromptMessage, setNotificationPromptMessage] = useState("");
   const [notificationToast, setNotificationToast] = useState("");
   const notificationToastTimerRef = useRef<number | null>(null);
   const [authCallbackNotice, setAuthCallbackNotice] = useState("");
@@ -524,6 +526,28 @@ function App() {
 
   useEffect(() => {
     if (!profileId) return;
+    const askedKey = `kupit-notification-prompt-asked:${profileId}`;
+    if (localStorage.getItem(askedKey) === "true") return;
+    if (!("Notification" in window)) {
+      setNotificationPromptOpen(true);
+      setNotificationPromptMessage("Notifications aren’t supported by this browser. Your in-app reminder inbox will still work.");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      localStorage.setItem(askedKey, "true");
+      void updateProfileNotificationPreferences(profileId, { enabled: true }).catch(console.error);
+      return;
+    }
+    if (Notification.permission === "denied") {
+      localStorage.setItem(askedKey, "true");
+      return;
+    }
+    const timer = window.setTimeout(() => setNotificationPromptOpen(true), 600);
+    return () => window.clearTimeout(timer);
+  }, [profileId]);
+
+  useEffect(() => {
+    if (!profileId) return;
     const processDue = () => {
       if (document.visibilityState === "visible") {
         void processDueRecurringTransactions(profileId, toDateString(new Date())).catch(console.error);
@@ -643,6 +667,46 @@ function App() {
     return () => document.removeEventListener("pointerdown", vibrateSupportedAction);
   }, []);
 
+  const dismissNotificationPrompt = () => {
+    if (profileId) localStorage.setItem(`kupit-notification-prompt-asked:${profileId}`, "true");
+    setNotificationPromptOpen(false);
+    setNotificationPromptMessage("");
+  };
+
+  const enableNotificationsAtStartup = async () => {
+    if (!profileId) return;
+    localStorage.setItem(`kupit-notification-prompt-asked:${profileId}`, "true");
+    if (!("Notification" in window)) {
+      setNotificationPromptMessage("Notifications aren’t supported by this browser. Your in-app reminder inbox will still work.");
+      return;
+    }
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isInstalled = window.matchMedia("(display-mode: standalone)").matches
+      || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    if (isIOS && !isInstalled) {
+      setNotificationPromptMessage("On iPhone, add Kupit to your Home Screen first, then allow notifications.");
+      return;
+    }
+    try {
+      const permission = Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotificationPromptMessage(permission === "denied"
+          ? "Notifications are blocked. Re-enable them in your browser or site settings."
+          : "Notifications weren’t enabled. You can turn them on later in Settings.");
+        return;
+      }
+      await updateProfileNotificationPreferences(profileId, { enabled: true });
+      setNotificationPromptOpen(false);
+      setNotificationPromptMessage("");
+    } catch (error) {
+      console.error("Could not request startup notification permission:", error);
+      setNotificationPromptMessage("Notifications couldn’t be enabled. You can try again in Settings.");
+    }
+  };
+
   if (!profileId) {
     return (
       <main className="grid h-dvh place-items-center bg-background">
@@ -679,6 +743,27 @@ function App() {
     <main className="app-shell">
       {!online && (
         <div className="offline-banner">Offline — changes remain saved on this device</div>
+      )}
+
+      {notificationPromptOpen && (
+        <div className="sheet-backdrop startup-notification-backdrop" role="dialog" aria-modal="true" aria-label="Enable notifications">
+          <section className="startup-notification-card">
+            <img src="/icons/idle.png" alt="Kupi" />
+            <span>
+              <b>Stay on top of your money</b>
+              <p>Allow Kupit to notify you about budgets, reminders, due items, and daily check-ins.</p>
+              {notificationPromptMessage && <small role="alert">{notificationPromptMessage}</small>}
+            </span>
+            <div className="startup-notification-actions">
+              <button type="button" className="save-button" onClick={() => void enableNotificationsAtStartup()}>
+                Enable notifications
+              </button>
+              <button type="button" className="startup-notification-later" onClick={dismissNotificationPrompt}>
+                Not now
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       <div className="page-scroll" ref={scrollRef}>
