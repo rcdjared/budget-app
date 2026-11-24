@@ -154,6 +154,7 @@ function App() {
   const [chatInitialMood, setChatInitialMood] = useState<Mood>("idle");
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialDetail, setSettingsInitialDetail] = useState<"kupi" | null>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsInitialPanel, setNotificationsInitialPanel] = useState<"inbox" | "settings">("inbox");
   const [notificationPromptOpen, setNotificationPromptOpen] = useState(false);
@@ -489,6 +490,17 @@ function App() {
   const [online, setOnline] = useState(navigator.onLine);
   useRegisterSW({ immediate: true });
   useSheetGestures();
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.getRegistrations().then((registrations) =>
+      Promise.all(registrations
+        .filter(({ active, waiting, installing }) => [active, waiting, installing]
+          .some((worker) => worker?.scriptURL.includes("dev-sw")))
+        .map((registration) => registration.unregister()))
+    );
+    if (typeof caches !== "undefined") void caches.delete("kupi-optional-nlu-runtime-v1");
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -945,6 +957,7 @@ function App() {
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         onOpenForm={() => { setFormInitialType("expense"); setChatOpen(false); setAddOpen(true); }}
+        onOpenKupiSettings={() => { setSettingsInitialDetail("kupi"); setSettingsOpen(true); }}
         profileId={profileId}
         initialMessage={chatInitialMessage}
         initialMood={chatInitialMood}
@@ -960,7 +973,8 @@ function App() {
 
       <KupitSettingsSheet
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        initialDetail={settingsInitialDetail}
+        onClose={() => { setSettingsOpen(false); setSettingsInitialDetail(null); }}
         profileId={profileId}
         themePreference={themePreference}
         onThemeChange={setThemePreference}

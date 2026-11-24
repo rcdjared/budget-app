@@ -13,7 +13,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icons/apple-touch-icon.png"],
       devOptions: {
-        enabled: true,
+        enabled: false,
       },
       workbox: {
         navigateFallback: "/index.html",
