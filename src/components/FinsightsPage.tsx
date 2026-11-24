@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
-  CircleDollarSign,
   ChevronDown,
   Clock3,
   Landmark,
-  ReceiptText,
   Repeat2,
   TrendingDown,
   TrendingUp,
@@ -36,6 +34,8 @@ import type {
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { Kupi } from "@/features/spending-pulse/Kupi";
 import { SpendingPulse } from "@/features/spending-pulse/SpendingPulse";
+import { computeKupiNudge, type KupiNudge } from "@/kupi/nudges/computeKupiNudge";
+import type { Mood } from "@/kupi/contracts";
 
 interface FinsightsPageProps {
   profileId: string;
@@ -50,17 +50,82 @@ interface FinsightsPageProps {
   onOpenRecurring: () => void;
   onOpenFriends: () => void;
   onOpenBudget: () => void;
+  onOpenKupi: (message: string, mood: Mood) => void;
 }
 
-type SectionId = "netBalance" | "totals" | "insight" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
+type SectionId = "netBalance" | "totals" | "trend" | "categories" | "budgets" | "upcoming" | "recent";
 
 const DEFAULT_SECTION_ORDER: SectionId[] = [
-  "insight",
   "categories",
   "budgets",
   "upcoming",
   "recent",
 ];
+
+function messageForNudge(
+  nudge: KupiNudge,
+  categoryName: string | undefined,
+  formatProfileMoney: (amount: number) => string,
+  language: "en" | "fil",
+): string {
+  const category = categoryName || (language === "fil" ? "Kategorya" : "A category");
+  if (nudge.id.startsWith("budget-total-")) {
+    const period = nudge.facts.period;
+    const periodLabel = period === "daily" ? (language === "fil" ? "araw-araw" : "daily")
+      : period === "weekly" ? (language === "fil" ? "lingguhan" : "weekly")
+        : period === "biweekly" ? (language === "fil" ? "kada dalawang linggo" : "biweekly")
+          : period === "annual" ? (language === "fil" ? "taunan" : "annual")
+            : (language === "fil" ? "buwanan" : "monthly");
+    const spent = Number(nudge.facts.spentCentavos);
+    const limit = Number(nudge.facts.budgetCentavos);
+    const remaining = Math.max(0, limit - spent);
+    const percent = Number(nudge.facts.percent);
+    const daysLeft = Number(nudge.facts.daysLeft);
+    if (nudge.id.startsWith("budget-total-exceeded:")) {
+      const overBy = formatProfileMoney(spent - limit);
+      return language === "fil"
+        ? `Lampas na nang ${overBy} ang pinagsamang ${periodLabel} budget mo (${percent}% ang nagamit). Gusto mo bang suriin ang mga gastos?`
+        : `You've gone ${overBy} over your combined ${periodLabel} budgets (${percent}% used). Want to review your spending?`;
+    }
+    return language === "fil"
+      ? `Nagamit na ang ${percent}% ng pinagsamang ${periodLabel} budget mo${period === "daily" ? " ngayong araw" : ` at ${daysLeft} araw pa sa cycle`}. May ${formatProfileMoney(remaining)} pang natitira. Tingnan natin kung ano ang nagtutulak sa gastos?`
+      : `You've used ${percent}% of your combined ${periodLabel} budgets${period === "daily" ? " today" : ` with ${daysLeft} days left`}, with ${formatProfileMoney(remaining)} remaining. Want to see what's driving spending?`;
+  }
+  if (nudge.id.startsWith("budget-exceeded:")) {
+    return language === "fil"
+      ? `${category} ay lampas na sa budget sa ${nudge.facts.percent}%. Gusto mo bang suriin ang gastos?`
+      : `${category} is over budget at ${nudge.facts.percent}%. Want to review your spending?`;
+  }
+  if (nudge.id.startsWith("budget-pacing:")) {
+    return language === "fil"
+      ? `${category} ay gumamit na ng ${nudge.facts.percent}% ng budget kahit ${nudge.facts.daysLeft} araw pa ang natitira. Suriin natin?`
+      : `${category} has used ${nudge.facts.percent}% of its budget with ${nudge.facts.daysLeft} days left. Want to check the pace?`;
+  }
+  if (nudge.id.startsWith("micro-spend:")) {
+    return language === "fil"
+      ? `Nakapagtala ka ng ${nudge.facts.microSpendCount} maliliit na gastos na wala pang ${formatProfileMoney(5_000)} ngayong araw. Silipin natin?`
+      : `You logged ${nudge.facts.microSpendCount} small expenses under ${formatProfileMoney(5_000)} today. Want a quick spending check?`;
+  }
+  if (nudge.id.startsWith("daily-safe-to-spend:")) {
+    return language === "fil"
+      ? `May humigit-kumulang ${formatProfileMoney(Number(nudge.facts.dailySafeToSpendCentavos))} kada araw na natitira sa mga aktibong budget. Gusto mo bang tingnan?`
+      : `About ${formatProfileMoney(Number(nudge.facts.dailySafeToSpendCentavos))} per day remains across your active budgets. Want to review the details?`;
+  }
+  if (nudge.id.startsWith("zero-spend-streak:")) {
+    return language === "fil"
+      ? `${nudge.facts.streakDays}-araw nang walang gastos. Aprubado ni Kupi—ituloy natin?`
+      : `A ${nudge.facts.streakDays}-day no-spend streak. Kupi approves—want to keep it going?`;
+  }
+  return language === "fil"
+    ? "Wala pang naitatala ngayong araw. May gusto ka bang idagdag o itanong?"
+    : "Nothing logged today yet. Want to track an expense or ask me something?";
+}
+
+function kupiMascotMood(mood: Mood): "calm" | "smug" | "shook" {
+  if (mood === "happy") return "smug";
+  if (mood === "worried") return "shook";
+  return "calm";
+}
 
 function matchesAccount(transaction: Transaction, accountId: string) {
   if (accountId === "all") return true;
@@ -85,6 +150,7 @@ export function FinsightsPage({
   onOpenRecurring,
   onOpenFriends,
   onOpenBudget,
+  onOpenKupi,
 }: FinsightsPageProps) {
   const language = loadAppSettings().language;
   const [selectedAccountId, setSelectedAccountId] = useState("all");
@@ -132,6 +198,8 @@ export function FinsightsPage({
       // Keep defaults for malformed settings.
     }
   }
+  const reduceMotionActive = sectionSettings.reduceMotion
+    || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const hiddenSections = new Set(sectionSettings.homeSections);
   const sectionOrder = ((sectionSettings.homeSectionOrder || DEFAULT_SECTION_ORDER) as string[])
     .filter((section): section is SectionId => DEFAULT_SECTION_ORDER.includes(section as SectionId));
@@ -158,7 +226,7 @@ export function FinsightsPage({
 
   const filteredTxs = useLiveQuery(
     () => {
-      if (!["netBalance", "totals", "insight", "trend", "categories"].some((section) => hiddenSections.has(section as SectionId))) {
+      if (!["netBalance", "totals", "trend", "categories"].some((section) => hiddenSections.has(section as SectionId))) {
         return Promise.resolve([] as Transaction[]);
       }
       return db.transactions
@@ -173,7 +241,7 @@ export function FinsightsPage({
 
   const previousTxs = useLiveQuery(
     () => {
-      if (hiddenSections.has("totals") || hiddenSections.has("insight") || hiddenSections.has("categories")) {
+      if (hiddenSections.has("totals") || hiddenSections.has("categories")) {
         return db.transactions
           .where("[profileId+date]")
           .between([profileId, range.comparableStart], [profileId, range.comparableEnd], true, true)
@@ -187,17 +255,13 @@ export function FinsightsPage({
   );
 
   const budgets = useLiveQuery(
-    () => hiddenSections.has("budgets")
-      ? profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray()
-      : Promise.resolve([] as Budget[]),
-    [profileId, hiddenSections.has("budgets")],
+    () => profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray(),
+    [profileId],
     [] as Budget[]
   );
   const budgetTransactions = useLiveQuery(
-    () => hiddenSections.has("budgets")
-      ? profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray()
-      : Promise.resolve([] as Transaction[]),
-    [profileId, hiddenSections.has("budgets")],
+    () => profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray(),
+    [profileId],
     [] as Transaction[]
   );
 
@@ -373,6 +437,22 @@ export function FinsightsPage({
       .slice(0, 3),
     [budgets, budgetTransactions]
   );
+  const kupiNudges = useMemo(
+    () => computeKupiNudge(budgetTransactions, budgets, now),
+    [budgetTransactions, budgets, now],
+  );
+  const kupiNudge = kupiNudges[0];
+  const kupiNudgeCategory = kupiNudge?.facts.categoryId
+    ? categories.find(({ id }) => id === kupiNudge.facts.categoryId)?.name
+    : undefined;
+  const kupiNudgeMessage = kupiNudge
+    ? messageForNudge(kupiNudge, kupiNudgeCategory, formatProfileMoney, language)
+    : insightCandidates[0]?.text
+      || (language === "fil"
+        ? "Ang tala mo ay maayos. Gusto mo bang tingnan kung saan ka maganda makatipid?"
+        : "Your money picture looks steady. Want to see where you can save next?");
+  const kupiInsightMood: Mood = kupiNudge?.mood
+    ?? (insightCandidates[0]?.kind === "budget" ? "worried" : insightCandidates[0] ? "happy" : "idle");
 
   const upcomingItems = useMemo(() => {
     if (!hiddenSections.has("upcoming")) return [];
@@ -468,24 +548,6 @@ export function FinsightsPage({
             </div>
           )}
         </section>
-      );
-    }
-    if (sectionId === "insight") {
-      if (filteredTxs.length < 3 || !insightCandidates.length) return null;
-      const insight = insightCandidates[0];
-      return (
-        <button
-          type="button"
-          className="home-insight-card"
-          key={sectionId}
-          onClick={() => {
-            if (insight.kind === "budget") onOpenBudget();
-            else openHistory(insight.categoryId);
-          }}
-        >
-          <CircleDollarSign size={18} />
-          <span>{insight.text}</span>
-        </button>
       );
     }
     if (sectionId === "trend") {
@@ -732,23 +794,12 @@ export function FinsightsPage({
   return (
     <div className="home-dashboard" aria-busy={!homeIsLoaded}>
       {!homeIsLoaded ? null : accounts.length === 0 ? (
-        <section className="home-account-onboarding">
-          <div className="home-account-onboarding__message">
-            <span className="home-account-onboarding__mascot">
-              <Kupi mood="calm" size={76} />
-            </span>
-            <span className="spending-pulse__bubble">
-              <span className="spending-pulse__speaker">Kupi</span>
-              <span className="spending-pulse__message">{tForLanguage("homeAccountRequired", language)}</span>
-            </span>
-          </div>
-          <button type="button" className="kupit-primary-button" onClick={onAddAccount}>
-            {tForLanguage("addAccount", language)}
-          </button>
-        </section>
+        null
       ) : homeHasNoTransactions ? (
-        <section className="home-first-record">
-          <ReceiptText size={24} aria-hidden="true" />
+        <section
+          className="home-first-record"
+          data-reduce-motion={reduceMotionActive}
+        >
           <h2>{tForLanguage("homeFirstRecordTitle", language)}</h2>
           <p>{tForLanguage("homeFirstRecordBody", language)}</p>
           <div className="home-first-record-actions">
@@ -762,10 +813,30 @@ export function FinsightsPage({
         </section>
       ) : (
         <>
+          <section className="kupi-home-nudge" data-reduce-motion={reduceMotionActive} aria-label="Kupi insight">
+              <button
+                type="button"
+                className="spending-pulse__mascot-wrap kupi-home-nudge__mascot"
+                onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)}
+                aria-label="Tap Kupi to ask about this insight"
+                title="Tap to ask Kupi"
+              >
+                <Kupi mood={kupiMascotMood(kupiInsightMood)} size={84} />
+              </button>
+              <button
+                type="button"
+                className="spending-pulse__bubble kupi-home-nudge__bubble"
+                onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)}
+                aria-label="Tap Kupi chatbox to ask about this insight"
+              >
+                <span className="spending-pulse__speaker">Kupi · Tap me to ask</span>
+                <span className="spending-pulse__message">{kupiNudgeMessage}</span>
+              </button>
+            </section>
           <SpendingPulse
             profileId={profileId}
             accountId={selectedAccountId}
-            accountFilter={accountFilter}
+            accountFilter={null}
             period={period}
             onPeriodChange={setPeriod}
             budgetCycleStartDay={sectionSettings.budgetCycleStartDay}

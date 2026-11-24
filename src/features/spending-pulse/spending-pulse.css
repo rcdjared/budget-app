@@ -10,7 +10,7 @@
   --pulse-bubble: color-mix(in srgb, var(--card) 88%, var(--primary) 12%);
   --pulse-bubble-border: color-mix(in srgb, var(--primary) 22%, var(--border));
   display: grid;
-  gap: 8px;
+  gap: 0;
   width: 100%;
   min-width: 0;
   color: var(--pulse-text);
@@ -213,6 +213,7 @@
 .spending-pulse__insight-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   min-width: 0;
   min-height: 62px;
@@ -352,14 +353,137 @@
   -webkit-line-clamp: 3;
 }
 
+.kupi-home-nudge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 84px;
+  margin: 0 0 -10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.12));
+}
+
+.kupi-home-nudge .spending-pulse__bubble {
+  min-height: 64px;
+  height: 64px;
+  padding: 8px 12px;
+}
+
+.kupi-home-nudge .spending-pulse__mascot-wrap {
+  flex-basis: 84px;
+  width: 84px;
+  height: 84px;
+  z-index: 2;
+}
+
+.kupi-home-nudge .spending-pulse__mascot {
+  width: 84px;
+  height: 84px;
+}
+
+.kupi-home-nudge__bubble {
+  position: relative;
+  z-index: 1;
+  border: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-radius: 16px 16px 16px 5px;
+  background: var(--card);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kupi-home-nudge__bubble::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 28px;
+  width: 10px;
+  height: 10px;
+  border-left: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-bottom: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  background: var(--card);
+  transform: rotate(45deg);
+}
+
+.kupi-home-nudge__bubble:focus-visible {
+  outline: 2px solid var(--pulse-green);
+  outline-offset: 3px;
+}
+
+.kupi-home-nudge__mascot {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  animation: kupi-home-float 3.2s ease-in-out infinite;
+}
+
+@keyframes kupi-home-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+.kupi-home-nudge__mascot:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid var(--pulse-green);
+  outline-offset: 3px;
+}
+
+.kupi-home-nudge__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.kupi-home-nudge__open,
+.kupi-home-nudge__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.kupi-home-nudge__open {
+  gap: 5px;
+  padding: 0 10px;
+  background: var(--pulse-green);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.kupi-home-nudge__dismiss {
+  width: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--pulse-muted);
+}
+
+.kupi-home-nudge__open:focus-visible,
+.kupi-home-nudge__dismiss:focus-visible {
+  outline: 2px solid var(--pulse-green);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .spending-pulse-widget * {
+  .spending-pulse-widget *,
+  .kupi-home-nudge * {
     animation: none !important;
     transition: none !important;
   }
 }
 
-.spending-pulse-widget[data-reduce-motion="true"] * {
+.spending-pulse-widget[data-reduce-motion="true"] *,
+.kupi-home-nudge[data-reduce-motion="true"] * {
   animation: none !important;
   transition: none !important;
 }
@@ -373,6 +497,17 @@
 
   .spending-pulse__insight-row {
     gap: 6px;
+  }
+
+  .kupi-home-nudge {
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .kupi-home-nudge__open {
+    gap: 3px;
+    padding: 0 7px;
+    font-size: 10px;
   }
 
   .spending-pulse__summary {

@@ -52,9 +52,9 @@ describe("natural-language transaction parser", () => {
   });
 
   it("recognizes category hints", () => {
-    expect(parseTransactionPhrase("Starbucks 250", accounts, today).categoryHint).toBe("Food & Dining");
-    expect(parseTransactionPhrase("Puregold 2k", accounts, today).categoryHint).toBe("Groceries");
-    expect(parseTransactionPhrase("Grab 500", accounts, today).categoryHint).toBe("Transportation");
+    expect(parseTransactionPhrase("Starbucks 250", accounts, today).categoryHint).toBe("Food");
+    expect(parseTransactionPhrase("Puregold 2k", accounts, today).categoryHint).toBe("Food");
+    expect(parseTransactionPhrase("Grab 500", accounts, today).categoryHint).toBe("Transport");
   });
 
   it("recognizes relative and weekday dates", () => {

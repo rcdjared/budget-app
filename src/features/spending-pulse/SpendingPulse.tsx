@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { formatSpendingDate } from "./periods";
-import { Kupi } from "./Kupi";
 import { useSpendingPulse } from "./useSpendingPulse";
 import type { SpendingPulseLanguage, SpendingPulsePeriod, SpendingPulseTone } from "./types";
 import "./spending-pulse.css";
@@ -150,24 +149,11 @@ export function SpendingPulse({
       aria-label="Spending Pulse"
       data-reduce-motion={reduceMotionActive}
     >
-      <div className="spending-pulse__insight-row">
-        <div
-          role="group"
-          className="spending-pulse__insight"
-          aria-label="Kupi spending insight"
-        >
-          <span className="spending-pulse__mascot-wrap">
-            <Kupi mood={insight?.mood ?? "calm"} size={48} />
-          </span>
-          <span className="spending-pulse__bubble">
-            <span className="spending-pulse__speaker">Kupi</span>
-            <span className="spending-pulse__message" aria-live="polite">
-              {insight?.text || (language === "fil" ? "Mag-ingat sa gastos at patuloy na magtala." : "Keep an eye on spending and keep tracking.")}
-            </span>
-          </span>
+      {accountFilter ? (
+        <div className="spending-pulse__insight-row">
+          {accountFilter}
         </div>
-        {accountFilter}
-      </div>
+      ) : null}
 
       <div className="spending-pulse">
         <div className="spending-pulse__tabs-shell">

@@ -333,7 +333,19 @@ button {
 
 .home-account-onboarding__mascot {
   flex: 0 0 76px;
-  filter: drop-shadow(0 6px 9px color-mix(in srgb, var(--foreground) 14%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+  filter: drop-shadow(0 10px 12px color-mix(in srgb, var(--primary) 22%, transparent));
+}
+
+.home-account-onboarding__message .spending-pulse__bubble {
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.home-account-onboarding__message .spending-pulse__bubble::before {
+  top: 23px;
 }
 
 .home-account-onboarding > button {
@@ -341,19 +353,130 @@ button {
   min-height: 44px;
 }
 
+.home-onboarding-steps {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-onboarding-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 7px 10px;
+  color: var(--muted-foreground);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.home-onboarding-steps li.active {
+  border-color: color-mix(in oklch, var(--primary) 40%, var(--border));
+  color: var(--foreground);
+}
+
+.home-onboarding-steps li span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.home-onboarding-steps li.active span {
+  background: var(--primary);
+  color: #fff;
+}
+
 .home-first-record {
   display: grid;
   justify-items: center;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-  padding: 22px 18px;
+  padding: 12px 8px 18px;
   text-align: center;
 }
 
 .home-first-record > svg { color: var(--primary); }
 .home-first-record h2 { margin: 0; font-size: 18px; }
+.home-first-record__guide {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.home-first-record__guide > span:last-child {
+  min-width: 0;
+}
+
+.home-first-record__guide > span:last-child > b {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--primary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.home-first-record__mascot {
+  flex: 0 0 64px;
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+  filter: drop-shadow(0 10px 12px color-mix(in srgb, var(--primary) 22%, transparent));
+}
+
+.home-first-record__guide {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.home-first-record__bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--pulse-bubble-border, var(--border));
+  border-radius: 16px;
+  background: var(--pulse-bubble, var(--card));
+  padding: 12px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.home-first-record__bubble::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  left: -6px;
+  width: 10px;
+  height: 10px;
+  border-left: 1px solid var(--pulse-bubble-border, var(--border));
+  border-bottom: 1px solid var(--pulse-bubble-border, var(--border));
+  background: var(--pulse-bubble, var(--card));
+  transform: rotate(45deg);
+}
+
+.home-account-onboarding[data-reduce-motion="true"] .home-account-onboarding__mascot,
+.home-first-record[data-reduce-motion="true"] .home-first-record__mascot {
+  animation: none;
+}
+
+@keyframes kupi-guide-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
 .home-first-record p {
   max-width: 34ch;
   margin: 0;
@@ -451,20 +574,6 @@ button {
   align-items: center;
   gap: 12px;
   text-align: center;
-}
-
-.home-insight-card {
-  min-height: 44px;
-  display: grid;
-  grid-template-columns: 44px 1fr;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--muted);
-  color: var(--foreground);
-  padding: 8px 12px 8px 8px;
-  text-align: left;
 }
 
 .home-trend-card {
@@ -2356,6 +2465,227 @@ button {
   font-weight: 750;
 }
 
+.nav-item.tutorial-target {
+  color: var(--primary);
+}
+
+.nav-item.tutorial-target::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -7px -10px;
+  border: 2px solid color-mix(in oklch, var(--primary) 78%, white);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 5px color-mix(in oklch, var(--primary) 14%, transparent),
+    0 8px 18px color-mix(in oklch, var(--primary) 18%, transparent);
+  animation: kupi-tutorial-pulse 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.header-action.tutorial-target {
+  position: relative;
+  color: var(--primary-foreground, #fff);
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 14%, transparent);
+  animation: none;
+}
+
+.wallet-plus-tutorial {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: -4px 0 12px;
+  pointer-events: none;
+}
+
+.wallet-plus-tutorial__mascot {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 22%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+}
+
+.wallet-plus-tutorial__bubble {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-radius: 16px 16px 5px 16px;
+  padding: 8px 10px;
+  background: var(--card);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.wallet-plus-tutorial__bubble > span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--primary);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wallet-plus-tutorial__bubble b {
+  display: block;
+  font-size: 12px;
+}
+
+.wallet-plus-tutorial__bubble p {
+  margin: 3px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.wallet-plus-tutorial__bubble small {
+  display: block;
+  margin-top: 5px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.wallet-plus-tutorial[data-reduce-motion="true"] .wallet-plus-tutorial__mascot {
+  animation: none;
+}
+
+.kupi-add-tutorial {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 2px 8px 6px;
+  pointer-events: none;
+}
+
+.kupi-add-tutorial__mascot {
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 22%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+}
+
+.kupi-add-tutorial[data-reduce-motion="true"] .kupi-add-tutorial__mascot {
+  animation: none;
+}
+
+.add-menu-item.tutorial-target {
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 12%, transparent);
+}
+
+.kupi-nav-tutorial {
+  position: fixed;
+  z-index: 29;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  left: 50%;
+  width: min(280px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.kupi-nav-tutorial--add {
+  left: auto;
+  right: 12px;
+  width: min(300px, calc(100vw - 24px));
+  flex-direction: row-reverse;
+  transform: none;
+}
+
+.kupi-nav-tutorial--add .kupi-nav-tutorial__bubble::after {
+  right: -6px;
+  left: auto;
+  border-right: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-left: 0;
+  transform: rotate(-45deg);
+}
+
+.kupi-nav-tutorial__mascot {
+  width: 84px;
+  height: 84px;
+  flex: 0 0 84px;
+  filter: drop-shadow(0 9px 12px color-mix(in srgb, var(--primary) 24%, transparent));
+  animation: kupi-guide-float 3.2s ease-in-out infinite;
+}
+
+.kupi-nav-tutorial__bubble {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-radius: 16px 16px 16px 5px;
+  padding: 10px 12px;
+  background: var(--card);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.kupi-nav-tutorial__bubble::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  bottom: 18px;
+  width: 10px;
+  height: 10px;
+  border-left: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  border-bottom: 1px solid color-mix(in oklch, var(--primary) 28%, var(--border));
+  background: var(--card);
+  transform: rotate(45deg);
+}
+
+.kupi-nav-tutorial__speaker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kupi-nav-tutorial__bubble b {
+  display: block;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.kupi-nav-tutorial__bubble p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.kupi-nav-tutorial__bubble small {
+  display: block;
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.kupi-nav-tutorial[data-reduce-motion="true"] .kupi-nav-tutorial__mascot,
+.bottom-nav[data-reduce-motion="true"] .nav-item.tutorial-target::before {
+  animation: none;
+}
+
+@keyframes kupi-tutorial-pulse {
+  50% {
+    opacity: 0.72;
+    transform: scale(1.06);
+  }
+}
+
 .nav-item svg {
   transition: transform 300ms cubic-bezier(.22,1,.36,1);
 }
@@ -2455,6 +2785,14 @@ button {
   .add-menu-overlay.is-closing,
   .add-menu.is-closing {
     animation-duration: 1ms !important;
+  }
+
+  .wallet-plus-tutorial__mascot {
+    animation: none !important;
+  }
+
+  .kupi-add-tutorial__mascot {
+    animation: none !important;
   }
 }
 
@@ -2817,6 +3155,73 @@ button {
   -webkit-backdrop-filter: blur(8px);
 }
 
+.startup-notification-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.startup-notification-card {
+  width: min(360px, 100%);
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--primary) 26%, var(--border));
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--card);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.32);
+}
+
+.startup-notification-card > img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--primary) 18%, transparent));
+}
+
+.startup-notification-card > span {
+  min-width: 0;
+  align-self: center;
+}
+
+.startup-notification-card b {
+  display: block;
+  font-size: 15px;
+}
+
+.startup-notification-card p {
+  margin: 5px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.startup-notification-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--expense);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.startup-notification-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.startup-notification-actions .save-button {
+  min-height: 46px;
+}
+
+.startup-notification-later {
+  min-height: 40px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .add-sheet,
 .account-sheet,
 .add-menu,
@@ -2885,30 +3290,31 @@ button {
 }
 
 .chat-heading {
+  min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   text-align: left;
 }
 
+.chat-heading > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-heading b {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .chat-heading small {
+  max-width: 220px;
+  overflow: hidden;
   color: var(--muted-foreground);
   font-size: 11px;
-}
-
-.chat-form-shortcut {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  color: var(--primary);
-  background: var(--card);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-screen .sheet-header {
@@ -2942,6 +3348,52 @@ button {
   display: flex;
   gap: 10px;
   align-self: flex-start;
+}
+
+.chat-turn {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chat-turn.assistant {
+  justify-content: flex-start;
+}
+
+.chat-turn.user {
+  justify-content: flex-end;
+}
+
+.chat-kupi-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  object-fit: contain;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 4px 7px color-mix(in srgb, var(--foreground) 12%, transparent));
+}
+
+.chat-turn.assistant .chat-message,
+.chat-turn.assistant .assistant-message {
+  max-width: calc(88% - 50px);
+}
+
+.chat-turn.assistant .assistant-message {
+  display: block;
+}
+
+.chat-turn.assistant .assistant-message > b {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.chat-turn.assistant > .kupi-action-card,
+.chat-turn.assistant > .kupi-candidate-chips,
+.chat-turn.assistant > .kupi-confirm-card,
+.chat-turn.assistant > section {
+  width: min(calc(100% - 50px), 460px);
+  max-width: 460px;
 }
 
 .assistant-message p {
@@ -3139,6 +3591,361 @@ button {
   padding-left: 14px;
   color: var(--muted-foreground);
   font-size: 10px;
+}
+
+.kupi-chat-screen {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+
+.sheet-header.kupi-chat-header {
+  min-height: 68px;
+  gap: 8px;
+  grid-template-columns: 38px minmax(0, 1fr) max-content;
+  padding-top: env(safe-area-inset-top);
+}
+
+.kupi-chat-guide-toggle {
+  display: inline-flex !important;
+  width: 38px !important;
+  min-width: 38px;
+  height: 38px !important;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  color: var(--foreground) !important;
+  background: var(--card) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kupi-chat-guide {
+  flex: none;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.kupi-chat-guide-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kupi-chat-guide-heading b {
+  font-size: 15px;
+}
+
+.kupi-chat-guide-heading p,
+.kupi-chat-guide-note {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.kupi-chat-guide-heading > button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--foreground);
+  background: var(--card);
+}
+
+.kupi-chat-guide-sections {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.kupi-chat-guide-sections h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.kupi-chat-guide-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kupi-chat-guide-examples button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 6px 10px;
+  color: var(--foreground);
+  background: var(--card);
+  font-size: 12px;
+  text-align: left;
+}
+
+.kupi-chat-guide-note {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.kupi-chat-backdrop {
+  bottom: auto;
+}
+
+.kupi-chat-avatar {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.kupi-chat-avatar-thinking {
+  animation: kupi-think 1.2s ease-in-out infinite;
+}
+
+.kupi-chat-composer {
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+
+.kupi-chat-composer textarea {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.kupi-chat-composer .kupi-voice-button {
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  background: var(--card);
+}
+
+.kupi-chat-composer .kupi-voice-button.is-listening {
+  border-color: color-mix(in oklch, #ef4444 45%, var(--border));
+  color: #dc2626;
+  background: color-mix(in oklch, #ef4444 10%, var(--card));
+}
+
+.kupi-chat-composer .kupi-voice-button:disabled {
+  opacity: 0.45;
+}
+
+.kupi-chat-composer > small {
+  font-size: 11px;
+}
+
+.kupi-chat-composer .kupi-voice-status {
+  color: var(--muted-foreground);
+}
+
+.kupi-starter-chips button,
+.kupi-candidate-chips button {
+  min-height: 38px;
+  font-size: 14px;
+}
+
+.kupi-candidate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 8px;
+  max-width: min(92%, 460px);
+}
+
+.kupi-candidate-chips button {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px 12px;
+  color: var(--primary);
+  background: var(--card);
+  text-align: left;
+}
+
+.kupi-action-card {
+  display: grid;
+  gap: 10px;
+  width: min(92%, 460px);
+  align-self: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--card);
+}
+
+.kupi-action-card article {
+  padding: 12px;
+  border-radius: 13px;
+  background: var(--background);
+}
+
+.kupi-action-card h3 {
+  margin: 0 0 9px;
+  font-size: 14px;
+}
+
+.kupi-action-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.kupi-action-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.kupi-action-card dt {
+  color: var(--muted-foreground);
+}
+
+.kupi-action-card dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.kupi-inline-edit {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.kupi-inline-edit label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.kupi-inline-edit input,
+.kupi-inline-edit select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--foreground);
+  background: var(--card);
+}
+
+.kupi-delete-card {
+  border: 1px solid color-mix(in oklch, #dc2626 35%, var(--border));
+}
+
+.kupi-delete-card p,
+.kupi-action-warning {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.kupi-action-warning {
+  color: #a16207;
+}
+
+.kupi-action-buttons {
+  display: grid;
+  gap: 4px;
+}
+
+.kupi-action-buttons .save-button {
+  min-height: 46px;
+}
+
+.kupi-action-buttons .chat-clear-learning {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.kupi-undo-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(92%, 460px);
+  align-self: flex-start;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  font-size: 13px;
+}
+
+.kupi-undo-toast button {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  font-weight: 700;
+}
+
+.kupi-chat-error {
+  align-self: flex-start;
+  max-width: min(92%, 460px);
+  margin: 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.kupi-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  color: var(--muted-foreground);
+}
+
+.kupi-typing-indicator img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.kupi-typing-indicator span {
+  display: flex;
+  gap: 3px;
+}
+
+.kupi-typing-indicator i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: kupi-dot 1s ease-in-out infinite;
+}
+
+.kupi-typing-indicator i:nth-child(2) { animation-delay: 120ms; }
+.kupi-typing-indicator i:nth-child(3) { animation-delay: 240ms; }
+
+.kupi-typing-indicator small {
+  font-size: 12px;
+}
+
+@keyframes kupi-think {
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes kupi-dot {
+  50% { opacity: 0.3; transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kupi-chat-avatar-thinking,
+  .kupi-typing-indicator i,
+  .home-account-onboarding__mascot,
+  .home-first-record__mascot {
+    animation: none;
+  }
 }
 
 .sheet-grabber {
@@ -5825,11 +6632,14 @@ button {
   .bottom-nav[data-active-tab="wallet"]::after { --active-offset: -86px; }
   .bottom-nav[data-active-tab="history"]::after { --active-offset: 86px; }
   .bottom-nav[data-active-tab="add"]::after { --active-offset: 172px; }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-nav.nav-entering::before,
   .bottom-nav.nav-entering .nav-item { animation: none !important; }
+  .nav-item.tutorial-target::before,
+  .kupi-nav-tutorial__mascot { animation: none !important; }
   .bottom-nav::before { transition: opacity 120ms ease, background-color 120ms ease; }
   .bottom-nav::after { transition: opacity 120ms ease; }
   .nav-item { transition: opacity 120ms ease, color 120ms ease, background 120ms ease; }

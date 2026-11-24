@@ -18,7 +18,19 @@ export default defineConfig({
       workbox: {
         navigateFallback: "/index.html",
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        globIgnores: ["**/*worker-*.js", "**/ort-wasm-*.wasm", "**/lib-*.js", "**/resolve-*.js", "**/capability-*.js", "**/embedder-*.js", "**/intentIndex-*.js", "**/llmParser-*.js"],
         cleanupOutdatedCaches: true,
+        runtimeCaching: [
+          {
+            urlPattern: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith("/assets/")
+              && (/\.wasm$/u.test(url.pathname) || /(?:worker-|lib-|resolve-|capability-|embedder-|intentIndex-|llmParser-)[^/]+\.js$/u.test(url.pathname)),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "kupi-optional-nlu-runtime-v1",
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+        ],
       },
       manifest: {
         name: "Kupit",
@@ -49,6 +61,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

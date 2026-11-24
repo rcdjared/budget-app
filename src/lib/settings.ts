@@ -29,6 +29,10 @@ export interface AppSettings {
   quickActions: string[];
   includeFriendReceivables: boolean;
   notifications: NotificationPreferences;
+  kupiPersonality: "chill" | "classic" | "dramatic";
+  kupiSmartAssist?: boolean;
+  kupiSmartMode?: boolean;
+  kupiSmartModelSize?: "0.6B" | "1.7B";
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -62,11 +66,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shakeToUndo: false,
   biometricUnlock: false,
   cloudBackup: false,
-  homeSections: ["insight", "categories", "budgets", "upcoming", "recent"],
-  homeSectionOrder: ["insight", "categories", "budgets", "upcoming", "recent"],
+  homeSections: ["categories", "budgets", "upcoming", "recent"],
+  homeSectionOrder: ["categories", "budgets", "upcoming", "recent"],
   quickActions: ["expense", "income", "transfer", "scan"],
   includeFriendReceivables: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
+  kupiPersonality: "classic",
+  kupiSmartAssist: false,
+  kupiSmartMode: false,
+  kupiSmartModelSize: "0.6B",
 };
 
 const STORAGE_KEY = "kupit-app-settings";

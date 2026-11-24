@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -87,7 +87,7 @@ import {
   percentCentavos,
   type CalculatorOperator,
 } from "@/domain/calculator";
-import type { Account, AccountType, Budget, Category, CategoryType, Friend, FriendLedgerEntry, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
+import type { Account, AccountType, Budget, Category, CategoryType, Friend, FriendLedgerEntry, Goal, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { AccountLogo } from "@/components/AccountLogo";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
@@ -96,12 +96,15 @@ import { useSheetGestures } from "@/hooks/useSheetGestures";
 import { useCollapsingNav } from "@/hooks/useCollapsingNav";
 import { KupitSettingsSheet } from "@/components/KupitSettingsSheet";
 import { NotificationsSheet } from "@/components/NotificationsSheet";
+import { KupiChatSheet } from "@/components/kupi/KupiChatSheet";
+import type { Mood } from "@/kupi/contracts";
 import { insertDueNotifications } from "@/db/repositories/notifications";
-import { getProfileNotificationPreferences } from "@/db/repositories/profiles";
+import { getProfileNotificationPreferences, updateProfileNotificationPreferences } from "@/db/repositories/profiles";
 import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
 import { loadAppSettings } from "@/lib/settings";
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
 import { t, tForLanguage } from "@/lib/localization";
+import { Kupi } from "@/features/spending-pulse/Kupi";
 
 type Tab = "home" | "wallet" | "plan" | "history";
 type ThemePreference = "system" | "light" | "dark" | "amoled";
@@ -147,10 +150,14 @@ function App() {
   const [formInitialType, setFormInitialType] = useState<TransactionType>("expense");
   const [accountOpen, setAccountOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>();
+  const [chatInitialMood, setChatInitialMood] = useState<Mood>("idle");
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsInitialPanel, setNotificationsInitialPanel] = useState<"inbox" | "settings">("inbox");
+  const [notificationPromptOpen, setNotificationPromptOpen] = useState(false);
+  const [notificationPromptMessage, setNotificationPromptMessage] = useState("");
   const [notificationToast, setNotificationToast] = useState("");
   const notificationToastTimerRef = useRef<number | null>(null);
   const [authCallbackNotice, setAuthCallbackNotice] = useState("");
@@ -195,6 +202,20 @@ function App() {
       return db.sharedBillMembers.toCollection().filter((member) => billIds.has(member.sharedBillId)).toArray();
     },
     [profileId]
+  );
+  const tutorialAccounts = useLiveQuery(
+    () => profileId
+      ? profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt && !account.isArchived).toArray()
+      : [],
+    [profileId],
+    undefined
+  );
+  const tutorialTransactions = useLiveQuery(
+    () => profileId
+      ? profileRecords(db.transactions, profileId).filter((transaction) => !transaction.deletedAt && !transaction.cancelledAt).toArray()
+      : [],
+    [profileId],
+    undefined
   );
   const notificationDataReady = [
     notificationTransactions,
@@ -505,6 +526,28 @@ function App() {
 
   useEffect(() => {
     if (!profileId) return;
+    const askedKey = `kupit-notification-prompt-asked:${profileId}`;
+    if (localStorage.getItem(askedKey) === "true") return;
+    if (!("Notification" in window)) {
+      setNotificationPromptOpen(true);
+      setNotificationPromptMessage("Notifications aren’t supported by this browser. Your in-app reminder inbox will still work.");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      localStorage.setItem(askedKey, "true");
+      void updateProfileNotificationPreferences(profileId, { enabled: true }).catch(console.error);
+      return;
+    }
+    if (Notification.permission === "denied") {
+      localStorage.setItem(askedKey, "true");
+      return;
+    }
+    const timer = window.setTimeout(() => setNotificationPromptOpen(true), 600);
+    return () => window.clearTimeout(timer);
+  }, [profileId]);
+
+  useEffect(() => {
+    if (!profileId) return;
     const processDue = () => {
       if (document.visibilityState === "visible") {
         void processDueRecurringTransactions(profileId, toDateString(new Date())).catch(console.error);
@@ -624,6 +667,46 @@ function App() {
     return () => document.removeEventListener("pointerdown", vibrateSupportedAction);
   }, []);
 
+  const dismissNotificationPrompt = () => {
+    if (profileId) localStorage.setItem(`kupit-notification-prompt-asked:${profileId}`, "true");
+    setNotificationPromptOpen(false);
+    setNotificationPromptMessage("");
+  };
+
+  const enableNotificationsAtStartup = async () => {
+    if (!profileId) return;
+    localStorage.setItem(`kupit-notification-prompt-asked:${profileId}`, "true");
+    if (!("Notification" in window)) {
+      setNotificationPromptMessage("Notifications aren’t supported by this browser. Your in-app reminder inbox will still work.");
+      return;
+    }
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isInstalled = window.matchMedia("(display-mode: standalone)").matches
+      || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    if (isIOS && !isInstalled) {
+      setNotificationPromptMessage("On iPhone, add Kupit to your Home Screen first, then allow notifications.");
+      return;
+    }
+    try {
+      const permission = Notification.permission === "granted"
+        ? "granted"
+        : await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotificationPromptMessage(permission === "denied"
+          ? "Notifications are blocked. Re-enable them in your browser or site settings."
+          : "Notifications weren’t enabled. You can turn them on later in Settings.");
+        return;
+      }
+      await updateProfileNotificationPreferences(profileId, { enabled: true });
+      setNotificationPromptOpen(false);
+      setNotificationPromptMessage("");
+    } catch (error) {
+      console.error("Could not request startup notification permission:", error);
+      setNotificationPromptMessage("Notifications couldn’t be enabled. You can try again in Settings.");
+    }
+  };
+
   if (!profileId) {
     return (
       <main className="grid h-dvh place-items-center bg-background">
@@ -636,10 +719,51 @@ function App() {
     );
   }
 
+  const tutorialTarget: "wallet" | "wallet-plus" | "add" | "expense" | null =
+    tutorialAccounts === undefined || tutorialTransactions === undefined
+      ? null
+      : addMenuOpen
+        ? tutorialAccounts.length > 0 && tutorialTransactions.length === 0
+          ? "expense"
+          : null
+        : tutorialAccounts.length === 0
+          ? tab === "wallet"
+            ? "wallet-plus"
+            : tab === "home"
+              ? "wallet"
+              : "wallet"
+          : tutorialTransactions.length === 0
+            ? "add"
+            : null;
+  const reduceTutorialMotion =
+    loadAppSettings().reduceMotion
+    || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
   return (
     <main className="app-shell">
       {!online && (
         <div className="offline-banner">Offline — changes remain saved on this device</div>
+      )}
+
+      {notificationPromptOpen && (
+        <div className="sheet-backdrop startup-notification-backdrop" role="dialog" aria-modal="true" aria-label="Enable notifications">
+          <section className="startup-notification-card">
+            <img src="/icons/idle.png" alt="Kupi" />
+            <span>
+              <b>Stay on top of your money</b>
+              <p>Allow Kupit to notify you about budgets, reminders, due items, and daily check-ins.</p>
+              {notificationPromptMessage && <small role="alert">{notificationPromptMessage}</small>}
+            </span>
+            <div className="startup-notification-actions">
+              <button type="button" className="save-button" onClick={() => void enableNotificationsAtStartup()}>
+                Enable notifications
+              </button>
+              <button type="button" className="startup-notification-later" onClick={dismissNotificationPrompt}>
+                Not now
+              </button>
+            </div>
+          </section>
+        </div>
       )}
 
       <div className="page-scroll" ref={scrollRef}>
@@ -658,6 +782,11 @@ function App() {
                 navigateToTab("history");
               }}
               onOpenHelp={() => setHelpOpen(true)}
+              onOpenKupi={(message, mood) => {
+                setChatInitialMessage(message);
+                setChatInitialMood(mood);
+                setChatOpen(true);
+              }}
               onAddAccount={() => setAccountOpen(true)}
               onAddTransaction={(type) => {
                 setFormInitialType(type);
@@ -673,7 +802,12 @@ function App() {
             />
           )}
           {tab === "wallet" && (
-            <AccountsPage profileId={profileId} onAdd={() => setAccountOpen(true)} />
+            <AccountsPage
+              profileId={profileId}
+              onAdd={() => setAccountOpen(true)}
+              tutorialPlus={tutorialTarget === "wallet-plus"}
+              reduceMotion={reduceTutorialMotion}
+            />
           )}
           {tab === "plan" && (
             <BudgetsPage
@@ -699,6 +833,8 @@ function App() {
         ref={navRef}
         className={`bottom-nav ${navCollapsed ? "collapsed" : ""} ${navEntering ? "nav-entering" : ""} ${navDragging ? "dragging" : ""} ${planPanelOpen ? "hidden-by-panel" : ""}`}
         data-active-tab={addMenuOpen ? "add" : tab}
+        data-tutorial-target={tutorialTarget || undefined}
+        data-reduce-motion={reduceTutorialMotion}
         aria-label="Primary navigation"
         onPointerDown={handleNavPointerDown}
         onPointerMove={handleNavPointerMove}
@@ -713,6 +849,7 @@ function App() {
             active={tab === item.id || (item.id === "add" && addMenuOpen)}
             collapsed={navCollapsed}
             addMenuOpen={addMenuOpen}
+            tutorialTarget={(tutorialTarget === "wallet" && item.id === "wallet") || (tutorialTarget === "add" && item.id === "add")}
             onClick={() => navCollapsed
               ? setNavCollapsed(false)
               : item.id === "add"
@@ -722,12 +859,44 @@ function App() {
         ))}
       </nav>
 
+      {tutorialTarget && tutorialTarget !== "expense" && tutorialTarget !== "wallet-plus" && (
+        <aside
+          className={`kupi-nav-tutorial kupi-nav-tutorial--${tutorialTarget}`}
+          data-reduce-motion={reduceTutorialMotion}
+          aria-live="polite"
+          aria-label={tutorialTarget === "wallet" ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
+        >
+          <span className="kupi-nav-tutorial__mascot">
+            <Kupi mood="calm" size={84} state="pointing" />
+          </span>
+          <div className="kupi-nav-tutorial__bubble">
+            <span className="kupi-nav-tutorial__speaker">Kupi</span>
+            <b>
+              {tutorialTarget === "wallet" ? "First, tap Wallet"
+                : "Next, tap Add"}
+            </b>
+            <p>
+              {tutorialTarget === "wallet"
+                ? "Open Wallet below to create your first account."
+                : "Tap Add below, then choose Expense or Income for your first transaction."}
+            </p>
+            <small>
+              {tutorialTarget === "wallet" ? "Step 1 of 2" : "Step 2 of 2"}
+            </small>
+          </div>
+        </aside>
+      )}
+
       {addMenuOpen && (
         <AddActionsMenu
           closing={addMenuClosing}
+          tutorialFirstTransaction={tutorialTarget === "expense"}
+          reduceMotion={reduceTutorialMotion}
           onClose={() => closeAddMenu()}
           onAction={(action) => closeAddMenu(() => {
             if (action === "chat") {
+              setChatInitialMessage(undefined);
+              setChatInitialMood("idle");
               setChatOpen(true);
               return;
             }
@@ -772,11 +941,13 @@ function App() {
         profileId={profileId}
       />
 
-      <ChatLogSheet
+      <KupiChatSheet
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         onOpenForm={() => { setFormInitialType("expense"); setChatOpen(false); setAddOpen(true); }}
         profileId={profileId}
+        initialMessage={chatInitialMessage}
+        initialMood={chatInitialMood}
       />
 
       <ProfilesSheet
@@ -899,10 +1070,14 @@ function AddActionsMenu({
   onClose,
   onAction,
   closing,
+  tutorialFirstTransaction,
+  reduceMotion,
 }: {
   onClose: () => void;
   onAction: (action: AddAction) => void;
   closing: boolean;
+  tutorialFirstTransaction: boolean;
+  reduceMotion: boolean;
 }) {
   const actions: { id: AddAction; label: string; hint: string; icon: typeof Home }[] = [
     { id: "chat", label: "Chat", hint: "Log naturally with your assistant", icon: MessageCircle },
@@ -926,11 +1101,27 @@ function AddActionsMenu({
           <small>Choose how you want to add something</small>
         </div>
         {actions.map(({ id, label, hint, icon: Icon }) => (
-          <button key={id} className="add-menu-item" onClick={() => onAction(id)}>
-            <span className={`add-menu-icon ${id}`}><Icon size={19} /></span>
-            <span className="add-menu-copy"><b>{label}</b><small>{hint}</small></span>
-            <ChevronRight size={17} className="add-menu-chevron" />
-          </button>
+          <Fragment key={id}>
+            <button
+              className={`add-menu-item ${tutorialFirstTransaction && (id === "expense" || id === "income") ? "tutorial-target" : ""}`}
+              onClick={() => onAction(id)}
+            >
+              <span className={`add-menu-icon ${id}`}><Icon size={19} /></span>
+              <span className="add-menu-copy"><b>{label}</b><small>{hint}</small></span>
+              <ChevronRight size={17} className="add-menu-chevron" />
+            </button>
+            {tutorialFirstTransaction && id === "scan" && (
+              <div className="kupi-add-tutorial" data-reduce-motion={reduceMotion} role="status" aria-live="polite">
+                <span className="kupi-add-tutorial__mascot"><Kupi mood="calm" size={60} state="pointing" /></span>
+                <span className="kupi-nav-tutorial__bubble">
+                  <span className="kupi-nav-tutorial__speaker">Kupi</span>
+                  <b>Choose Expense or Income</b>
+                  <p>Tap either one to record your first transaction.</p>
+                  <small>Step 2 of 2</small>
+                </span>
+              </div>
+            )}
+          </Fragment>
         ))}
       </section>
     </div>
@@ -1195,17 +1386,24 @@ function TabButton({
   active,
   collapsed,
   addMenuOpen = false,
+  tutorialTarget = false,
   onClick,
 }: {
   item: (typeof tabItems)[number];
   active: boolean;
   collapsed: boolean;
   addMenuOpen?: boolean;
+  tutorialTarget?: boolean;
   onClick: () => void;
 }) {
   const Icon = item.id === "add" && addMenuOpen ? X : item.icon;
   return (
-    <button className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""}`} onClick={onClick} aria-label={item.id === "home" && collapsed ? "Expand navigation" : item.label} aria-expanded={item.id === "home" ? !collapsed : undefined}>
+    <button
+      className={`nav-item ${active ? "active" : ""} ${item.id === "add" ? "add-action" : ""} ${tutorialTarget ? "tutorial-target" : ""}`}
+      onClick={onClick}
+      aria-label={item.id === "home" && collapsed ? "Expand navigation" : item.label}
+      aria-expanded={item.id === "home" ? !collapsed : undefined}
+    >
       <Icon size={20} />
       <span>{item.label}</span>
     </button>
@@ -1290,6 +1488,7 @@ function HomePage({
   onNotifications,
   onHistory,
   onOpenHelp,
+  onOpenKupi,
   onAddAccount,
   onAddTransaction,
   onOpenTransaction,
@@ -1305,6 +1504,7 @@ function HomePage({
   onNotifications: () => void;
   onHistory: (filters?: { accountId?: string; categoryId?: string; startDate?: string; endDate?: string }) => void;
   onOpenHelp: () => void;
+  onOpenKupi: (message: string, mood: Mood) => void;
   onAddAccount: () => void;
   onAddTransaction: (type: "expense" | "income") => void;
   onOpenTransaction: (transactionId: string) => void;
@@ -1376,6 +1576,7 @@ function HomePage({
       <FinsightsPage
         profileId={profileId}
         onOpenHelp={onOpenHelp}
+        onOpenKupi={onOpenKupi}
         onAddAccount={onAddAccount}
         onAddTransaction={onAddTransaction}
         onHistory={onHistory}
@@ -2188,9 +2389,13 @@ function TransactionsPage({ profileId }: { profileId: string }) {
 function AccountsPage({
   profileId,
   onAdd,
+  tutorialPlus,
+  reduceMotion,
 }: {
   profileId: string;
   onAdd: () => void;
+  tutorialPlus: boolean;
+  reduceMotion: boolean;
 }) {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const accounts = useLiveQuery(
@@ -2308,10 +2513,24 @@ function AccountsPage({
           <p className="eyebrow">My money</p>
           <h1>Wallet</h1>
         </div>
-        <button className="header-action" onClick={onAdd} aria-label="Add account">
+        <button className={`header-action ${tutorialPlus ? "tutorial-target" : ""}`} onClick={onAdd} aria-label="Add account">
           <Plus size={20} />
         </button>
       </header>
+
+      {tutorialPlus && (
+        <aside className="wallet-plus-tutorial" data-reduce-motion={reduceMotion} aria-label="Kupi account tutorial">
+          <span className="wallet-plus-tutorial__mascot">
+            <Kupi mood="calm" size={64} state="pointing" />
+          </span>
+          <div className="wallet-plus-tutorial__bubble">
+            <span>Kupi</span>
+            <b>Tap the Plus</b>
+            <p>Use it to add your first wallet, bank, or cash account.</p>
+            <small>Step 1 of 2</small>
+          </div>
+        </aside>
+      )}
 
       <section className="wallet-net">
         <small>Net worth</small>
@@ -2331,9 +2550,11 @@ function AccountsPage({
           <WalletCards size={28} />
           <p>Your wallet is empty</p>
           <small>Add an account to start tracking your money.</small>
-          <button className="empty-action" onClick={onAdd}>
-            Add your first account
-          </button>
+          {!tutorialPlus && (
+            <button className="empty-action" onClick={onAdd}>
+              Add your first account
+            </button>
+          )}
         </div>
       )}
 
@@ -2524,6 +2745,7 @@ function BudgetsPage({
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [debtsOpen, setDebtsOpen] = useState(false);
   const { start, end } = getBudgetCycleRange(loadAppSettings().budgetCycleStartDay);
@@ -2634,7 +2856,7 @@ function BudgetsPage({
       <section className="section">
         <div className="section-heading">
           <h2>Savings goals</h2>
-          <button onClick={() => setGoalOpen(true)}>Add goal</button>
+          <button onClick={() => { setEditingGoal(null); setGoalOpen(true); }}>Add goal</button>
         </div>
         {goals.length ? (
           <div className="goal-list">
@@ -2655,9 +2877,25 @@ function BudgetsPage({
               const monthly = Math.max(0, goal.targetAmount - saved) / remainingMonths;
               return (
                 <article className="goal-row" key={goal.id}>
-                  <div>
-                    <b>{goal.name}</b>
-                    <small>{formatMoney(saved)} saved</small>
+                  <div className="budget-row-head">
+                    <span>
+                      <b>{goal.name}</b>
+                      <small>{formatMoney(saved)} saved</small>
+                    </span>
+                    <div className="budget-row-actions">
+                      <button type="button" onClick={() => { setEditingGoal(goal); setGoalOpen(true); }} aria-label={`Edit ${goal.name}`} title="Edit goal">
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => void db.goals.update(goal.id, { deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })}
+                        aria-label={`Delete ${goal.name}`}
+                        title="Delete goal"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                   <strong>{progress}%</strong>
                   <div className="budget-track">
@@ -2718,7 +2956,13 @@ function BudgetsPage({
           onClose={() => { setBudgetOpen(false); setEditingBudget(null); }}
         />
       )}
-      {goalOpen && <GoalForm profileId={profileId} onClose={() => setGoalOpen(false)} />}
+      {goalOpen && (
+        <GoalForm
+          profileId={profileId}
+          goal={editingGoal || undefined}
+          onClose={() => { setGoalOpen(false); setEditingGoal(null); }}
+        />
+      )}
       {recurringOpen && <RecurringSheet profileId={profileId} onClose={() => setRecurringOpen(false)} />}
       {debtsOpen && <DebtsSheet profileId={profileId} onClose={() => setDebtsOpen(false)} />}
     </div>
@@ -2826,26 +3070,29 @@ function BudgetForm({
 
 function GoalForm({
   profileId,
+  goal,
   onClose,
 }: {
   profileId: string;
+  goal?: Goal;
   onClose: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [targetDate, setTargetDate] = useState("");
+  const [name, setName] = useState(goal?.name || "");
+  const [amount, setAmount] = useState(goal ? (goal.targetAmount / 100).toFixed(2) : "");
+  const [targetDate, setTargetDate] = useState(goal?.targetDate || "");
 
   const save = async () => {
     if (!name.trim() || !parseMoney(amount) || !targetDate) return;
     const timestamp = new Date().toISOString();
     await db.goals.put({
-      id: crypto.randomUUID(),
+      id: goal?.id || crypto.randomUUID(),
       profileId,
       name: name.trim(),
       targetAmount: parseMoney(amount),
       targetDate,
-      createdAt: timestamp,
+      createdAt: goal?.createdAt || timestamp,
       updatedAt: timestamp,
+      deletedAt: goal?.deletedAt,
     });
     onClose();
   };
@@ -2855,14 +3102,14 @@ function GoalForm({
       className="sheet-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Add goal"
+      aria-label={goal ? "Edit goal" : "Add goal"}
     >
       <section className="account-sheet">
         <header className="sheet-header">
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <b>Add savings goal</b>
+          <b>{goal ? "Edit savings goal" : "Add savings goal"}</b>
           <span />
         </header>
         <div className="account-form">

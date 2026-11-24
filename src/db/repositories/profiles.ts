@@ -22,6 +22,7 @@ const PROFILE_OWNED_TABLES = [
   "recurringSkips",
   "sharedBills",
   "inboxNotifications",
+  "kupiMerchantRules",
   "settings",
 ] as const;
 
