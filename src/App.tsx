@@ -87,7 +87,7 @@ import {
   percentCentavos,
   type CalculatorOperator,
 } from "@/domain/calculator";
-import type { Account, AccountType, Budget, Category, CategoryType, Friend, FriendLedgerEntry, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
+import type { Account, AccountType, Budget, Category, CategoryType, Friend, FriendLedgerEntry, Goal, RecurringFrequency, Transaction, TransactionType } from "@/domain/types";
 import { CategoryIcon } from "@/components/CategoryIcon";
 import { AccountLogo } from "@/components/AccountLogo";
 import { CategoryManagerSheet } from "@/components/CategoryManagerSheet";
@@ -2540,6 +2540,7 @@ function BudgetsPage({
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [goalOpen, setGoalOpen] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [debtsOpen, setDebtsOpen] = useState(false);
   const { start, end } = getBudgetCycleRange(loadAppSettings().budgetCycleStartDay);
@@ -2650,7 +2651,7 @@ function BudgetsPage({
       <section className="section">
         <div className="section-heading">
           <h2>Savings goals</h2>
-          <button onClick={() => setGoalOpen(true)}>Add goal</button>
+          <button onClick={() => { setEditingGoal(null); setGoalOpen(true); }}>Add goal</button>
         </div>
         {goals.length ? (
           <div className="goal-list">
@@ -2671,9 +2672,25 @@ function BudgetsPage({
               const monthly = Math.max(0, goal.targetAmount - saved) / remainingMonths;
               return (
                 <article className="goal-row" key={goal.id}>
-                  <div>
-                    <b>{goal.name}</b>
-                    <small>{formatMoney(saved)} saved</small>
+                  <div className="budget-row-head">
+                    <span>
+                      <b>{goal.name}</b>
+                      <small>{formatMoney(saved)} saved</small>
+                    </span>
+                    <div className="budget-row-actions">
+                      <button type="button" onClick={() => { setEditingGoal(goal); setGoalOpen(true); }} aria-label={`Edit ${goal.name}`} title="Edit goal">
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => void db.goals.update(goal.id, { deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })}
+                        aria-label={`Delete ${goal.name}`}
+                        title="Delete goal"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                   <strong>{progress}%</strong>
                   <div className="budget-track">
@@ -2734,7 +2751,13 @@ function BudgetsPage({
           onClose={() => { setBudgetOpen(false); setEditingBudget(null); }}
         />
       )}
-      {goalOpen && <GoalForm profileId={profileId} onClose={() => setGoalOpen(false)} />}
+      {goalOpen && (
+        <GoalForm
+          profileId={profileId}
+          goal={editingGoal || undefined}
+          onClose={() => { setGoalOpen(false); setEditingGoal(null); }}
+        />
+      )}
       {recurringOpen && <RecurringSheet profileId={profileId} onClose={() => setRecurringOpen(false)} />}
       {debtsOpen && <DebtsSheet profileId={profileId} onClose={() => setDebtsOpen(false)} />}
     </div>
@@ -2842,26 +2865,29 @@ function BudgetForm({
 
 function GoalForm({
   profileId,
+  goal,
   onClose,
 }: {
   profileId: string;
+  goal?: Goal;
   onClose: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [targetDate, setTargetDate] = useState("");
+  const [name, setName] = useState(goal?.name || "");
+  const [amount, setAmount] = useState(goal ? (goal.targetAmount / 100).toFixed(2) : "");
+  const [targetDate, setTargetDate] = useState(goal?.targetDate || "");
 
   const save = async () => {
     if (!name.trim() || !parseMoney(amount) || !targetDate) return;
     const timestamp = new Date().toISOString();
     await db.goals.put({
-      id: crypto.randomUUID(),
+      id: goal?.id || crypto.randomUUID(),
       profileId,
       name: name.trim(),
       targetAmount: parseMoney(amount),
       targetDate,
-      createdAt: timestamp,
+      createdAt: goal?.createdAt || timestamp,
       updatedAt: timestamp,
+      deletedAt: goal?.deletedAt,
     });
     onClose();
   };
@@ -2871,14 +2897,14 @@ function GoalForm({
       className="sheet-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Add goal"
+      aria-label={goal ? "Edit goal" : "Add goal"}
     >
       <section className="account-sheet">
         <header className="sheet-header">
           <button onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
-          <b>Add savings goal</b>
+          <b>{goal ? "Edit savings goal" : "Add savings goal"}</b>
           <span />
         </header>
         <div className="account-form">
