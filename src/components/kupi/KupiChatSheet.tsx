@@ -28,6 +28,10 @@ import { generateResponse, type ResponseFacts } from "@/kupi/responses/generateR
 import type { StatsQueryResult } from "@/kupi/queries/executeStatsQuery";
 import { RESPONSE_TEMPLATES } from "@/kupi/responses/responseTemplates";
 import { parseKupiInput } from "@/kupi/parser/parseKupiInput";
+import {
+  mostUsedAccount,
+  createRule,
+} from "@/kupi/learning/learning";
 import { KupiActionReviewCard, KupiUndoToast } from "./KupiActionReviewCard";
 
 type ChatMessage = { role: "user" | "assistant"; text: string; mood?: Mood };
@@ -273,6 +277,15 @@ export function KupiChatSheet({
     () => profileRecords(db.budgets, profileId).filter((budget) => !budget.deletedAt).toArray(),
     [profileId]
   );
+  const merchantRules = useLiveQuery(
+    () => profileRecords(db.kupiMerchantRules, profileId).filter((rule) => !rule.deletedAt && rule.enabled).toArray(),
+    [profileId],
+    []
+  );
+  const profileSetting = useLiveQuery(
+    () => db.settings.where("profileId").equals(profileId).filter((setting) => setting.key === "kupit-app-settings").first(),
+    [profileId]
+  );
 
   const [message, setMessage] = useState("");
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
@@ -287,6 +300,11 @@ export function KupiChatSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [undoActionIds, setUndoActionIds] = useState<string[]>([]);
+  const [learningSuggestion, setLearningSuggestion] = useState<{
+    merchant: string;
+    categoryId: string;
+    categoryName: string;
+  } | null>(null);
   const [avatarMood, setAvatarMood] = useState<Mood>("idle");
   const [viewport, setViewport] = useState({ height: 0, top: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -319,9 +337,22 @@ export function KupiChatSheet({
   }, [open]);
 
   useEffect(() => {
+    let personality: "chill" | "classic" | "dramatic" = "classic";
+    if (profileSetting?.value) {
+      try {
+        const saved = JSON.parse(profileSetting.value) as { kupiPersonality?: "chill" | "classic" | "dramatic" };
+        personality = saved.kupiPersonality ?? "classic";
+      } catch {
+        personality = "classic";
+      }
+    }
+    sessionRef.current = { ...sessionRef.current, personality };
+  }, [profileSetting?.value]);
+
+  useEffect(() => {
     sessionRef.current = {
       recentTemplateIds: [],
-      personality: "classic",
+      personality: sessionRef.current.personality,
       rngSeed: 984_271,
     };
     setConversation([]);
@@ -343,7 +374,7 @@ export function KupiChatSheet({
     if (!open || !initialMessage) return;
     sessionRef.current = {
       recentTemplateIds: [],
-      personality: "classic",
+      personality: sessionRef.current.personality,
       rngSeed: 984_271,
     };
     setConversation([{ role: "assistant", text: initialMessage, mood: initialMood }]);
@@ -384,8 +415,20 @@ export function KupiChatSheet({
     && transactions !== undefined && budgets !== undefined;
 
   const getSnapshot = (): KupiDbSnapshot => ({
-    accounts: scopedAccounts.map(({ id, name }) => ({ id, name })),
+    accounts: scopedAccounts.map(({ id, name }) => ({
+      id,
+      name,
+      aliases: (merchantRules ?? [])
+        .filter((rule) => rule.kind === "account_alias" && rule.targetId === id)
+        .map((rule) => rule.source),
+    })),
     categories: scopedCategories.map(({ id, name }) => ({ id, name })),
+    merchantRules: (merchantRules ?? []).map((rule) => ({
+      kind: rule.kind === "account_alias" ? "account_alias" : "merchant_category",
+      source: rule.source,
+      targetId: rule.targetId,
+      targetName: rule.targetName,
+    })),
     txns: scopedTransactions.map((transaction) => ({
       id: transaction.id,
       amountCentavos: transaction.amount,
@@ -440,7 +483,7 @@ export function KupiChatSheet({
   const proposeForResult = (result: ParseResult): { actions: KupiAction[]; warnings: string[] } => {
     const now = new Date();
     const proposals: KupiActionProposal[] = [];
-    const defaultAccount = scopedAccounts[0];
+    const defaultAccount = mostUsedAccount(scopedAccounts, scopedTransactions) ?? scopedAccounts[0];
     const accountByName = (name: string | undefined) =>
       scopedAccounts.find((account) => account.name.toLowerCase() === name?.toLowerCase());
     const categoryByName = (name: string | null | undefined, type: "expense" | "income") =>
@@ -467,7 +510,7 @@ export function KupiChatSheet({
           const values = Object.fromEntries(parts.map(({ type: partType, value }) => [partType, value]));
           return `${values.year}-${values.month}-${values.day}`;
         })();
-        if (!draft.account && account) defaultAccountWarnings.push(`Using your first available account, ${account.name}.`);
+        if (!draft.account && account) defaultAccountWarnings.push(`Using your most-used account, ${account.name}.`);
         if (type === "transfer") {
           const toAccount = accountByName(draft.toAccount?.value);
           if (draft.toAccount && !toAccount) {
@@ -628,6 +671,19 @@ export function KupiChatSheet({
         generated?.text ?? `Saved ${actions.length} ${actions.length === 1 ? "transaction" : "transactions"} to your ledger.`,
         generated?.mood ?? "idle"
       );
+      for (const action of actions) {
+        if (action.kind !== "update" || action.before.categoryId === action.after.categoryId) continue;
+        const merchant = action.before.note?.trim();
+        const category = scopedCategories.find(({ id }) => id === action.after.categoryId);
+        if (merchant && merchant.length <= 80 && category) {
+          setLearningSuggestion({
+            merchant,
+            categoryId: category.id,
+            categoryName: category.name,
+          });
+          break;
+        }
+      }
       setUndoActionIds(actions.map(({ id }) => id));
       if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
       undoTimerRef.current = window.setTimeout(() => setUndoActionIds([]), 8_000);
@@ -1150,6 +1206,37 @@ export function KupiChatSheet({
                   }}
                 >
                   Cancel
+                </button>
+              </div>
+            </section>
+          )}
+          {learningSuggestion && (
+            <section className="kupi-action-card" aria-label="Remember category correction">
+              <article className="kupi-confirm-card">
+                <h3>Remember this category?</h3>
+                <p>Always file {learningSuggestion.merchant} under {learningSuggestion.categoryName}?</p>
+              </article>
+              <div className="kupi-action-buttons">
+                <button
+                  type="button"
+                  className="save-button"
+                  onClick={async () => {
+                    const rule = createRule(
+                      profileId,
+                      "merchant_category",
+                      learningSuggestion.merchant,
+                      learningSuggestion.categoryId,
+                      learningSuggestion.categoryName
+                    );
+                    await db.kupiMerchantRules.put(rule);
+                    setLearningSuggestion(null);
+                    addAssistant(`Remembered: ${rule.source} is ${rule.targetName}.`);
+                  }}
+                >
+                  Always
+                </button>
+                <button type="button" className="chat-clear-learning" onClick={() => setLearningSuggestion(null)}>
+                  Not always
                 </button>
               </div>
             </section>

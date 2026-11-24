@@ -29,6 +29,7 @@ export interface AppSettings {
   quickActions: string[];
   includeFriendReceivables: boolean;
   notifications: NotificationPreferences;
+  kupiPersonality: "chill" | "classic" | "dramatic";
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -67,6 +68,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   quickActions: ["expense", "income", "transfer", "scan"],
   includeFriendReceivables: true,
   notifications: DEFAULT_NOTIFICATION_PREFERENCES,
+  kupiPersonality: "classic",
 };
 
 const STORAGE_KEY = "kupit-app-settings";

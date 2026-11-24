@@ -120,6 +120,15 @@ Most repository updates explicitly set `updatedAt`. In addition, `src/db/schema.
 - Focused fixed-clock tests cover each rule, priority/cooldown metadata, Manila date handling, deleted/cancelled records, and mood. The chat component test verifies the nudge is the opening message.
 - Verification: `pnpm test` — **23 files / 154 tests passed**, including the strict parser corpus and fuzz gate; `pnpm build` passed with the existing main-bundle-size warning (about **1,027 kB minified / 300 kB gzip**).
 
+## Phase 7 Learning and personalization
+
+- Added a profile-scoped `kupiMerchantRules` Dexie table in schema version 8. Rules cover merchant-to-category mappings and account aliases, with soft-delete and enabled fields; they are intentionally local-only rather than added to the cloud-sync table set.
+- Added pure learning helpers for source normalization, merchant/category lookup, account-alias lookup, most-used-account defaults, and rule creation.
+- Kupi uses learned merchant categories in the parser snapshot and learned account aliases in account mention resolution. Confirmed transaction writes use the most-used account as the suggested default when no account is named.
+- Category edits now offer an explicit "Remember this category?" confirmation before storing a merchant rule. Settings provides profile personality selection (Chill / Classic / Dramatic), account-alias creation, rule deletion, and clear-all.
+- Profile deletion removes all profile-owned learning rules.
+- Verification: `pnpm test` — **24 files / 157 tests passed**; `pnpm build` passed with the existing main-bundle-size warning (about **1,033 kB minified / 301 kB gzip**).
+
 ## Open questions and implementation risks
 
 1. **Clock/timezone integration:** the Phase 1 date utility now uses Asia/Manila and tests the 04:00 `kanina` cutoff. The existing app still follows browser-local date parts; integrate the policy only when the new parser path is introduced and verify target browsers.

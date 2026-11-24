@@ -339,6 +339,20 @@ export interface KupiActionRecord extends BaseRecord {
   undoneAt?: string | null;
 }
 
+export type KupiMerchantRuleKind =
+  | "merchant_category"
+  | "account_alias"
+  | "account_default";
+
+export interface KupiMerchantRule extends BaseRecord {
+  profileId: string;
+  kind: KupiMerchantRuleKind;
+  source: string;
+  targetId: string;
+  targetName: string;
+  enabled: boolean;
+}
+
 /** App settings (per-device or per-profile) */
 export interface Settings {
   id: string;

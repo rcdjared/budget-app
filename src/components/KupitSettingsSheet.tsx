@@ -41,6 +41,7 @@ import { supabase } from "@/lib/supabase";
 import { loadAppSettings, saveAppSettings, type AppSettings, type ThemePreference } from "@/lib/settings";
 import { t } from "@/lib/localization";
 import { ACCENT_PRESETS, contrastingForeground } from "@/lib/themeContrast";
+import { createRule } from "@/kupi/learning/learning";
 
 interface KupitSettingsSheetProps {
   open: boolean;
@@ -78,6 +79,7 @@ type DetailName =
   | "statement"
   | "privacy"
   | "whats-new"
+  | "kupi"
   | null;
 
 function Toggle({
@@ -133,6 +135,11 @@ export function KupitSettingsSheet({
   const transactions = useLiveQuery(() => profileRecords(db.transactions, profileId).toArray(), [profileId], []);
   const netWorthAccounts = useLiveQuery(
     () => profileRecords(db.accounts, profileId).filter((account) => !account.deletedAt).toArray(),
+    [profileId],
+    []
+  );
+  const kupiRules = useLiveQuery(
+    () => profileRecords(db.kupiMerchantRules, profileId).filter((rule) => !rule.deletedAt).toArray(),
     [profileId],
     []
   );
@@ -310,6 +317,17 @@ export function KupitSettingsSheet({
                 </div>
                 <small>Choose how the app talks</small>
               </div>
+            </Section>
+          )}
+
+          {hasVisibleSection(["kupi", "personality", "learned", "merchant", "alias"]) && (
+            <Section label="Kupi">
+              <Row
+                icon={<UserRound size={19} />}
+                title="Kupi personality and learning"
+                description="Choose Chill, Classic, or Dramatic and manage learned rules"
+                onClick={() => setDetail("kupi")}
+              />
             </Section>
           )}
 
@@ -551,7 +569,7 @@ export function KupitSettingsSheet({
           <section className="kupit-detail-sheet">
             <header>
               <button type="button" onClick={() => setDetail(null)} aria-label="Back"><ArrowLeft size={18} /></button>
-              <b>{detail === "currency" ? "Currency" : detail === "preferences" ? "Preferences" : detail === "account" ? "Account" : detail === "home" ? "Home sections" : detail === "statement" ? "Import" : detail === "privacy" ? "Privacy notice" : detail === "whats-new" ? "What's new" : "Help guide"}</b>
+              <b>{detail === "currency" ? "Currency" : detail === "preferences" ? "Preferences" : detail === "kupi" ? "Kupi personality and learning" : detail === "account" ? "Account" : detail === "home" ? "Home sections" : detail === "statement" ? "Import" : detail === "privacy" ? "Privacy notice" : detail === "whats-new" ? "What's new" : "Help guide"}</b>
               <span />
             </header>
             <div className="kupit-detail-content">
@@ -561,6 +579,71 @@ export function KupitSettingsSheet({
                   {session ? <button type="button" className="kupit-primary-button" onClick={signOut}>Sign out</button> : <small className="kupit-muted">This profile is stored locally on this device.</small>}
                   <button type="button" className="kupit-primary-button" onClick={onOpenProfiles}>Manage profiles and sync</button>
                 </>
+              )}
+              {detail === "kupi" && (
+                <div className="kupit-preference-list">
+                  <p className="eyebrow">Personality</p>
+                  <div className="kupit-settings-segment">
+                    {(["chill", "classic", "dramatic"] as const).map((personality) => (
+                      <button
+                        type="button"
+                        key={personality}
+                        className={settings.kupiPersonality === personality ? "selected" : ""}
+                        onClick={() => updateSettings({ kupiPersonality: personality })}
+                      >
+                        {personality[0].toUpperCase() + personality.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <small className="kupit-muted">Personality changes Kupi's flavor, never the numbers or write decisions.</small>
+                  <p className="eyebrow">Learned rules</p>
+                  <button
+                    type="button"
+                    className="kupit-primary-button"
+                    onClick={async () => {
+                      const alias = window.prompt("What nickname should Kupi learn?");
+                      if (!alias?.trim()) return;
+                      const accountName = window.prompt("Which account is it for? Enter the exact account name.");
+                      if (!accountName?.trim()) return;
+                      const account = (netWorthAccounts || []).find(({ name }) => name.toLowerCase() === accountName.trim().toLowerCase());
+                      if (!account) {
+                        window.alert("That account was not found in this profile.");
+                        return;
+                      }
+                      await db.kupiMerchantRules.put(createRule(profileId, "account_alias", alias, account.id, account.name));
+                    }}
+                  >
+                    Add account alias
+                  </button>
+                  {(kupiRules || []).length === 0 && <small className="kupit-muted">No learned rules in this profile yet.</small>}
+                  {(kupiRules || []).map((rule) => (
+                    <Row
+                      key={rule.id}
+                      icon={<UserRound size={18} />}
+                      title={rule.source}
+                      description={`${rule.kind === "merchant_category" ? "Category" : rule.kind === "account_alias" ? "Account alias" : "Account"} → ${rule.targetName}`}
+                      trailing={
+                        <button
+                          type="button"
+                          className="chat-clear-learning"
+                          onClick={() => void db.kupiMerchantRules.delete(rule.id)}
+                          aria-label={`Delete rule ${rule.source}`}
+                        >
+                          Delete
+                        </button>
+                      }
+                    />
+                  ))}
+                  {(kupiRules || []).length > 0 && (
+                    <button
+                      type="button"
+                      className="kupit-reset-button"
+                      onClick={() => void db.kupiMerchantRules.where("profileId").equals(profileId).delete()}
+                    >
+                      Clear all learned rules
+                    </button>
+                  )}
+                </div>
               )}
               {detail === "currency" && (
                 <>

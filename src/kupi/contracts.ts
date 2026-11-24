@@ -95,9 +95,15 @@ export interface KupiTxnSnapshot {
 }
 
 export interface KupiDbSnapshot {
-  accounts: readonly { id?: string; name: string }[];
+  accounts: readonly { id?: string; name: string; aliases?: readonly string[] }[];
   categories: readonly { id?: string; name: string }[];
   txns: readonly KupiTxnSnapshot[];
+  merchantRules?: readonly {
+    kind: "merchant_category" | "account_alias";
+    source: string;
+    targetId: string;
+    targetName: string;
+  }[];
 }
 
 export type TargetRef =

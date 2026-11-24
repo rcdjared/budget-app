@@ -144,6 +144,18 @@ function liveCategoryNames(db: KupiDbSnapshot): string[] {
 
 function resolveCategory(text: string, db: KupiDbSnapshot, income: boolean): CategoryMatch | undefined {
   const liveNames = liveCategoryNames(db);
+  if (!income) {
+    for (const rule of db.merchantRules ?? []) {
+      if (rule.kind !== "merchant_category") continue;
+      if (rule.source && containsPhrase(text, rule.source)) {
+        const liveCategory = liveNames.find((name) => name === rule.targetName)
+          ?? liveNames.find((name) => name.toLowerCase() === rule.targetName.toLowerCase());
+        if (liveCategory) {
+          return { value: liveCategory, source: "learned", confidence: KUPI_CONFIG.parser.explicitCueConfidence };
+        }
+      }
+    }
+  }
   const exactNames = liveNames
     .filter((name) => containsPhrase(text, name))
     .sort((a, b) => normalizedPhrase(b).length - normalizedPhrase(a).length);
