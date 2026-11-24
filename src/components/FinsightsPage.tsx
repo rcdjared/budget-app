@@ -861,18 +861,6 @@ export function FinsightsPage({
         </section>
       ) : (
         <>
-          <SpendingPulse
-            profileId={profileId}
-            accountId={selectedAccountId}
-            accountFilter={accountFilter}
-            period={period}
-            onPeriodChange={setPeriod}
-            budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
-            weekStartsOn={sectionSettings.weekStartsOn}
-            tone={sectionSettings.spendingPulseTone}
-            language={language}
-            reduceMotion={sectionSettings.reduceMotion}
-          />
           {kupiNudge && (
             <section className="kupi-home-nudge" aria-label="Kupi suggestion">
               <span className="spending-pulse__mascot-wrap">
@@ -893,6 +881,18 @@ export function FinsightsPage({
               </div>
             </section>
           )}
+          <SpendingPulse
+            profileId={profileId}
+            accountId={selectedAccountId}
+            accountFilter={accountFilter}
+            period={period}
+            onPeriodChange={setPeriod}
+            budgetCycleStartDay={sectionSettings.budgetCycleStartDay}
+            weekStartsOn={sectionSettings.weekStartsOn}
+            tone={sectionSettings.spendingPulseTone}
+            language={language}
+            reduceMotion={sectionSettings.reduceMotion}
+          />
           {renderSection("categories")}
         </>
       )}

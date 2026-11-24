@@ -357,7 +357,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin: 4px 0 12px;
+  margin: 0 0 12px;
   padding: 8px;
   border: 1px solid var(--pulse-border);
   border-radius: 16px;

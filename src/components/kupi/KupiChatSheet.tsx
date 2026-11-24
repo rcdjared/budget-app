@@ -1086,10 +1086,12 @@ export function KupiChatSheet({
           <button type="button" onClick={onClose} aria-label="Close Kupi chat">
             <X size={20} />
           </button>
-          <img className={`kupi-chat-avatar${typing ? " kupi-chat-avatar-thinking" : ""}`} src={avatarSrc} alt={`Kupi ${typing ? "thinking" : avatarMood}`} />
           <div className="chat-heading">
-            <b>Kupi</b>
-            <small>Offline assistant · your data stays on this device</small>
+            <img className={`kupi-chat-avatar${typing ? " kupi-chat-avatar-thinking" : ""}`} src={avatarSrc} alt={`Kupi ${typing ? "thinking" : avatarMood}`} />
+            <div>
+              <b>Kupi</b>
+              <small>Offline assistant · your data stays on this device</small>
+            </div>
           </div>
           <button className="chat-form-shortcut" onClick={onOpenForm} aria-label="Open transaction form" title="Use transaction form">
             <Plus size={19} />
