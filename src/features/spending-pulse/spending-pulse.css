@@ -369,6 +369,19 @@
   padding: 7px 9px;
 }
 
+.kupi-home-nudge__mascot {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.kupi-home-nudge__mascot:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid var(--pulse-green);
+  outline-offset: 3px;
+}
+
 .kupi-home-nudge__actions {
   display: flex;
   flex: 0 0 auto;

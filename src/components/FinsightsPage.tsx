@@ -830,14 +830,7 @@ export function FinsightsPage({
   return (
     <div className="home-dashboard" aria-busy={!homeIsLoaded}>
       {!homeIsLoaded ? null : accounts.length === 0 ? (
-        <section
-          className="home-account-onboarding"
-          data-reduce-motion={sectionSettings.reduceMotion || (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches)}
-        >
-          <button type="button" className="kupit-primary-button" onClick={onAddAccount}>
-            {tForLanguage("addAccount", language)}
-          </button>
-        </section>
+        null
       ) : homeHasNoTransactions ? (
         <section
           className="home-first-record"
@@ -858,11 +851,17 @@ export function FinsightsPage({
         <>
           {kupiNudge && (
             <section className="kupi-home-nudge" aria-label="Kupi suggestion">
-              <span className="spending-pulse__mascot-wrap">
+              <button
+                type="button"
+                className="spending-pulse__mascot-wrap kupi-home-nudge__mascot"
+                onClick={() => onOpenKupi(kupiNudgeMessage, kupiNudge.mood)}
+                aria-label="Tap Kupi to ask about this suggestion"
+                title="Tap to ask Kupi"
+              >
                 <Kupi mood={kupiMascotMood(kupiNudge.mood)} size={48} />
-              </span>
+              </button>
               <span className="spending-pulse__bubble">
-                <span className="spending-pulse__speaker">Kupi</span>
+                <span className="spending-pulse__speaker">Kupi · Tap me to ask</span>
                 <span className="spending-pulse__message">{kupiNudgeMessage}</span>
               </span>
               <div className="kupi-home-nudge__actions">

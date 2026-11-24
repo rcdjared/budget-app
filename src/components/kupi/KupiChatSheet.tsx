@@ -1073,7 +1073,7 @@ export function KupiChatSheet({
   };
 
   const avatarSrc = typing
-    ? "/icons/idle.png"
+    ? "/icons/thinking.png"
     : avatarMood === "happy"
       ? "/icons/happy.png"
       : avatarMood === "worried"

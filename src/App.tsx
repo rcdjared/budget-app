@@ -780,7 +780,7 @@ function App() {
           aria-label={tutorialTarget.includes("wallet") ? "Kupi wallet tutorial" : "Kupi add transaction tutorial"}
         >
           <span className="kupi-nav-tutorial__mascot">
-            <Kupi mood="calm" size={70} />
+            <Kupi mood="calm" size={70} state="pointing" />
           </span>
           <div className="kupi-nav-tutorial__bubble">
             <span className="kupi-nav-tutorial__speaker">Kupi</span>
@@ -1015,7 +1015,7 @@ function AddActionsMenu({
         </div>
         {tutorialExpense && (
           <div className="kupi-add-tutorial" role="status" aria-live="polite">
-            <span className="kupi-add-tutorial__mascot"><Kupi mood="calm" size={58} /></span>
+            <span className="kupi-add-tutorial__mascot"><Kupi mood="calm" size={58} state="pointing" /></span>
             <span className="kupi-add-tutorial__bubble">
               <b>Kupi says: add your first expense</b>
               <small>Tap Expense below, then enter an amount.</small>
