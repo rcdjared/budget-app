@@ -10,7 +10,7 @@
   --pulse-bubble: color-mix(in srgb, var(--card) 88%, var(--primary) 12%);
   --pulse-bubble-border: color-mix(in srgb, var(--primary) 22%, var(--border));
   display: grid;
-  gap: 8px;
+  gap: 0;
   width: 100%;
   min-width: 0;
   color: var(--pulse-text);
@@ -358,7 +358,8 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  margin: 0 0 4px;
+  height: 84px;
+  margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -366,8 +367,9 @@
 }
 
 .kupi-home-nudge .spending-pulse__bubble {
-  min-height: 72px;
-  padding: 9px 12px;
+  min-height: 64px;
+  height: 64px;
+  padding: 8px 12px;
 }
 
 .kupi-home-nudge .spending-pulse__mascot-wrap {
