@@ -26,11 +26,16 @@ export async function detectSmartCapability(modelSize: "0.6B" | "1.7B" = "0.6B")
     // Storage estimates are optional browser hints.
   }
   if (!webgpu || !adapterAvailable) return { webgpu, adapterAvailable, deviceMemoryGiB, storageAvailableBytes, supported: false, reason: "A usable WebGPU adapter is not available in this browser." };
-  if (deviceMemoryGiB !== undefined && deviceMemoryGiB < 4) {
-    return { webgpu, adapterAvailable, deviceMemoryGiB, storageAvailableBytes, supported: false, reason: "This device reports less than 4 GB of system memory." };
-  }
-  if (modelSize === "1.7B" && deviceMemoryGiB !== undefined && deviceMemoryGiB < 8) {
-    return { webgpu, adapterAvailable, deviceMemoryGiB, storageAvailableBytes, supported: false, reason: "The 1.7B model needs a device reporting at least 8 GB of memory. Choose 0.6B or use suggestions only." };
+  const minimumMemoryGiB = modelSize === "1.7B" ? 16 : 8;
+  if (deviceMemoryGiB === undefined || deviceMemoryGiB < minimumMemoryGiB) {
+    return {
+      webgpu,
+      adapterAvailable,
+      deviceMemoryGiB,
+      storageAvailableBytes,
+      supported: false,
+      reason: `The ${modelSize} offline model requires a device reporting at least ${minimumMemoryGiB} GB of memory. Use suggestions only on this device.`,
+    };
   }
   if (storageAvailableBytes !== undefined && storageAvailableBytes < 2_500_000_000) {
     return { webgpu, adapterAvailable, deviceMemoryGiB, storageAvailableBytes, supported: false, reason: "This device has too little free browser storage for Smart mode." };

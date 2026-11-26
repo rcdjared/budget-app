@@ -38,6 +38,9 @@ export async function resolveWithFallback(
 ): Promise<ResolveResult> {
   const result = parseKupiInput(text, context, snapshot, now);
   if ((!options.smartAssist && !options.smartMode) || isConfident(result)) return { result, source: "rules" };
+  const transactionLike = ["LOG_EXPENSE", "LOG_INCOME", "TRANSFER", "EDIT_TXN", "DELETE_TXN"].includes(result.intent)
+    || /\b(?:log|record|spent|spend|paid|bought|buy|expense|income|received|transfer|sent|earned|transaction)\b/iu.test(text);
+  if (!transactionLike) return { result, source: "rules" };
 
   const fallback = async (): Promise<ResolveResult> => {
     const [embeddingCached, llmCached] = await Promise.all([

@@ -1,0 +1,117 @@
+/* Palette accents change action colors; cozy surfaces stay fixed. */
+:root {
+  --hero-1: #3F8366;
+  --hero-2: #3B7A5F;
+  --hero-3: #2F6650;
+}
+
+[data-accent="sage"] {
+  --primary: #3B7A5F;
+  --primary-foreground: #FFFFFF;
+  --ring: #3B7A5F;
+  --accent: #E8EFE3;
+  --accent-foreground: #2C4A3A;
+  --sidebar-primary: #3B7A5F;
+  --sidebar-ring: #3B7A5F;
+  --hero-1: #3F8366;
+  --hero-2: #3B7A5F;
+  --hero-3: #2F6650;
+}
+.dark[data-accent="sage"] {
+  --primary: #9CC7A8;
+  --primary-foreground: #1C2A21;
+  --ring: #9CC7A8;
+  --accent: #372F25;
+  --accent-foreground: #F5EDE0;
+  --sidebar-primary: #9CC7A8;
+  --sidebar-ring: #9CC7A8;
+  --hero-1: #AAD1B4;
+  --hero-2: #9CC7A8;
+  --hero-3: #80B68E;
+}
+
+[data-accent="ocean"] {
+  --primary: #2F6F8F; --primary-foreground: #FFFFFF; --ring: #2F6F8F;
+  --accent: #E3EEF3; --accent-foreground: #1F4A60;
+  --sidebar-primary: #2F6F8F; --sidebar-ring: #2F6F8F;
+  --hero-1: #3A7D9E; --hero-2: #2F6F8F; --hero-3: #255A75;
+}
+.dark[data-accent="ocean"] {
+  --primary: #8EC3DB; --primary-foreground: #11262F; --ring: #8EC3DB;
+  --accent: #372F25; --accent-foreground: #F5EDE0;
+  --sidebar-primary: #8EC3DB; --sidebar-ring: #8EC3DB;
+  --hero-1: #A0CEE3; --hero-2: #8EC3DB; --hero-3: #70AFCB;
+}
+
+[data-accent="lagoon"] {
+  --primary: #1F7A7A; --primary-foreground: #FFFFFF; --ring: #1F7A7A;
+  --accent: #DFEFEE; --accent-foreground: #174F4F;
+  --sidebar-primary: #1F7A7A; --sidebar-ring: #1F7A7A;
+  --hero-1: #258080; --hero-2: #1F7A7A; --hero-3: #186262;
+}
+.dark[data-accent="lagoon"] {
+  --primary: #86CFCB; --primary-foreground: #0F2A29; --ring: #86CFCB;
+  --accent: #372F25; --accent-foreground: #F5EDE0;
+  --sidebar-primary: #86CFCB; --sidebar-ring: #86CFCB;
+  --hero-1: #9BDCD8; --hero-2: #86CFCB; --hero-3: #67B8B3;
+}
+
+[data-accent="coral"] {
+  --primary: #BC5144; --primary-foreground: #FFFFFF; --ring: #BC5144;
+  --accent: #F6E4DF; --accent-foreground: #7A2F26;
+  --sidebar-primary: #BC5144; --sidebar-ring: #BC5144;
+  --hero-1: #C0564A; --hero-2: #BC5144; --hero-3: #9E4236;
+  --expense: #93405F; --negative-change: #93405F; --destructive: #93405F;
+  --expense-foreground: #FFFFFF;
+}
+.dark[data-accent="coral"] {
+  --primary: #F0A596; --primary-foreground: #3A130D; --ring: #F0A596;
+  --accent: #372F25; --accent-foreground: #F5EDE0;
+  --sidebar-primary: #F0A596; --sidebar-ring: #F0A596;
+  --hero-1: #F5B7AA; --hero-2: #F0A596; --hero-3: #D98778;
+  --expense: #E9A0BA; --negative-change: #E9A0BA; --destructive: #E9A0BA;
+  --expense-foreground: #2A0F18;
+}
+
+[data-accent="honey"] {
+  --primary: #8F5F14; --primary-foreground: #FFFFFF; --ring: #8F5F14;
+  --accent: #F5EAD0; --accent-foreground: #5C3D0C;
+  --sidebar-primary: #8F5F14; --sidebar-ring: #8F5F14;
+  --hero-1: #A06C1A; --hero-2: #8F5F14; --hero-3: #774E0E;
+}
+.dark[data-accent="honey"] {
+  --primary: #EBC36B; --primary-foreground: #2F2208; --ring: #EBC36B;
+  --accent: #372F25; --accent-foreground: #F5EDE0;
+  --sidebar-primary: #EBC36B; --sidebar-ring: #EBC36B;
+  --hero-1: #F1D18A; --hero-2: #EBC36B; --hero-3: #D6A84F;
+}
+
+[data-accent="lavender"] {
+  --primary: #6B5CA5; --primary-foreground: #FFFFFF; --ring: #6B5CA5;
+  --accent: #ECE8F5; --accent-foreground: #43396B;
+  --sidebar-primary: #6B5CA5; --sidebar-ring: #6B5CA5;
+  --hero-1: #7566AE; --hero-2: #6B5CA5; --hero-3: #554885;
+}
+.dark[data-accent="lavender"] {
+  --primary: #BBAEE3; --primary-foreground: #1E1838; --ring: #BBAEE3;
+  --accent: #372F25; --accent-foreground: #F5EDE0;
+  --sidebar-primary: #BBAEE3; --sidebar-ring: #BBAEE3;
+  --hero-1: #C8BDEB; --hero-2: #BBAEE3; --hero-3: #9F92D2;
+}
+
+.amoled[data-accent] {
+  --accent: #1A1611;
+  --accent-foreground: #F5EDE0;
+}
+
+/* Hero cards use the selected accent's three stops. */
+.net-card,
+.wallet-net {
+  background: linear-gradient(145deg, var(--hero-1), var(--hero-2) 55%, var(--hero-3));
+  color: var(--primary-foreground);
+}
+.wallet-net small,
+.wallet-net-breakdown { color: var(--primary-foreground); }
+.wallet-net-breakdown { border-top-color: color-mix(in srgb, var(--primary-foreground) 24%, transparent); }
+.wallet-net strong,
+.wallet-net-breakdown b { color: var(--primary-foreground); }

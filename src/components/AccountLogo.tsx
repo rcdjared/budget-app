@@ -19,7 +19,7 @@ export function getAccountLogoFilename(name: string): string | undefined {
 export function AccountLogo({
   name,
   filename,
-  color = "#019B51",
+  color = "var(--primary)",
   type = "bank",
   size = 42,
 }: {
@@ -39,7 +39,12 @@ export function AccountLogo({
     <span
       role="img"
       className={`institution-logo ${failed || !logo ? "fallback" : ""}`}
-      style={{ width: size, height: size, color, backgroundColor: failed || !logo ? `${color}18` : "transparent" }}
+      style={{
+        width: size,
+        height: size,
+        color,
+        backgroundColor: failed || !logo ? `color-mix(in srgb, ${color} 12%, var(--card))` : "transparent",
+      }}
       aria-label={`${name} logo`}
       title={name}
     >

@@ -1,0 +1,346 @@
+/* ==========================================================================
+   theme-cozy.css: "Driftwood & Shell" layer. Less sci-fi, more seaside-cafe.
+   Loaded after the app styles in main.tsx. Nunito and Fraunces are imported
+   from index.css.
+
+   What makes UI feel "sci-fi": a vivid accent on near-black, green-tinted
+   hairline outlines, glows, tiny tracked-out UPPERCASE labels, thin geometry.
+   This file removes each of those.
+   ========================================================================== */
+
+/* ---------- 1. Softer, warmer palette ---------- */
+:root, .light {
+  --shadow-rgb: 58 47 37;
+  --radius: 1.25rem;
+  --background: #F6EFE2;
+  --foreground: #3A2F25;
+  --card: #FFFBF2;
+  --card-foreground: #3A2F25;
+  --popover: #FFFBF2;
+  --popover-foreground: #3A2F25;
+  --primary: #3B7A5F;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EFE5D2;
+  --secondary-foreground: #3A2F25;
+  --muted: #EFE5D2;
+  --muted-foreground: #6F6050;
+  --accent: #E8EFE3;
+  --accent-foreground: #2C4A3A;
+  --destructive: #BE4B3B;
+  --border: #E3D6BE;
+  --input: #E3D6BE;
+  --ring: #3B7A5F;
+  --kupit-gold: #F2C14E;
+  --income: #2A7A57;
+  --expense: #BE4B3B;
+  --expense-foreground: #FFFFFF;
+  --warning: #946514;
+  --positive-change: #2A7A57;
+  --negative-change: #BE4B3B;
+  --neutral-change: #6F6050;
+  --chart-1: #4F9D7E;
+  --chart-2: #E8B84A;
+  --chart-3: #D9776A;
+  --chart-4: #5E9BB0;
+  --chart-5: #B89B72;
+  --sidebar: #FFFBF2;
+  --sidebar-foreground: #3A2F25;
+  --sidebar-primary: #3B7A5F;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E8EFE3;
+  --sidebar-accent-foreground: #2C4A3A;
+  --sidebar-border: #E3D6BE;
+  --sidebar-ring: #3B7A5F;
+}
+
+.dark {
+  --shadow-rgb: 0 0 0;
+  --background: #211B15;
+  --foreground: #F5EDE0;
+  --card: #2C251D;
+  --card-foreground: #F5EDE0;
+  --popover: #2C251D;
+  --popover-foreground: #F5EDE0;
+  --primary: #9CC7A8;
+  --primary-foreground: #1C2A21;
+  --secondary: #372F25;
+  --secondary-foreground: #F5EDE0;
+  --muted: #372F25;
+  --muted-foreground: #BDB09C;
+  --accent: #372F25;
+  --accent-foreground: #F5EDE0;
+  --destructive: #EE9F8F;
+  --border: #45392D;
+  --input: #45392D;
+  --ring: #9CC7A8;
+  --kupit-gold: #F0C36A;
+  --income: #9CCBA6;
+  --expense: #EE9F8F;
+  --expense-foreground: #2D201B;
+  --warning: #D7B16E;
+  --positive-change: #9CCBA6;
+  --negative-change: #EE9F8F;
+  --neutral-change: #BDB09C;
+  --chart-1: #9CC7A8;
+  --chart-2: #F0C36A;
+  --chart-3: #EE9F8F;
+  --chart-4: #8DB9C9;
+  --chart-5: #C9AE85;
+  --sidebar: #2C251D;
+  --sidebar-foreground: #F5EDE0;
+  --sidebar-primary: #9CC7A8;
+  --sidebar-primary-foreground: #1C2A21;
+  --sidebar-accent: #372F25;
+  --sidebar-accent-foreground: #F5EDE0;
+  --sidebar-border: #45392D;
+  --sidebar-ring: #9CC7A8;
+}
+
+/* AMOLED keeps the cozy dark accent with black surfaces. */
+.amoled {
+  --background: #000000;
+  --card: #0F0D0A;
+  --popover: #0F0D0A;
+  --secondary: #1A1611;
+  --muted: #1A1611;
+  --accent: #1A1611;
+  --border: #2A241C;
+  --input: #2A241C;
+  --sidebar: #0F0D0A;
+  --sidebar-border: #2A241C;
+}
+
+/* ---------- 2. Typography: soft rounded body, storybook serif for big numbers ---------- */
+html, body {
+  font-family: "Nunito Variable", "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+.page-header h1,
+.finsights-title,
+.section-heading h2,
+.home-section-heading h2,
+.kupit-settings-header h1,
+.spending-pulse__total > strong,
+.net-value,
+.home-net-amount,
+.wallet-net strong,
+.total-card-value,
+.net-balance-value {
+  font-family: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+/* If the peso sign (₱) looks off in the serif, delete the block above for
+   the amount selectors and keep only the titles. */
+
+/* ---------- 3. Labels: sentence case, readable, not tracked-out caps ---------- */
+.eyebrow,
+.spending-pulse__eyebrow,
+.net-balance-label,
+.total-card-label,
+.chart-card-title,
+.kupit-settings-section h2,
+.ios-group-title,
+.spending-pulse__speaker,
+.kupi-nav-tutorial__speaker,
+.wallet-plus-tutorial__bubble > span,
+.home-balance-group h3,
+.debts-summary small,
+.home-category-showcase-top small {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-weight: 700;
+}
+.eyebrow, .spending-pulse__eyebrow, .net-balance-label, .total-card-label,
+.kupit-settings-section h2, .ios-group-title { font-size: 12.5px; }
+
+/* ---------- 4. No glow, no green-tinted outlines ---------- */
+:root { --divider: color-mix(in srgb, var(--border) 58%, transparent); }
+
+/* Keep shared cards flat, with a quiet outline instead of a colored glow. */
+.home-net-card, .home-totals-card, .home-trend-card, .home-section-card,
+.week-summary, .budget-prompt, .account-card, .transaction-list,
+.accounts-page-list, .budget-row, .goal-row, .plan-tools button,
+.ios-group-card, .kupit-settings-card, .finsights-date-card, .finsights-chart-card,
+.notification-master-card, .notification-category-card, .notification-inbox-card,
+.profile-option, .profile-edit-card, .profile-sync-card,
+.kupi-action-card, .kupi-undo-toast, .debts-summary > div, .debts-list article,
+.friends-list button, .assistant-message, .chat-message {
+  border-color: transparent;
+  box-shadow: none;
+}
+/* Keep Kupi's replies visibly inside a soft speech bubble. The shared flat-card
+   rule above is for panels; chat turns still need a distinct message surface. */
+.kupi-speech-bubble {
+  --bubble: color-mix(in srgb, var(--card) 84%, var(--kupit-gold) 9%);
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 20px 20px 20px 6px;
+  background: var(--bubble);
+  box-shadow: none;
+}
+.kupi-speech-bubble::before {
+  position: absolute;
+  top: 17px;
+  left: -5px;
+  width: 8px;
+  height: 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--bubble);
+  content: "";
+  transform: rotate(45deg);
+}
+.chat-turn.assistant .chat-message,
+.chat-turn.assistant .assistant-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 20px 20px 20px 6px;
+  background: var(--bubble);
+  color: var(--foreground);
+  box-shadow: none;
+}
+.chat-message-speaker {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.chat-turn.user .chat-message {
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: 20px 20px 6px 20px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: none;
+}
+.home-recent-row, .home-category-row, .home-upcoming-row, .home-budget-row,
+.home-friend-balance-row, .home-inline-empty { border-top-color: var(--divider); }
+.transaction-row, .account-row { border-bottom-color: var(--divider); }
+
+/* Primary controls use the matching foreground, including in dark mode. */
+.save-button, .header-action, .add-cat-top-btn, .add-cat-inline-btn,
+.chat-composer > button, .cloud-sync-button, .empty-action,
+.profile-create button, .profile-edit-card label button, .profile-primary-action,
+.kupit-help-card button, .kupit-primary-button, .kupi-home-nudge__open,
+.camera-capture-button, .receipt-primary-action, .notification-test-button,
+.notification-time-done, .kupit-detail-profile > span, .icon-grid-item.selected,
+.home-onboarding-steps li.active span {
+  color: var(--primary-foreground);
+}
+.profile-action.danger, .profile-delete-account > b, .kupi-chat-error { color: var(--expense); }
+.profile-action.danger { background: color-mix(in oklch, var(--expense) 10%, var(--card)); }
+.profile-delete-account { border-color: color-mix(in oklch, var(--expense) 35%, var(--border)); }
+.profile-delete-account > button { background: var(--expense); color: var(--expense-foreground); }
+.account-delete { color: var(--expense); background: color-mix(in oklch, var(--expense) 12%, var(--card)); }
+.kupit-action-warning, .transfer-balance-warning { color: var(--warning); }
+
+.spending-pulse {
+  border-color: transparent;
+  background: var(--card);
+  box-shadow: none;
+}
+.spending-pulse-widget {
+  --pulse-dim-bar: color-mix(in srgb, var(--muted-foreground) 30%, var(--card));
+  --pulse-border: color-mix(in srgb, var(--border) 82%, var(--muted-foreground) 18%);
+  --pulse-bubble-border: transparent;
+}
+.spending-pulse__tabs,
+.spending-pulse__account-filter { border-color: var(--pulse-border); }
+.spending-pulse__thumb,
+.tab-switch-pill.active-expense,
+.tab-switch-pill.active-income { box-shadow: none; }
+.spending-pulse__mascot-wrap,
+.kupi-home-nudge { filter: none; }
+
+/* Mascot speech bubble: warm paper tint, rounded corners, light outline */
+.spending-pulse__bubble,
+.kupi-home-nudge__bubble,
+.home-first-record__bubble,
+.kupi-nav-tutorial__bubble,
+.wallet-plus-tutorial__bubble {
+  --bubble: color-mix(in srgb, var(--card) 84%, var(--kupit-gold) 9%);
+  background: var(--bubble);
+  border-color: transparent;
+  border-radius: 20px 20px 20px 6px;
+  box-shadow: none;
+}
+.spending-pulse__bubble::before,
+.kupi-home-nudge__bubble::before,
+.home-first-record__bubble::before,
+.kupi-nav-tutorial__bubble::after {
+  background: var(--bubble);
+  border-color: transparent;
+}
+
+/* ---------- 5. Chunkier, friendlier shapes ---------- */
+.home-budget-bar, .home-category-bar, .budget-track { height: 10px; }
+.budget-track span, .home-budget-bar i, .home-category-bar i { border-radius: 999px; }
+.home-trend-track, .home-trend-track span { border-radius: 10px 10px 6px 6px; }
+
+/* Floating tab bar: solid warm pill, soft lift, no glassy edge or glow */
+.bottom-nav::before,
+.dark .bottom-nav::before {
+  height: 56px;
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: 0 4px 14px rgb(var(--shadow-rgb) / 10%);
+}
+.bottom-nav { height: 56px; }
+.bottom-nav::after {
+  width: 48px;
+  height: 44px;
+  background: color-mix(in oklch, var(--primary) 18%, var(--card));
+  box-shadow: none;
+}
+.bottom-nav .nav-item {
+  width: 48px;
+  height: 44px;
+  gap: 1px;
+}
+.nav-item { font-weight: 700; }
+
+/* The add action stays warm and clear without a neon shadow. */
+.floating-fab {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border: 2px solid color-mix(in srgb, var(--primary-foreground) 28%, var(--primary));
+  box-shadow: none;
+}
+.floating-fab:active { box-shadow: none; }
+
+/* Theme picker previews use the cozy light and dark surfaces. */
+.theme-screen { background: #F6EFE2; }
+.theme-screen > span { color: var(--primary); background: #FFFBF2; }
+.theme-dark { background: #211B15; }
+.theme-dark > span { background: #2C251D; color: #9CC7A8; }
+.theme-amoled { background: #000; }
+.theme-amoled > span { background: #0F0D0A; color: #9CC7A8; }
+.theme-system { background: linear-gradient(135deg, #F6EFE2 0 50%, #211B15 50%); }
+
+/* Primary actions inherit the selected accent theme. */
+.header-action {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 72%, var(--foreground) 28%);
+}
+.net-card {
+  color: var(--primary-foreground);
+  box-shadow: none;
+}
+.net-card-top span,
+.net-card-top button,
+.net-change,
+.month-totals small { color: var(--primary-foreground); }
+.net-card-top button { color: var(--primary-foreground); }
+.wallet-net {
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+.wallet-net small,
+.wallet-net-breakdown { color: var(--primary-foreground); }
+.wallet-net-breakdown { border-top-color: color-mix(in srgb, var(--primary-foreground) 24%, transparent); }
+.wallet-net strong,
+.wallet-net-breakdown b { color: var(--primary-foreground); }

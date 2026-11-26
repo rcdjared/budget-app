@@ -1,93 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
-
+@import "@fontsource-variable/nunito";
+@import "@fontsource-variable/fraunces";
 @custom-variant dark (&:is(.dark *));
-
-/* ==========================================================================
-   KUPIT BRAND THEMING
-   Vibrant Kupit Green (#019B51), Golden Coin Accent (#F8C90B), Clean Warm Neutrals
-   ========================================================================== */
-:root {
-  --background: oklch(0.985 0.003 150);
-  --foreground: oklch(0.145 0.015 155);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.015 155);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.015 155);
-  --primary: #019B51; /* Official Kupit Green */
-  --primary-foreground: #ffffff;
-  --kupit-gold: #F8C90B; /* Official Kupit Coin Gold */
-  --secondary: oklch(0.96 0.02 150);
-  --secondary-foreground: oklch(0.22 0.04 150);
-  --muted: oklch(0.96 0.01 150);
-  --muted-foreground: oklch(0.5 0.02 150);
-  --accent: oklch(0.96 0.02 150);
-  --accent-foreground: oklch(0.22 0.04 150);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.91 0.01 150);
-  --input: oklch(0.91 0.01 150);
-  --ring: #019B51;
-  --chart-1: #019B51;
-  --chart-2: #F8C90B;
-  --chart-3: oklch(0.65 0.18 30);
-  --chart-4: oklch(0.55 0.15 300);
-  --chart-5: oklch(0.6 0.12 80);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.985 0.003 150);
-  --sidebar-foreground: oklch(0.145 0.015 155);
-  --sidebar-primary: #019B51;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: oklch(0.96 0.02 150);
-  --sidebar-accent-foreground: oklch(0.22 0.04 150);
-  --sidebar-border: oklch(0.91 0.01 150);
-  --sidebar-ring: #019B51;
-  --income: #16794A;
-  --expense: #C43D35;
-  --warning: #B45309;
-  --positive-change: #16794A;
-  --negative-change: #C43D35;
-  --neutral-change: #5F6B66;
-}
-
-.dark {
-  --background: oklch(0.13 0.015 155);
-  --foreground: oklch(0.95 0.005 155);
-  --card: oklch(0.18 0.015 155);
-  --card-foreground: oklch(0.95 0.005 155);
-  --popover: oklch(0.18 0.015 155);
-  --popover-foreground: oklch(0.95 0.005 155);
-  --primary: #10B981;
-  --primary-foreground: oklch(0.13 0.015 155);
-  --kupit-gold: #FACC15;
-  --secondary: oklch(0.22 0.02 155);
-  --secondary-foreground: oklch(0.9 0.005 155);
-  --muted: oklch(0.22 0.02 155);
-  --muted-foreground: oklch(0.65 0.02 155);
-  --accent: oklch(0.22 0.02 155);
-  --accent-foreground: oklch(0.9 0.005 155);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: #10B981;
-  --chart-1: #10B981;
-  --chart-2: #FACC15;
-  --chart-3: oklch(0.65 0.18 30);
-  --chart-4: oklch(0.55 0.15 300);
-  --chart-5: oklch(0.6 0.12 80);
-  --sidebar: oklch(0.18 0.015 155);
-  --sidebar-foreground: oklch(0.95 0.005 155);
-  --sidebar-primary: #10B981;
-  --sidebar-primary-foreground: oklch(0.13 0.015 155);
-  --sidebar-accent: oklch(0.22 0.02 155);
-  --sidebar-accent-foreground: oklch(0.9 0.005 155);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: #10B981;
-}
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Nunito Variable', ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -1063,9 +983,8 @@ button {
 .net-card {
   border-radius: 20px;
   padding: clamp(16px, 4vw, 20px);
-  color: white;
-  background: linear-gradient(145deg, #019B51 0%, #018043 55%, #016233 100%);
-  box-shadow: 0 12px 28px rgba(1, 155, 81, 0.22);
+  color: var(--primary-foreground);
+  box-shadow: none;
   margin-bottom: clamp(10px, 2.5vw, 16px);
 }
 
@@ -1920,11 +1839,11 @@ button {
 }
 
 .trend-bar-pill.expense-bar {
-  background: linear-gradient(180deg, #f43f5e 0%, #de5448 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--expense) 74%, var(--card)), var(--expense));
 }
 
 .trend-bar-pill.income-bar {
-  background: linear-gradient(180deg, #34d399 0%, #019B51 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--income) 74%, var(--card)), var(--income));
 }
 
 .trend-bar-label {
@@ -3122,15 +3041,12 @@ button {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #02b660 0%, #019B51 60%, #008744 100%);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
   display: grid;
   place-items: center;
-  box-shadow: 
-    0 10px 24px rgba(1, 155, 81, 0.45),
-    0 2px 6px rgba(1, 155, 81, 0.25),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: none;
+  border: 2px solid color-mix(in srgb, var(--primary-foreground) 28%, var(--primary));
   cursor: pointer;
   touch-action: manipulation;
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
@@ -3138,7 +3054,7 @@ button {
 
 .floating-fab:active {
   transform: scale(0.9);
-  box-shadow: 0 4px 12px rgba(1, 155, 81, 0.35);
+  box-shadow: none;
 }
 
 /* ==========================================================================
@@ -4624,8 +4540,7 @@ button {
    ========================================================================== */
 .wallet-net {
   border-radius: 18px;
-  background: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   padding: clamp(14px, 3.5vw, 18px);
 }
 
@@ -5803,12 +5718,11 @@ button {
 
 .kupit-color-grid {
   display: grid;
-  grid-template-columns: repeat(11, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 7px;
 }
 
-.kupit-color-swatch,
-.kupit-custom-swatch {
+.kupit-color-swatch {
   width: 100%;
   aspect-ratio: 1;
   border: 2px solid transparent;
@@ -5816,25 +5730,12 @@ button {
   position: relative;
 }
 
+.kupit-color-swatch { background: var(--swatch-light); }
+.dark .kupit-color-swatch { background: var(--swatch-dark); }
+
 .kupit-color-swatch.selected {
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
-}
-
-.kupit-custom-swatch {
-  display: grid;
-  place-items: center;
-  color: var(--foreground);
-  background: conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444);
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.kupit-custom-swatch input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
 }
 
 .kupit-help-card {
@@ -6527,13 +6428,13 @@ button {
   flex-shrink: 0;
 }
 
-.squircle-purple { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
-.squircle-amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
-.squircle-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.squircle-green { background: linear-gradient(135deg, #10b981, #019B51); }
-.squircle-teal { background: linear-gradient(135deg, #14b8a6, #0d9488); }
-.squircle-sky { background: linear-gradient(135deg, #0ea5e9, #0284c7); }
-.squircle-rose { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.squircle-purple { background: color-mix(in srgb, #9C8CC4 16%, var(--card)); color: #7565A0; }
+.squircle-amber { background: color-mix(in srgb, #D4A73C 16%, var(--card)); color: #8F6B1D; }
+.squircle-blue { background: color-mix(in srgb, #7C9FD0 16%, var(--card)); color: #5879AA; }
+.squircle-green { background: color-mix(in srgb, #4F9D7E 16%, var(--card)); color: #3D8065; }
+.squircle-teal { background: color-mix(in srgb, #5E9BB0 16%, var(--card)); color: #477F92; }
+.squircle-sky { background: color-mix(in srgb, #7C9FD0 16%, var(--card)); color: #5879AA; }
+.squircle-rose { background: color-mix(in srgb, #D9776A 16%, var(--card)); color: #AD5D52; }
 
 .ios-row-text {
   display: flex;
@@ -7322,98 +7223,4 @@ button {
   min-height: 48px;
   margin: 2px 0 0;
   border-radius: 13px;
-}
-
-/* UI spec palette: dark by default, with token-swapped light and AMOLED modes. */
-:root,
-.dark {
-  --background: #0A0E0D;
-  --foreground: #F2F5F4;
-  --card: #151B19;
-  --card-foreground: #F2F5F4;
-  --popover: #151B19;
-  --popover-foreground: #F2F5F4;
-  --primary: #6FCF97;
-  --primary-foreground: #0A0E0D;
-  --secondary: #1B2321;
-  --secondary-foreground: #F2F5F4;
-  --muted: #1B2321;
-  --muted-foreground: #A0AAA6;
-  --accent: #1B2321;
-  --accent-foreground: #F2F5F4;
-  --border: #29332F;
-  --input: #29332F;
-  --ring: #6FCF97;
-  --chart-1: #6FCF97;
-  --sidebar: #151B19;
-  --sidebar-foreground: #F2F5F4;
-  --sidebar-primary: #6FCF97;
-  --sidebar-primary-foreground: #0A0E0D;
-  --sidebar-accent: #1B2321;
-  --sidebar-accent-foreground: #F2F5F4;
-  --sidebar-border: #29332F;
-  --sidebar-ring: #6FCF97;
-  --income: #6FCF97;
-  --expense: #F08078;
-  --expense-foreground: #24100E;
-  --warning: #F2C94C;
-  --positive-change: #6FCF97;
-  --negative-change: #F08078;
-  --neutral-change: #A0AAA6;
-}
-
-.light {
-  --background: oklch(0.985 0.003 150);
-  --foreground: oklch(0.145 0.015 155);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.015 155);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.015 155);
-  --primary: #087A45;
-  --primary-foreground: #ffffff;
-  --secondary: oklch(0.96 0.02 150);
-  --secondary-foreground: oklch(0.22 0.04 150);
-  --muted: oklch(0.96 0.01 150);
-  --muted-foreground: oklch(0.5 0.02 155);
-  --accent: oklch(0.96 0.02 150);
-  --accent-foreground: oklch(0.22 0.04 150);
-  --border: oklch(0.91 0.01 150);
-  --input: oklch(0.91 0.01 150);
-  --ring: #087A45;
-  --chart-1: #087A45;
-  --sidebar: oklch(0.985 0.003 150);
-  --sidebar-foreground: oklch(0.145 0.015 155);
-  --sidebar-primary: #087A45;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: oklch(0.96 0.02 150);
-  --sidebar-accent-foreground: oklch(0.22 0.04 150);
-  --sidebar-border: oklch(0.91 0.01 150);
-  --sidebar-ring: #087A45;
-  --income: #16794A;
-  --expense: #B42318;
-  --expense-foreground: #ffffff;
-  --warning: #854D0E;
-  --positive-change: #16794A;
-  --negative-change: #B42318;
-  --neutral-change: #5F6B66;
-}
-
-.amoled {
-  --background: #000000;
-  --card: #0B0F0E;
-  --card-foreground: #F2F5F4;
-  --popover: #0B0F0E;
-  --popover-foreground: #F2F5F4;
-  --secondary: #151B19;
-  --muted: #151B19;
-  --border: #232D2A;
-  --input: #232D2A;
-  --sidebar: #0B0F0E;
-  --sidebar-border: #232D2A;
-  --income: #6FCF97;
-  --expense: #F08078;
-  --warning: #F2C94C;
-  --positive-change: #6FCF97;
-  --negative-change: #F08078;
-  --neutral-change: #A0AAA6;
 }

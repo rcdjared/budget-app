@@ -40,7 +40,7 @@ import { exportJsonBackup, exportTransactionsCsv, importJsonBackup, importTransa
 import { supabase } from "@/lib/supabase";
 import { loadAppSettings, saveAppSettings, type AppSettings, type ThemePreference } from "@/lib/settings";
 import { t } from "@/lib/localization";
-import { ACCENT_PRESETS, contrastingForeground } from "@/lib/themeContrast";
+import { ACCENT_THEMES, getAccentTheme, type AccentThemeId } from "@/lib/accentThemes";
 import { createRule } from "@/kupi/learning/learning";
 import type { SmartCapability } from "@/kupi/nlu/capability";
 
@@ -51,13 +51,13 @@ interface KupitSettingsSheetProps {
   profileId: string;
   themePreference: ThemePreference;
   onThemeChange: (theme: ThemePreference) => void;
+  accentTheme: AccentThemeId;
+  onAccentThemeChange: (accent: AccentThemeId) => void;
   onOpenCategories: () => void;
   onOpenPlan: () => void;
   onOpenNotifications: () => void;
   onOpenProfiles: () => void;
 }
-
-const ACCENT_COLORS = ACCENT_PRESETS.map(([name, value]) => ({ name, value }));
 
 const CURRENCIES = [
   ["PHP", "Philippine Peso", "₱"],
@@ -117,6 +117,8 @@ export function KupitSettingsSheet({
   profileId,
   themePreference,
   onThemeChange,
+  accentTheme,
+  onAccentThemeChange,
   onOpenCategories,
   onOpenPlan,
   onOpenNotifications,
@@ -137,7 +139,6 @@ export function KupitSettingsSheet({
   const [modelAvailability, setModelAvailability] = useState<{ embedding: boolean | null; smart: boolean | null }>({ embedding: null, smart: null });
   const modelOperationRef = useRef(0);
   const modelActionRef = useRef<"embedding" | "smart" | "full" | "delete" | null>(null);
-  const customColorRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open && initialDetail) setDetail(initialDetail);
@@ -332,11 +333,8 @@ export function KupitSettingsSheet({
   }, [open]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty("--primary", settings.accentColor);
-    root.style.setProperty("--primary-foreground", contrastingForeground(settings.accentColor));
-    root.style.setProperty("--ring", settings.accentColor);
-  }, [settings.accentColor]);
+    onAccentThemeChange(getAccentTheme(settings.accentName).id);
+  }, [settings.accentName, onAccentThemeChange]);
 
   useEffect(() => {
     if (!supabase || !open) return;
@@ -353,7 +351,11 @@ export function KupitSettingsSheet({
     };
   }, [open]);
 
-  const chooseAccent = (value: string, name: string) => updateSettings({ accentColor: value, accentName: name });
+  const chooseAccent = (id: AccentThemeId) => {
+    const theme = getAccentTheme(id);
+    onAccentThemeChange(theme.id);
+    updateSettings({ accentColor: theme.color, accentName: theme.name });
+  };
 
   const signOut = async () => {
     if (!supabase) return;
@@ -543,22 +545,20 @@ export function KupitSettingsSheet({
                 <small className="kupit-appearance-helper">
                   {themePreference === "system" ? "Matches your device setting" : `${themePreference === "amoled" ? "AMOLED" : themePreference[0].toUpperCase() + themePreference.slice(1)} theme is selected`}
                 </small>
-                <div className="kupit-color-heading"><b>App color</b><span>{settings.accentName}</span></div>
+                <div className="kupit-color-heading"><b>App color</b><span>{getAccentTheme(accentTheme).name}</span></div>
                 <div className="kupit-color-grid">
-                  {ACCENT_COLORS.map((color) => (
+                  {ACCENT_THEMES.map((theme) => (
                     <button
                       type="button"
-                      key={color.value}
-                      aria-label={color.name}
-                      className={`kupit-color-swatch ${settings.accentColor.toLowerCase() === color.value.toLowerCase() ? "selected" : ""}`}
-                      style={{ background: color.value }}
-                      onClick={() => chooseAccent(color.value, color.name)}
+                      key={theme.id}
+                      aria-label={theme.name}
+                      aria-pressed={accentTheme === theme.id}
+                      title={theme.name}
+                      className={`kupit-color-swatch ${accentTheme === theme.id ? "selected" : ""}`}
+                      style={{ "--swatch-light": theme.color, "--swatch-dark": theme.darkColor } as React.CSSProperties}
+                      onClick={() => chooseAccent(theme.id)}
                     />
                   ))}
-                  <button type="button" className="kupit-custom-swatch" onClick={() => customColorRef.current?.click()} aria-label="Custom color">
-                    +
-                    <input ref={customColorRef} type="color" value={settings.accentColor} onChange={(event) => chooseAccent(event.target.value, "Custom")} />
-                  </button>
                 </div>
               </div>
             </Section>

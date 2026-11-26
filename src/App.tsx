@@ -102,6 +102,7 @@ import { insertDueNotifications } from "@/db/repositories/notifications";
 import { getProfileNotificationPreferences, updateProfileNotificationPreferences } from "@/db/repositories/profiles";
 import { detectBudgetCrossings, getBudgetSpendSnapshot, type NotificationData, type BudgetSpendSnapshot } from "@/lib/notificationEngine";
 import { loadAppSettings } from "@/lib/settings";
+import { getAccentTheme, type AccentThemeId } from "@/lib/accentThemes";
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
 import { t, tForLanguage } from "@/lib/localization";
 import { Kupi } from "@/features/spending-pulse/Kupi";
@@ -487,6 +488,7 @@ function App() {
     const saved = localStorage.getItem("kupit-theme");
     return saved === "light" || saved === "dark" || saved === "amoled" ? saved : "system";
   });
+  const [accentTheme, setAccentTheme] = useState<AccentThemeId>(() => getAccentTheme(loadAppSettings().accentName).id);
   const [online, setOnline] = useState(navigator.onLine);
   useRegisterSW({ immediate: true });
   useSheetGestures();
@@ -513,15 +515,17 @@ function App() {
       document.documentElement.classList.toggle("dark", dark);
       document.documentElement.classList.toggle("light", light);
       document.documentElement.classList.toggle("amoled", themePreference === "amoled");
+      document.documentElement.dataset.accent = accentTheme;
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute("content", themePreference === "amoled" ? "#000000" : dark ? "#0A0E0D" : "#019B51");
+      const themeColor = themePreference === "amoled" ? "#000000" : dark ? "#211B15" : "#F6EFE2";
+      document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+        meta.setAttribute("content", themeColor);
+      });
     };
     applyTheme();
     media.addEventListener("change", applyTheme);
     return () => media.removeEventListener("change", applyTheme);
-  }, [themePreference]);
+  }, [themePreference, accentTheme]);
 
   useEffect(() => {
     localStorage.setItem("kupit-theme", themePreference);
@@ -978,6 +982,8 @@ function App() {
         profileId={profileId}
         themePreference={themePreference}
         onThemeChange={setThemePreference}
+        accentTheme={accentTheme}
+        onAccentThemeChange={setAccentTheme}
         onOpenCategories={() => {
           setCategoryManagerType("expense");
           setCategoryPickMode(false);

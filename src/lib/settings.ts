@@ -1,4 +1,5 @@
 import { NOTIFICATION_THRESHOLDS } from "@/lib/notificationsConfig";
+import { ACCENT_THEMES } from "@/lib/accentThemes";
 import type { NotificationPreferences } from "@/domain/types";
 
 export type { NotificationPreferences } from "@/domain/types";
@@ -53,8 +54,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 3,
   language: "en",
   theme: "system",
-  accentColor: "#019B51",
-  accentName: "Kupit Green",
+  accentColor: ACCENT_THEMES[0].color,
+  accentName: ACCENT_THEMES[0].name,
   currency: "PHP",
   showDecimals: true,
   haptics: true,
