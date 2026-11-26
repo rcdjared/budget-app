@@ -128,6 +128,16 @@ function categoryFilterKey(category: Pick<Category, "type" | "name">): string {
 
 function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [tutorialDismissedProfileIds, setTutorialDismissedProfileIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return Object.keys(window.localStorage)
+        .filter((key) => key.startsWith("kupit-tutorial-dismissed:"))
+        .map((key) => key.slice("kupit-tutorial-dismissed:".length));
+    } catch {
+      return [];
+    }
+  });
   const [homeTransactionDetailId, setHomeTransactionDetailId] = useState<string | null>(null);
   const profileSwitchSequence = useRef(0);
   const [tab, setTab] = useState<Tab>("home");
@@ -335,6 +345,17 @@ function App() {
       setAddMenuClosing(false);
       afterClose?.();
     }, closeDuration);
+  };
+
+  const finishTutorial = () => {
+    if (!profileId) return;
+    try {
+      window.localStorage.setItem(`kupit-tutorial-dismissed:${profileId}`, "true");
+    } catch {
+      // The tutorial can still be dismissed for this session if storage is unavailable.
+    }
+    setTutorialDismissedProfileIds((current) => current.includes(profileId) ? current : [...current, profileId]);
+    if (addMenuOpen) closeAddMenu();
   };
 
   const navigateToTab = (nextTab: Tab) => {
@@ -736,7 +757,9 @@ function App() {
   }
 
   const tutorialTarget: "wallet" | "wallet-plus" | "add" | "expense" | null =
-    tutorialAccounts === undefined || tutorialTransactions === undefined
+    tutorialDismissedProfileIds.includes(profileId)
+      ? null
+      : tutorialAccounts === undefined || tutorialTransactions === undefined
       ? null
       : addMenuOpen
         ? tutorialAccounts.length > 0 && tutorialTransactions.length === 0
@@ -787,6 +810,7 @@ function App() {
           {tab === "home" && (
             <HomePage
               profileId={profileId}
+              hideKupiInsight={tutorialTarget !== null}
               onProfiles={() => setProfilesOpen(true)}
               onSettings={() => setSettingsOpen(true)}
               onNotifications={() => {
@@ -823,6 +847,7 @@ function App() {
               onAdd={() => setAccountOpen(true)}
               tutorialPlus={tutorialTarget === "wallet-plus"}
               reduceMotion={reduceTutorialMotion}
+              onFinishTutorial={finishTutorial}
             />
           )}
           {tab === "plan" && (
@@ -894,11 +919,12 @@ function App() {
             <p>
               {tutorialTarget === "wallet"
                 ? "Open Wallet below to create your first account."
-                : "Tap Add below, then choose Expense or Income for your first transaction."}
+                : "Open Add to explore logging, transfers, receipt scans, and chat."}
             </p>
             <small>
               {tutorialTarget === "wallet" ? "Step 1 of 2" : "Step 2 of 2"}
             </small>
+            <button type="button" className="kupi-tutorial-finish" onClick={finishTutorial}>Finish tutorial</button>
           </div>
         </aside>
       )}
@@ -908,6 +934,7 @@ function App() {
           closing={addMenuClosing}
           tutorialFirstTransaction={tutorialTarget === "expense"}
           reduceMotion={reduceTutorialMotion}
+          onFinishTutorial={finishTutorial}
           onClose={() => closeAddMenu()}
           onAction={(action) => closeAddMenu(() => {
             if (action === "chat") {
@@ -1092,12 +1119,14 @@ function AddActionsMenu({
   closing,
   tutorialFirstTransaction,
   reduceMotion,
+  onFinishTutorial,
 }: {
   onClose: () => void;
   onAction: (action: AddAction) => void;
   closing: boolean;
   tutorialFirstTransaction: boolean;
   reduceMotion: boolean;
+  onFinishTutorial: () => void;
 }) {
   const actions: { id: AddAction; label: string; hint: string; icon: typeof Home }[] = [
     { id: "chat", label: "Chat", hint: "Log naturally with your assistant", icon: MessageCircle },
@@ -1136,8 +1165,9 @@ function AddActionsMenu({
                 <span className="kupi-nav-tutorial__bubble">
                   <span className="kupi-nav-tutorial__speaker">Kupi</span>
                   <b>Choose Expense or Income</b>
-                  <p>Tap either one to record your first transaction.</p>
+                  <p>When you’re ready, choose Expense or Income to log a transaction.</p>
                   <small>Step 2 of 2</small>
+                  <button type="button" className="kupi-tutorial-finish" onClick={onFinishTutorial}>Finish tutorial</button>
                 </span>
               </div>
             )}
@@ -1503,6 +1533,7 @@ function HomeTransactionDetailSheet({
 
 function HomePage({
   profileId,
+  hideKupiInsight,
   onProfiles,
   onSettings,
   onNotifications,
@@ -1519,6 +1550,7 @@ function HomePage({
   onPlan,
 }: {
   profileId: string;
+  hideKupiInsight: boolean;
   onProfiles: () => void;
   onSettings: () => void;
   onNotifications: () => void;
@@ -1595,6 +1627,7 @@ function HomePage({
 
       <FinsightsPage
         profileId={profileId}
+        hideKupiInsight={hideKupiInsight}
         onOpenHelp={onOpenHelp}
         onOpenKupi={onOpenKupi}
         onAddAccount={onAddAccount}
@@ -2411,11 +2444,13 @@ function AccountsPage({
   onAdd,
   tutorialPlus,
   reduceMotion,
+  onFinishTutorial,
 }: {
   profileId: string;
   onAdd: () => void;
   tutorialPlus: boolean;
   reduceMotion: boolean;
+  onFinishTutorial: () => void;
 }) {
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const accounts = useLiveQuery(
@@ -2548,6 +2583,7 @@ function AccountsPage({
             <b>Tap the Plus</b>
             <p>Use it to add your first wallet, bank, or cash account.</p>
             <small>Step 1 of 2</small>
+            <button type="button" className="kupi-tutorial-finish" onClick={onFinishTutorial}>Finish tutorial</button>
           </div>
         </aside>
       )}

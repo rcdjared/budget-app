@@ -39,6 +39,7 @@ import type { Mood } from "@/kupi/contracts";
 
 interface FinsightsPageProps {
   profileId: string;
+  hideKupiInsight?: boolean;
   onOpenHelp?: () => void;
   showNetWorth?: boolean;
   onAddAccount: () => void;
@@ -141,6 +142,7 @@ function daysBetween(from: string, to: string) {
 
 export function FinsightsPage({
   profileId,
+  hideKupiInsight = false,
   onAddAccount,
   onAddTransaction,
   onHistory,
@@ -828,7 +830,7 @@ export function FinsightsPage({
           {renderSection("categories")}
         </>
       )}
-      {homeIsLoaded && (
+      {homeIsLoaded && !hideKupiInsight && (
         <section className="kupi-home-nudge" data-reduce-motion={reduceMotionActive} aria-label="Kupi insight">
           <button type="button" className="spending-pulse__mascot-wrap kupi-home-nudge__mascot" onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)} aria-label="Tap Kupi to ask about this insight" title="Tap to ask Kupi">
             <Kupi mood={kupiMascotMood(kupiInsightMood)} size={84} />
