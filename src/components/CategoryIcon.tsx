@@ -1,4 +1,5 @@
 import React from "react";
+export { CATEGORY_COLORS } from "@/lib/categoryColors";
 import {
   Utensils,
   ShoppingCart,
@@ -86,24 +87,6 @@ export const CATEGORY_ICON_LIST: CategoryIconOption[] = [
   { id: "more-horizontal", name: "Others", Icon: MoreHorizontal },
 ];
 
-export const CATEGORY_COLORS = [
-  "#F97316", // Orange
-  "#FB923C", // Light orange
-  "#EAB308", // Yellow
-  "#10B981", // Emerald
-  "#059669", // Dark green
-  "#14B8A6", // Teal
-  "#06B6D4", // Cyan
-  "#3B82F6", // Blue
-  "#6366F1", // Indigo
-  "#8B5CF6", // Purple
-  "#EC4899", // Pink
-  "#F43F5E", // Rose
-  "#EF4444", // Red
-  "#78716C", // Warm gray
-  "#64748B", // Slate
-];
-
 const iconMap = new Map<string, LucideIcon>(
   CATEGORY_ICON_LIST.map((item) => [item.id, item.Icon])
 );
@@ -131,7 +114,7 @@ export function CategoryIcon({
     <span
       className={`category-icon-wrapper ${className || ""}`}
       style={{
-        backgroundColor: color ? `${color}1A` : "var(--muted)",
+        backgroundColor: color ? `${color}29` : "var(--muted)",
         color: color || "var(--foreground)",
         display: "inline-grid",
         placeItems: "center",

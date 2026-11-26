@@ -1234,6 +1234,44 @@ export function KupiChatSheet({
       }
       const snapshot = getSnapshot();
       const rulesResult = parseKupiInput(text, context, snapshot, now);
+      const affordabilityQuestion = /\b(?:can i afford|should i (?:buy|get|spend)|can i (?:buy|get|spend)|is it okay if i buy|do i have enough)\b/iu.test(text);
+      const dailyBudgetQuestion = /\b(?:how much|what amount|what's|what is)\b.*\b(?:spend|use)\b.*\b(?:today|daily|per day|each day)\b|\b(?:daily|per day|each day)\b.*\b(?:budget|safe.to.spend|spend)\b|\b(?:safe.to.spend|spending limit)\b/iu.test(text);
+      if (affordabilityQuestion || dailyBudgetQuestion) {
+        const query: StatsQuery = { metric: "safe_to_spend" };
+        const answer = executeStatsQuery(query, {
+          accounts: scopedAccounts,
+          budgets: scopedBudgets,
+          categories: scopedCategories,
+          transactions: scopedTransactions,
+          now,
+        });
+        const amountMatch = text.match(/(?:₱|PHP\s*)?([\d][\d,]*(?:\.\d{1,2})?\s*[km]?)/iu);
+        if (affordabilityQuestion && !amountMatch) {
+          addAssistant(`${summaryForQuery(answer, query)} What’s the item’s price? I can compare it with today’s budget pace. If you decide to buy it, I can help log it too.`);
+          return;
+        }
+        if (affordabilityQuestion && amountMatch && answer.metric === "safe_to_spend" && answer.budgetsFound) {
+          const price = parseMoney(amountMatch[1]);
+          const withinPace = price <= answer.dailyAmountCentavos;
+          addAssistant(`${formatMoney(price)} is ${withinPace ? "within" : "above"} your estimated daily budget pace of ${formatMoney(answer.dailyAmountCentavos)}. This is only a budget check, not a full affordability judgment. Want help logging it if you buy it?`);
+          return;
+        }
+        addAssistant(`${summaryForQuery(answer, query)}${affordabilityQuestion ? " I can compare a specific price if you share it." : ""} Want help logging something or with another money question?`);
+        return;
+      }
+      if (/\b(?:settings|theme|color|colour|dark mode|light mode|currency|language|appearance)\b/iu.test(text)) {
+        addAssistant("You can change app options from Settings. Open the Settings page, then choose Appearance for themes, or Preferences for options like currency and language. Want help finding a setting, or do you need to log something?");
+        return;
+      }
+      if (rulesResult.intent === "SMALLTALK" || /^(?:hi|hello|hey|good morning|good afternoon|good evening|how are you|what's up|thanks|thank you|tell me a joke)[!.? ]*$/iu.test(text.trim())) {
+        const smallTalkReply = /\bthank/u.test(normalizedText)
+          ? "You’re welcome! I’m here whenever you need me. Want help logging something, checking your budget, or finding a setting?"
+          : /\bjoke\b/u.test(normalizedText)
+            ? "Why did the coin bring a suitcase? It was ready for a little change. 🙂 Want to log something, check your budget, or ask me anything else?"
+            : "Hi! I’m doing well and ready to help. We can chat, check your budget, figure out a spending question, or log something. What’s on your mind?";
+        addAssistant(smallTalkReply, "idle");
+        return;
+      }
       const categoryChoicesFor = (transactionId?: string) => {
         const transaction = scopedTransactions.find(({ id }) => id === transactionId);
         const type = transaction?.type === "income" ? "income" : "expense";
@@ -1539,7 +1577,7 @@ export function KupiChatSheet({
           {!conversation.length && (
             <div className="chat-turn assistant">
               <img className="chat-kupi-avatar" src={avatarSrc} alt={`Kupi ${avatarMood}`} />
-              <div className="assistant-message">
+              <div className="assistant-message kupi-speech-bubble">
                 {scopedAccounts.length === 0 ? (
                   <>
                     <b>Welcome! Let’s set up your budget.</b>
@@ -1596,7 +1634,10 @@ export function KupiChatSheet({
                   src={entry.mood === "happy" ? "/icons/happy.png" : entry.mood === "worried" ? "/icons/worried.png" : "/icons/idle.png"}
                   alt={`Kupi ${entry.mood}`}
                 />
-                <div className="chat-message assistant">{entry.text}</div>
+                <div className="chat-message assistant kupi-speech-bubble">
+                  <span className="chat-message-speaker">Kupi</span>
+                  <span>{entry.text}</span>
+                </div>
               </div>
             ) : (
               <div key={`user-${index}`} className="chat-turn user">

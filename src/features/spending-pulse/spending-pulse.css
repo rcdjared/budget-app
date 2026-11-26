@@ -358,7 +358,8 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  height: 84px;
+  min-height: 84px;
+  height: auto;
   margin: 0 0 -10px;
   padding: 0;
   border: 0;
@@ -367,9 +368,14 @@
 }
 
 .kupi-home-nudge .spending-pulse__bubble {
-  min-height: 64px;
-  height: 64px;
+  min-height: 78px;
+  height: auto;
   padding: 8px 12px;
+}
+.kupi-home-nudge .spending-pulse__message {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
 }
 
 .kupi-home-nudge .spending-pulse__mascot-wrap {

@@ -813,26 +813,6 @@ export function FinsightsPage({
         </section>
       ) : (
         <>
-          <section className="kupi-home-nudge" data-reduce-motion={reduceMotionActive} aria-label="Kupi insight">
-              <button
-                type="button"
-                className="spending-pulse__mascot-wrap kupi-home-nudge__mascot"
-                onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)}
-                aria-label="Tap Kupi to ask about this insight"
-                title="Tap to ask Kupi"
-              >
-                <Kupi mood={kupiMascotMood(kupiInsightMood)} size={84} />
-              </button>
-              <button
-                type="button"
-                className="spending-pulse__bubble kupi-home-nudge__bubble"
-                onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)}
-                aria-label="Tap Kupi chatbox to ask about this insight"
-              >
-                <span className="spending-pulse__speaker">Kupi · Tap me to ask</span>
-                <span className="spending-pulse__message">{kupiNudgeMessage}</span>
-              </button>
-            </section>
           <SpendingPulse
             profileId={profileId}
             accountId={selectedAccountId}
@@ -847,6 +827,17 @@ export function FinsightsPage({
           />
           {renderSection("categories")}
         </>
+      )}
+      {homeIsLoaded && (
+        <section className="kupi-home-nudge" data-reduce-motion={reduceMotionActive} aria-label="Kupi insight">
+          <button type="button" className="spending-pulse__mascot-wrap kupi-home-nudge__mascot" onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)} aria-label="Tap Kupi to ask about this insight" title="Tap to ask Kupi">
+            <Kupi mood={kupiMascotMood(kupiInsightMood)} size={84} />
+          </button>
+          <button type="button" className="spending-pulse__bubble kupi-home-nudge__bubble kupi-speech-bubble" onClick={() => onOpenKupi(kupiNudgeMessage, kupiInsightMood)} aria-label="Tap Kupi chatbox to ask about this insight">
+            <span className="spending-pulse__speaker">Kupi · Tap me to ask</span>
+            <span className="spending-pulse__message">{kupiNudgeMessage}</span>
+          </button>
+        </section>
       )}
       <div className="home-section-list">
         {homeIsLoaded && accounts.length > 0 && sectionOrder.filter((sectionId) => !["categories", "upcoming", "recent"].includes(sectionId)).map((sectionId) => (

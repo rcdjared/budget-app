@@ -1,17 +1,8 @@
+import { ACCENT_THEMES } from "@/lib/accentThemes";
+
 export type ContrastTheme = "light" | "dark" | "amoled";
 
-export const ACCENT_PRESETS = [
-  ["Kupit Green", "#019B51"],
-  ["Emerald", "#059669"],
-  ["Blue", "#2563EB"],
-  ["Indigo", "#6366F1"],
-  ["Purple", "#9333EA"],
-  ["Pink", "#DB2777"],
-  ["Red", "#DC2626"],
-  ["Orange", "#C2410C"],
-  ["Amber", "#A15C00"],
-  ["Teal", "#0F766E"],
-] as const;
+export const ACCENT_PRESETS = ACCENT_THEMES.map(({ name, color }) => [name, color] as const);
 
 export function hexToRgb(hex: string): [number, number, number] | null {
   const normalized = hex.trim().replace(/^#/, "");
