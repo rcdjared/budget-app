@@ -962,7 +962,7 @@ export function KupiChatSheet({
       });
       sessionRef.current = {
         ...sessionRef.current,
-        focus: { ...sessionRef.current.focus, lastQuery: result.query, turnsRemaining: 6 },
+        focus: { ...sessionRef.current.focus, lastQuery: result.query, lastAnswer: { summary: summaryForQuery(queryResult, result.query), empty: "transactionCount" in queryResult && queryResult.transactionCount === 0 }, turnsRemaining: 6 },
       };
       addAssistant(summaryForQuery(queryResult, result.query));
       return;
@@ -1225,6 +1225,13 @@ export function KupiChatSheet({
       const now = new Date();
       const context = advanceFocus(sessionRef.current);
       sessionRef.current = context;
+      if (/^(why|how come|why is that)\??$/iu.test(text.trim()) && context.focus?.lastAnswer) {
+        const explanation = context.focus.lastAnswer.empty
+          ? `Because there are no matching records in your ledger for that question${context.focus.lastQuery?.period === "this_month" ? " this month" : ""}. If you expected some, check that they were saved to this profile and recorded with dates in that period.`
+          : `That refers to my previous answer: ${context.focus.lastAnswer.summary} Which part would you like to check, such as spending by category or account?`;
+        addAssistant(explanation);
+        return;
+      }
       const snapshot = getSnapshot();
       const rulesResult = parseKupiInput(text, context, snapshot, now);
       const categoryChoicesFor = (transactionId?: string) => {
@@ -1260,13 +1267,6 @@ export function KupiChatSheet({
           ?.replace(/\s+categor(?:y|ies)\s*$/iu, "")
           .trim();
         addAssistant(categoryQuestion(unknown));
-        return;
-      }
-      if (rulesResult.tier === "ask" || rulesResult.intent === "UNKNOWN" || rulesResult.intent === "CLARIFY") {
-        // Ask the user a focused follow-up immediately; uncertain turns must not wait for model startup.
-        setSemanticHint(null);
-        setNluModelStatus(null);
-        handleParsedResult(rulesResult, text);
         return;
       }
       let profileSettings: { kupiSmartAssist?: boolean; kupiSmartMode?: boolean; kupiSmartModelSize?: "0.6B" | "1.7B" } = {};

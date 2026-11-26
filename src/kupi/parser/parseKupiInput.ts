@@ -66,7 +66,7 @@ const INCOME_CUES = [
 ];
 
 const QUERY_CUES = [
-  "how much", "magkano", "budget left", "budget remaining", "spending", "nagastos",
+  "how much", "magkano", "budget", "budgets", "budget left", "budget remaining", "spending", "nagastos",
   "natitira", "top spend", "top spending", "top category", "where did i spend the most",
   "what did i spend the most on", "biggest expense", "how many transactions", "daily average",
   "safe to spend", "compare to", "net worth", "total income",
@@ -289,6 +289,7 @@ function resolveQuery(text: string, db: KupiDbSnapshot): StatsQuery | undefined 
   else if (containsPhrase(text, "budget left") || containsPhrase(text, "budget remaining") || containsPhrase(text, "natitira")) {
     metric = "remaining_budget";
   }
+  else if (containsAny(text, ["budget", "budgets"])) metric = "remaining_budget";
 
   const query: StatsQuery = { metric };
   const period = periodFromText(text);
