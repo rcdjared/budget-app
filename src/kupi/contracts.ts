@@ -120,6 +120,7 @@ export interface KupiRecentContext {
 
 export interface KupiFocus {
   lastQuery?: StatsQuery;
+  lastAnswer?: { summary: string; empty: boolean };
   recent?: KupiRecentContext;
   /** Remaining user turns for which this ephemeral focus may be used. */
   turnsRemaining?: number;

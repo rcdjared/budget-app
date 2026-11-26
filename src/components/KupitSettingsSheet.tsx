@@ -190,131 +190,56 @@ export function KupitSettingsSheet({
 
   useEffect(() => {
     let active = true;
-    if (settings.kupiSmartAssist) {
-      setModelAvailability((current) => ({ ...current, embedding: null }));
-      void import("@/kupi/nlu/embedder").then(({ isEmbeddingModelCached }) => isEmbeddingModelCached())
-        .then((available) => { if (active) setModelAvailability((current) => ({ ...current, embedding: available })); })
-        .catch(() => {
-          if (!active) return;
-          setModelAvailability((current) => ({ ...current, embedding: false }));
-          setModelProgress({ model: "embedding", progress: 0, status: "Couldn’t load model status. Reload Kupi and try again." });
-        });
-    }
-    if (settings.kupiSmartMode) {
-      setModelAvailability((current) => ({ ...current, smart: null }));
-      void import("@/kupi/nlu/llmParser").then(({ isLocalLlmModelCached }) => isLocalLlmModelCached(settings.kupiSmartModelSize ?? "0.6B"))
-        .then((available) => { if (active) setModelAvailability((current) => ({ ...current, smart: available })); })
-        .catch(() => {
-          if (!active) return;
-          setModelAvailability((current) => ({ ...current, smart: false }));
-          setModelProgress({ model: "smart", progress: 0, status: "Couldn’t load model status. Reload Kupi and try again." });
-        });
-    }
+    setModelAvailability({ embedding: null, smart: null });
+    void Promise.all([
+      import("@/kupi/nlu/embedder").then(({ isEmbeddingModelCached }) => isEmbeddingModelCached()),
+      import("@/kupi/nlu/llmParser").then(({ isLocalLlmModelCached }) => isLocalLlmModelCached(settings.kupiSmartModelSize ?? "0.6B")),
+    ]).then(([embedding, smart]) => { if (active) setModelAvailability({ embedding, smart }); })
+      .catch(() => { if (active) setModelAvailability({ embedding: false, smart: false }); });
     return () => { active = false; };
-  }, [settings.kupiSmartAssist, settings.kupiSmartMode, settings.kupiSmartModelSize]);
-
-  const downloadEmbeddingModel = async () => {
-    if (modelActionRef.current) return;
-    const operationId = ++modelOperationRef.current;
-    modelActionRef.current = "embedding";
-    setModelAction("embedding");
-    setModelProgress({ model: "embedding", progress: 0, status: "Starting model download" });
-    try {
-      const { isEmbeddingModelCached, loadEmbeddingModel } = await import("@/kupi/nlu/embedder");
-      await loadEmbeddingModel((progress) => {
-        if (modelOperationRef.current === operationId) setModelProgress({ model: "embedding", progress, status: "Downloading suggestions" });
-      });
-      if (modelOperationRef.current === operationId) {
-        const available = await isEmbeddingModelCached();
-        if (modelOperationRef.current === operationId) {
-          setModelAvailability((current) => ({ ...current, embedding: available }));
-          setModelProgress({ model: "embedding", progress: 1, status: "Suggestion model is ready on this device" });
-          window.dispatchEvent(new Event("kupit:smart-models-updated"));
-        }
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Model could not be loaded";
-      const status = /module script failed/i.test(detail) ? "Kupi couldn’t load the model files. Reload the app and try again." : detail;
-      if (modelOperationRef.current === operationId) setModelProgress({ model: "embedding", progress: 0, status });
-    } finally {
-      if (modelOperationRef.current === operationId) {
-        modelActionRef.current = null;
-        setModelAction(null);
-      }
-    }
-  };
-
-  const downloadSmartModel = async () => {
-    if (modelActionRef.current || !smartCapability?.supported) return;
-    const operationId = ++modelOperationRef.current;
-    const modelSize = settings.kupiSmartModelSize ?? "0.6B";
-    modelActionRef.current = "smart";
-    setModelAction("smart");
-    setModelProgress({ model: "smart", progress: 0, status: "Preparing the local Smart mode model" });
-    try {
-      const { isLocalLlmModelCached, warmLocalLlm } = await import("@/kupi/nlu/llmParser");
-      await warmLocalLlm(modelSize, (progress) => {
-        if (modelOperationRef.current === operationId) setModelProgress({ model: "smart", progress, status: "Downloading Smart Kupi" });
-      });
-      if (modelOperationRef.current === operationId) {
-        const available = await isLocalLlmModelCached(modelSize);
-        if (modelOperationRef.current === operationId) {
-          setModelAvailability((current) => ({ ...current, smart: available }));
-          setModelProgress({ model: "smart", progress: 1, status: "Smart mode model is ready on this device" });
-          window.dispatchEvent(new Event("kupit:smart-models-updated"));
-        }
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : "Smart mode model could not be loaded";
-      const status = /module script failed/i.test(detail) ? "Kupi couldn’t load the model files. Reload the app and try again." : detail;
-      if (modelOperationRef.current === operationId) setModelProgress({ model: "smart", progress: 0, status });
-    } finally {
-      if (modelOperationRef.current === operationId) {
-        modelActionRef.current = null;
-        setModelAction(null);
-      }
-    }
-  };
+  }, [settings.kupiSmartModelSize, open, detail]);
 
   const downloadFullSmartKupi = async () => {
-    if (modelActionRef.current || !smartCapability?.supported) return;
+    if (modelActionRef.current) return;
     const operationId = ++modelOperationRef.current;
-    const modelSize = settings.kupiSmartModelSize ?? "0.6B";
     modelActionRef.current = "full";
     setModelAction("full");
-    setModelProgress({ model: "full", progress: 0, status: "Preparing Smart Kupi" });
+    setModelProgress({ model: "full", progress: 0, status: "Checking which Smart Kupi version fits this device" });
     try {
+      const { detectSmartCapability } = await import("@/kupi/nlu/capability");
+      const largeCapability = await detectSmartCapability("1.7B");
+      const smallCapability = largeCapability.supported ? largeCapability : await detectSmartCapability("0.6B");
+      const modelSize: "0.6B" | "1.7B" | null = largeCapability.supported ? "1.7B" : smallCapability.supported ? "0.6B" : null;
       const { isEmbeddingModelCached, loadEmbeddingModel } = await import("@/kupi/nlu/embedder");
       if (!(await isEmbeddingModelCached())) {
         await loadEmbeddingModel((progress) => {
-          if (modelOperationRef.current === operationId) {
-            setModelProgress({ model: "full", progress: Math.min(0.25, Math.max(0, progress * 0.25)), status: "Downloading language support" });
-          }
+          if (modelOperationRef.current === operationId) setModelProgress({ model: "full", progress: Math.max(0, progress * (modelSize ? 0.2 : 0.95)), status: "Downloading language support" });
         });
       }
       if (modelOperationRef.current !== operationId) return;
-      setModelProgress({ model: "full", progress: 0.25, status: "Preparing Smart Kupi" });
+      if (!modelSize) {
+        updateSettings({ kupiSmartAssist: true, kupiSmartMode: false });
+        setModelAvailability({ embedding: true, smart: false });
+        setModelProgress({ model: "full", progress: 1, status: "Basic Smart Kupi is ready. This device cannot run the local chat model, so it will use language suggestions." });
+        window.dispatchEvent(new Event("kupit:smart-models-updated"));
+        return;
+      }
       const { isLocalLlmModelCached, warmLocalLlm } = await import("@/kupi/nlu/llmParser");
       if (!(await isLocalLlmModelCached(modelSize))) {
         await warmLocalLlm(modelSize, (progress) => {
-          if (modelOperationRef.current === operationId) {
-            setModelProgress({ model: "full", progress: Math.min(0.99, 0.25 + Math.max(0, progress) * 0.75), status: "Downloading Smart Kupi" });
-          }
+          if (modelOperationRef.current === operationId) setModelProgress({ model: "full", progress: Math.min(0.99, 0.2 + Math.max(0, progress) * 0.8), status: `Downloading ${modelSize} Smart Kupi` });
         });
       }
       if (modelOperationRef.current !== operationId) return;
-      const [embeddingReady, smartReady] = await Promise.all([
-        isEmbeddingModelCached(),
-        isLocalLlmModelCached(modelSize),
-      ]);
-      setModelAvailability({ embedding: embeddingReady, smart: smartReady });
+      const [embeddingReady, smartReady] = await Promise.all([isEmbeddingModelCached(), isLocalLlmModelCached(modelSize)]);
       if (!embeddingReady || !smartReady) throw new Error("Download incomplete. Please try again.");
-      updateSettings({ kupiSmartAssist: true, kupiSmartMode: true });
-      setModelProgress({ model: "full", progress: 1, status: "Smart Kupi is ready" });
+      updateSettings({ kupiSmartAssist: true, kupiSmartMode: true, kupiSmartModelSize: modelSize });
+      setModelAvailability({ embedding: true, smart: true });
+      setModelProgress({ model: "full", progress: 1, status: modelSize === "0.6B" && !largeCapability.supported ? "Smart Kupi is ready with the lighter version because this device cannot run the larger one." : `Smart Kupi is ready with the ${modelSize} version.` });
       window.dispatchEvent(new Event("kupit:smart-models-updated"));
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Download failed";
-      const status = /module script failed/i.test(detail) ? "Couldn’t load model files. Reload Kupi and try again." : detail;
+      const status = /module script failed/i.test(detail) ? "Couldn't load model files. Reload Kupi and try again." : detail;
       if (modelOperationRef.current === operationId) setModelProgress({ model: "full", progress: 0, status });
     } finally {
       if (modelOperationRef.current === operationId) {
@@ -827,60 +752,33 @@ export function KupitSettingsSheet({
                   <p className="eyebrow" id="kupi-offline-models">Unlock smarter Kupi</p>
                   <div className="kupi-full-download">
                     <div>
-                      <b>Full Smart Kupi</b>
-                      <small>Download once, then use offline.</small>
+                      <b>Smart Kupi</b>
+                      <small>One optional download. Runs on this device and works offline afterward.</small>
                     </div>
                     <button
                       type="button"
                       className="kupit-primary-button"
-                      disabled={!smartCapability?.supported || modelAction !== null}
+                      disabled={modelAction !== null || modelAvailability.embedding === null || modelAvailability.smart === null || Boolean(settings.kupiSmartAssist && (settings.kupiSmartMode ? modelAvailability.smart : modelAvailability.embedding))}
                       onClick={() => void downloadFullSmartKupi()}
                     >
-                      {modelAvailability.embedding && modelAvailability.smart ? "Enable full Smart Kupi" : "Download full Smart Kupi"}
+                      {settings.kupiSmartAssist && (settings.kupiSmartMode ? modelAvailability.smart : modelAvailability.embedding)
+                        ? "Smart Kupi is on"
+                        : modelAvailability.embedding || modelAvailability.smart ? "Enable Smart Kupi" : "Download Smart Kupi"}
                     </button>
+                    <small className="kupit-muted" role="status">
+                      {modelAvailability.embedding === null || modelAvailability.smart === null || smartCapability === null ? "Checking this device..." :
+                        settings.kupiSmartMode && modelAvailability.smart ? `On - local ${settings.kupiSmartModelSize ?? "0.6B"} model${settings.kupiSmartModelSize === "0.6B" ? " (lighter version)" : ""}` :
+                        settings.kupiSmartAssist && modelAvailability.embedding ? "On - language suggestions" :
+                        smartCapability?.supported ? "Available - download once to turn it on" : "This device can use language suggestions; the local chat model is unavailable."}
+                    </small>
                     {modelProgress?.model === "full" && (
                       <div className="kupi-download-progress" role="status">
                         <div><small>{modelProgress.status}</small><small>{Math.round(modelProgress.progress * 100)}%</small></div>
-                        <progress max={1} value={modelProgress.progress} aria-label="Smart Kupi download progress" />
+                        {modelAction === "full" && <progress max={1} value={modelProgress.progress} aria-label="Smart Kupi download progress" />}
                         {modelAction === "full" && <button type="button" className="chat-clear-learning" onClick={() => void cancelModelDownload()}>Cancel</button>}
                       </div>
                     )}
                   </div>
-                  <Row
-                    className="kupi-model-row"
-                    icon={<Download size={18} />}
-                    title="Smart assist"
-                    description="Better suggestions for short or mixed-language messages."
-                    trailing={<Toggle checked={Boolean(settings.kupiSmartAssist)} disabled={modelAction !== null} onChange={(checked) => updateSettings({ kupiSmartAssist: checked })} label="Enable offline Smart assist" />}
-                  />
-                  {settings.kupiSmartAssist && (
-                    <div className="kupi-model-controls">
-                      <small className="kupit-muted" role="status">{modelAvailability.embedding === null ? "Checking model…" : modelAvailability.embedding ? "Ready on this device" : "Not downloaded"}</small>
-                      <button type="button" className="kupit-primary-button" disabled={modelAction !== null} onClick={() => void downloadEmbeddingModel()}>{modelAvailability.embedding ? "Load model" : "Download model"}</button>
-                      {modelProgress?.model === "embedding" && <div className="kupi-download-progress" role="status"><div><small>{modelProgress.status}</small><small>{Math.round(modelProgress.progress * 100)}%</small></div><progress max={1} value={modelProgress.progress} aria-label="Suggestion model download progress" />{modelAction === "embedding" && <button type="button" className="chat-clear-learning" onClick={() => void cancelModelDownload()}>Cancel</button>}</div>}
-                    </div>
-                  )}
-                  <Row
-                    className="kupi-model-row"
-                    icon={<Smartphone size={18} />}
-                    title="Smart mode"
-                    description={smartCapability?.supported === false ? "Smart mode isn’t available in this browser or on this device." : "Understand more ways of asking, on this device."}
-                    trailing={<Toggle checked={Boolean(settings.kupiSmartMode)} disabled={modelAction !== null || (smartCapability !== null && !smartCapability.supported && !settings.kupiSmartMode)} onChange={(checked) => updateSettings({ kupiSmartMode: checked, kupiSmartAssist: checked || settings.kupiSmartAssist })} label="Enable local Smart mode" />}
-                  />
-                  {settings.kupiSmartMode && (
-                    <div className="kupi-model-controls">
-                      <label className="kupit-muted">Model size
-                        <select value={settings.kupiSmartModelSize ?? "0.6B"} onChange={(event) => updateSettings({ kupiSmartModelSize: event.target.value as "0.6B" | "1.7B" })}>
-                          <option value="0.6B">Small · about 350 MB</option>
-                          <option value="1.7B">Large · about 1 GB</option>
-                        </select>
-                      </label>
-                      <small className="kupit-muted">Works offline after download. You review every change before saving.</small>
-                      <small className="kupit-muted" role="status">{modelAvailability.smart === null ? "Checking model…" : modelAvailability.smart ? "Ready on this device" : "Not downloaded"}</small>
-                      <button type="button" className="kupit-primary-button" disabled={!smartCapability?.supported || modelAction !== null} onClick={() => void downloadSmartModel()}>{modelAvailability.smart ? "Load model" : "Download model"}</button>
-                      {modelProgress?.model === "smart" && <div className="kupi-download-progress" role="status"><div><small>{modelProgress.status}</small><small>{Math.round(modelProgress.progress * 100)}%</small></div><progress max={1} value={modelProgress.progress} aria-label="Smart mode download progress" />{modelAction === "smart" && <button type="button" className="chat-clear-learning" onClick={() => void cancelModelDownload()}>Cancel</button>}</div>}
-                    </div>
-                  )}
                   {modelProgress?.model === "delete" && <small role="status" className="kupit-muted">{modelProgress.status}</small>}
                   <button type="button" className="kupit-reset-button" disabled={modelAction !== null} onClick={() => {
                     void removeKupiModels();
